@@ -23,8 +23,8 @@ export function ModelProvider({ children }) {
 }
 export function useModels() { return useContext(ModelContext) }
 
-export function ModelPicker({ disabled = false, showSettings = true }) {
-  const { models, activeModelId, loading, error, update, setOpen } = useModels()
+export function ModelPicker({ disabled = false }) {
+  const { models, activeModelId, loading, error, update } = useModels()
   const [failure, setFailure] = useState('')
   const [busy, setBusy] = useState(false)
   async function select(event) {
@@ -39,7 +39,6 @@ export function ModelPicker({ disabled = false, showSettings = true }) {
         {!models.length && <option value="">{loading ? '加载模型…' : '请添加生图模型'}</option>}
         {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
       </select>
-      {showSettings && <button type="button" disabled={disabled} onClick={() => setOpen(true)}>模型设置</button>}
     </div>
     {(failure || error) && <p role="alert">{failure || error}</p>}
   </div>

@@ -58,7 +58,7 @@ export function createModelStore(settingsDir) {
       await queue
       const state = await read()
       const model = state.models.find(model => model.id === (id || state.activeModelId))
-      if (!model) throw inputError('请先在“模型设置”中添加并选择生图模型。')
+      if (!model) throw inputError('请先在“设置”中添加并选择生图模型。')
       return model
     },
     save(body, id) {

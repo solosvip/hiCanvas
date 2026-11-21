@@ -1,5 +1,6 @@
-.hc-model-settings-trigger { pointer-events: auto; }
-.hc-model-dialog, .hc-model-picker, .hc-model-settings-trigger { font-family: var(--font-body-md); font-size: var(--text-body-md); color: var(--color-on-surface); }
+.hc-settings-button { pointer-events: auto; }
+.hc-settings-icon { width: var(--spacing-lg); height: var(--spacing-lg); }
+.hc-model-dialog, .hc-model-picker { font-family: var(--font-body-md); font-size: var(--text-body-md); color: var(--color-on-surface); }
 .hc-model-dialog { pointer-events: auto; font-weight: normal; width: calc(var(--spacing-xl) * 24); padding: var(--spacing-xl); border: var(--spacing-none) solid transparent; border-radius: var(--radius-xl); background: var(--color-surface); overflow: auto; }
 .hc-model-dialog::backdrop { background: var(--color-scrim); }
 .hc-model-dialog h2, .hc-model-dialog h3, .hc-model-dialog p { margin: var(--spacing-sm) var(--spacing-none); }
@@ -11,12 +12,12 @@
 .hc-model-actions { flex-wrap: wrap; }
 .hc-model-picker { margin-bottom: var(--spacing-sm); }
 .hc-model-row select { flex: auto; min-width: var(--spacing-none); }
-.hc-model-dialog button, .hc-model-dialog input, .hc-model-dialog select, .hc-model-picker button, .hc-model-picker select, .hc-model-settings-trigger {
+.hc-model-dialog button, .hc-model-dialog input, .hc-model-dialog select, .hc-model-picker button, .hc-model-picker select {
   font: inherit; color: var(--color-on-surface); background: var(--color-surface); border: thin solid var(--color-outline); border-radius: var(--radius-md); padding: var(--spacing-sm) var(--spacing-md); min-height: calc(var(--spacing-xl) + var(--spacing-lg)); box-sizing: border-box;
 }
-.hc-model-dialog button, .hc-model-picker button, .hc-model-settings-trigger { cursor: pointer; }
-.hc-model-dialog button:hover, .hc-model-picker button:hover, .hc-model-settings-trigger:hover { background: var(--color-neutral); }
-.hc-model-dialog :focus-visible, .hc-model-picker :focus-visible, .hc-model-settings-trigger:focus-visible { outline: medium solid var(--color-primary); outline-offset: var(--spacing-xs); }
+.hc-model-dialog button, .hc-model-picker button { cursor: pointer; }
+.hc-model-dialog button:hover, .hc-model-picker button:hover { background: var(--color-neutral); }
+.hc-model-dialog :focus-visible, .hc-model-picker :focus-visible, .hc-settings-button:focus-visible { outline: medium solid var(--color-primary); outline-offset: var(--spacing-xs); }
 .hc-model-dialog button:disabled, .hc-model-dialog fieldset:disabled, .hc-model-picker :disabled { color: var(--color-secondary); cursor: default; }
 .hc-model-dialog .hc-primary { background: var(--color-on-surface); color: var(--color-surface); }
 .hc-model-dialog .hc-primary:hover { background: var(--color-secondary); }

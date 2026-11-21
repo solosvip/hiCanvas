@@ -153,7 +153,7 @@ function CowartAnnotationEditToolbarButton({ imageShapeId }) {
     } catch (error) {
       console.error(error)
       setStatus('error')
-      addToast({ id: 'hicanvas-annotation-error', title: '按标注修改未完成', description: error instanceof Error ? error.message : '操作失败，请检查模型设置。', severity: 'error' })
+      addToast({ id: 'hicanvas-annotation-error', title: '按标注修改未完成', description: error instanceof Error ? error.message : '操作失败，请检查设置。', severity: 'error' })
       return
     }
     if (isAnnotationEditExportTooLarge(request.exportSize)) {
@@ -173,7 +173,7 @@ function CowartAnnotationEditToolbarButton({ imageShapeId }) {
     } catch (error) {
       console.error(error)
       setStatus('error')
-      addToast({ id: 'hicanvas-annotation-error', title: '按标注修改未完成', description: error instanceof Error ? error.message : '操作失败，请检查模型设置。', severity: 'error' })
+      addToast({ id: 'hicanvas-annotation-error', title: '按标注修改未完成', description: error instanceof Error ? error.message : '操作失败，请检查设置。', severity: 'error' })
     }
   }
   const title =

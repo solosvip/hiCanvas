@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { useEditor } from 'tldraw'
+import { TldrawUiButton, useEditor } from 'tldraw'
+import { Settings2 } from 'lucide-react'
 import { useModels, ModelPicker } from './ModelContext.jsx'
 import { ModelForm } from './ModelForm.jsx'
 import { imageApi } from './client.js'
 import { insertGeneratedImages } from './canvasImages.js'
 
-export function ModelSettings() {
+export function SettingsPanel() {
   const editor = useEditor()
   const { models, loading, error: loadError, reload, update, open, setOpen } = useModels()
   const dialog = useRef(null)
@@ -33,14 +34,24 @@ export function ModelSettings() {
     finally { setBusy(false) }
   }
   return <>
-    <button type="button" className="hc-model-settings-trigger" onClick={() => setOpen(true)}>模型设置</button>
+    <TldrawUiButton
+      aria-label="设置"
+      className="hc-settings-button"
+      data-testid="hicanvas.settings-button"
+      onClick={() => setOpen(true)}
+      title="设置"
+      type="icon"
+    >
+      <Settings2 aria-hidden="true" className="hc-settings-icon" />
+    </TldrawUiButton>
     <dialog ref={dialog} className="hc-model-dialog" aria-labelledby="hc-model-title" onCancel={event => { event.preventDefault(); if (!busy) setOpen(false) }}
       onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-      <div className="hc-model-heading"><h2 id="hc-model-title">生图模型</h2><button type="button" aria-label="关闭模型设置" disabled={busy} onClick={() => setOpen(false)}>关闭</button></div>
+      <div className="hc-model-heading"><h2 id="hc-model-title">设置</h2><button type="button" aria-label="关闭设置" disabled={busy} onClick={() => setOpen(false)}>关闭</button></div>
       <p className="hc-model-help">自行添加服务和模型。密钥只保存在本机；保存设置不会调用生图接口。</p>
       {loading ? <p role="status">加载中…</p> : loadError ? <div role="alert"><p>{loadError}</p><button onClick={reload}>重新加载</button></div> : editing ?
         <ModelForm key={editing.id || 'new'} model={editing.id ? editing : null} onSaved={() => setEditing(null)} onCancel={() => setEditing(null)} /> : <>
-          <ModelPicker disabled={busy} showSettings={false} />
+          <h3>生图模型</h3>
+          <ModelPicker disabled={busy} />
           {!models.length && <p>尚未添加模型。添加后即可在 AI 图片框中生成或使用参考图改图。</p>}
           <ul className="hc-model-list">{models.map(model => <li key={model.id}>
             <div><strong>{model.name}</strong><span>{model.model}</span><small>{model.baseUrl}</small></div>
