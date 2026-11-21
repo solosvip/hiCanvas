@@ -65,14 +65,14 @@ async function exportCowartSlidesAnnotationScreenshot(editor, slidesShapeId) {
   const shapeIds = collectAiSlidesAnnotationShapeIds(editor, slidesShapeId)
   const slidesShape = editor.getShape(slidesShapeId)
   const rawBounds = editor.getShapesPageBounds(shapeIds)
-  if (!slidesShape || !rawBounds) throw new Error('无法计算 AI Slides 标注截图范围。')
+  if (!slidesShape || !rawBounds) throw new Error('无法计算 AI 幻灯片标注截图范围。')
   const exportBounds = expandBox(rawBounds, ANNOTATION_EDIT_EXPORT_PADDING)
   const pixelRatio = getAnnotationEditExportPixelRatio(exportBounds)
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(exportBounds.w * pixelRatio))
   canvas.height = Math.max(1, Math.round(exportBounds.h * pixelRatio))
   const context = canvas.getContext('2d')
-  if (!context) throw new Error('浏览器无法创建 AI Slides 标注截图。')
+  if (!context) throw new Error('浏览器无法创建 AI 幻灯片标注截图。')
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, canvas.width, canvas.height)
   const slidesCapture = await editor.toImageDataUrl([slidesShapeId], {
@@ -131,7 +131,7 @@ function aiSlidesAnnotationScreenshotFileName() {
 }
 function createAiSlidesBelowSource(editor, sourceSlidesShape) {
   const sourceBounds = editor.getShapePageBounds(sourceSlidesShape.id)
-  if (!sourceBounds) throw new Error('无法读取原 AI Slides 的画布位置。')
+  if (!sourceBounds) throw new Error('无法读取原 AI 幻灯片的画布位置。')
   const width = Math.max(AI_SLIDES_DEFAULT_W, Number(sourceSlidesShape.props?.w) || AI_SLIDES_DEFAULT_W)
   const height = Math.max(AI_SLIDES_DEFAULT_H, Number(sourceSlidesShape.props?.h) || AI_SLIDES_DEFAULT_H)
   const margin = 80
@@ -215,7 +215,7 @@ async function sendAiSlidesAnnotationEditRequest(editor, slidesShapeId) {
   const sourceSlidesShape = editor.getShape(slidesShapeId)
   const sourceItems = getAiSlidesItems(editor, slidesShapeId)
   if (!isAiSlidesShape(sourceSlidesShape) || !sourceItems.length) {
-    throw new Error('请选择一个已有内容的 AI Slides。')
+    throw new Error('请选择一个已有内容的 AI 幻灯片。')
   }
   const exportResult = await exportCowartSlidesAnnotationScreenshot(editor, slidesShapeId)
   const screenshotAsset = await saveCowartReferenceImage({
@@ -227,7 +227,7 @@ async function sendAiSlidesAnnotationEditRequest(editor, slidesShapeId) {
   const targetSlidesShapeId = createAiSlidesBelowSource(editor, sourceSlidesShape)
   try {
     const saveResult = await saveCowartEditorSnapshot(editor)
-    if (saveResult?.ok === false) throw new Error(saveResult.message || '新的 AI Slides 保存失败。')
+    if (saveResult?.ok === false) throw new Error(saveResult.message || '新的 AI 幻灯片保存失败。')
     const prompt = buildAiSlidesAnnotationEditPrompt({
       sourceSlidesShape,
       targetSlidesShapeId,
@@ -327,7 +327,7 @@ async function sendHtmlDraftAnnotationRequest(editor, draftShapeId, mode) {
   if (!sender) throw new Error('当前 Cowart 画布没有可用的 Codex MCP 消息桥。')
   const draftShape = editor.getShape(draftShapeId)
   if (!isCowartHtmlDraftEmbedShape(draftShape)) {
-    throw new Error('请选择一个已生成 HTML 的 AI HTML。')
+    throw new Error('请选择一个已生成网页的 AI 网页。')
   }
   const exportResult = await exportCowartHtmlDraftAnnotationScreenshot(editor, draftShapeId)
   const screenshotAsset = await saveCowartReferenceImage({

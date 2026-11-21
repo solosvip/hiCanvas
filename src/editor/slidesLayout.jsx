@@ -71,7 +71,7 @@ function adoptGeneratedAiSlidesItems(editor) {
 function normalizeAiDraftHolderLabels(editor) {
   const updates = editor
     .getCurrentPageShapes()
-    .filter((shape) => isAiDraftHolderShape(shape) && shape.props?.name !== (isAiFilmHolderShape(shape) ? AI_FILM_LABEL : AI_DRAFT_HOLDER_LABEL))
+    .filter((shape) => isAiDraftHolderShape(shape) && !shape.props?.name)
     .map((shape) => ({
       id: shape.id,
       type: shape.type,

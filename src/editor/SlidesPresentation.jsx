@@ -124,11 +124,12 @@ function CowartSlidesPresentationOverlay() {
     go(1)
   }
   if (!slidesShapeId || !isAiSlidesShape(slidesShape)) return null
-  const deckName = slidesShape.props?.name || AI_SLIDES_LABEL
+  const savedDeckName = slidesShape.props?.name
+  const deckName = savedDeckName === 'AI Slides' ? AI_SLIDES_LABEL : (savedDeckName || AI_SLIDES_LABEL)
   return (
     <section
       ref={overlayRef}
-      aria-label="AI Slides 演示器"
+      aria-label="AI 幻灯片演示器"
       className={`cowart-slides-viewer${isPresenting ? ' is-presenting' : ''}`}
       onClick={stopEditorOverlayEvent}
       onDoubleClick={stopEditorOverlayEvent}
@@ -189,7 +190,7 @@ function CowartSlidesPresentationOverlay() {
             </div>
           </header>
           <div className="cowart-slides-viewer-body">
-            <aside aria-label="Slides 页面预览" className="cowart-slides-thumbnails">
+            <aside aria-label="幻灯片页面预览" className="cowart-slides-thumbnails">
               {slides.map((slide, slideIndex) => {
                 const width = Math.max(1, Number(slide.props?.w) || 16)
                 const height = Math.max(1, Number(slide.props?.h) || 9)
@@ -223,7 +224,7 @@ function CowartSlidesPresentationOverlay() {
                   />
                 </div>
               ) : (
-                <div className="cowart-slides-empty">把图片或 HTML 草稿拖入 AI Slides 后即可演示。</div>
+                <div className="cowart-slides-empty">把图片或网页草稿拖入 AI 幻灯片后即可演示。</div>
               )}
             </main>
           </div>

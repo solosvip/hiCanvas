@@ -58,7 +58,7 @@ async function sendAnnotationEditRequest(editor, imageShapeId, request) {
 }
 async function sendAnnotationHtmlRequest(editor, imageShapeId) {
   const imageShape = editor.getShape(imageShapeId)
-  if (!isImageShape(imageShape)) throw new Error('请选择一张图片后再按标注生成 Html。')
+  if (!isImageShape(imageShape)) throw new Error('请选择一张图片后再按标注生成网页。')
   const shapeIds = collectAnnotationEditShapeIds(editor, imageShapeId)
   const rawBounds = editor.getShapesPageBounds(shapeIds)
   if (!rawBounds) throw new Error('无法计算截图范围。')

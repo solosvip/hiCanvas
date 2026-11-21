@@ -73,7 +73,7 @@ function getCowartHtmlDraftLocalPath(shape) {
 }
 async function renderCowartHtmlDraftCanvas(shape, pixelRatio) {
   if (!isCowartHtmlDraftEmbedShape(shape)) {
-    throw new Error('请选择一个已生成 HTML 的 AI HTML。')
+    throw new Error('请选择一个已生成网页的 AI 网页。')
   }
   const iframeDocument = await waitForHtmlDraftDocument(shape.id)
   await waitForHtmlDraftCaptureReady(iframeDocument)
@@ -116,7 +116,7 @@ function textDataUrl(text, mimeType = 'text/plain') {
 }
 async function readCowartHtmlDraftContent(shape) {
   if (!isCowartHtmlDraftEmbedShape(shape)) {
-    throw new Error('请选择一个已生成 HTML 的 AI HTML。')
+    throw new Error('请选择一个已生成网页的 AI 网页。')
   }
   const directHtmlUrl = isCowartHtmlDraftDataUrl(shape.props?.url) ? shape.props.url : null
   if (directHtmlUrl) {

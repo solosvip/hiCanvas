@@ -107,7 +107,9 @@ const cowartUiOverrides = {
       'tool.ai-draft': AI_DRAFT_HOLDER_LABEL,
       'tool.ai-film': AI_FILM_LABEL,
       'tool.ai-slides': AI_SLIDES_LABEL,
-      'tool.cowart-annotation': ANNOTATION_TOOL_LABEL
+      'tool.cowart-annotation': ANNOTATION_TOOL_LABEL,
+      'page-menu.max-pages-reached': '已达到页面数量上限',
+      'page-menu.resize': '调整页面列表大小'
     }
   },
   tools(editor, tools) {

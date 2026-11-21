@@ -162,7 +162,7 @@ function CowartAiDraftGenerationPanel() {
   return (
     <div className="cowart-ai-generation-overlay" aria-hidden={false}>
       <form
-        aria-label={isFilm ? "AI 影片生成" : "AI HTML 生成"}
+        aria-label={isFilm ? "AI 影片生成" : "AI 网页生成"}
         className={`cowart-ai-generation-panel${isFilm ? " cowart-ai-film-generation-panel" : ""}`}
         data-status={status}
         onClick={stopEditorOverlayEvent}
@@ -209,7 +209,7 @@ function CowartAiDraftGenerationPanel() {
         </div>
         {isFilm && <CowartFilmGenerationOptions shape={shape} disabled={isSending} />}
         <textarea
-          aria-label="自定义 prompt"
+          aria-label="自定义提示词"
           className="cowart-ai-generation-prompt"
           disabled={isSending}
           onChange={(event) => {
@@ -221,7 +221,7 @@ function CowartAiDraftGenerationPanel() {
           }}
           onKeyDown={handlePromptKeyDown}
           onPaste={handlePromptPaste}
-          placeholder={isFilm ? "描述影片内容、镜头和节奏，默认 15 秒" : "描述你想生成的 HTML"}
+          placeholder={isFilm ? "描述影片内容、镜头和节奏，默认 15 秒" : "描述你想生成的网页"}
           rows={3}
           value={promptValue}
         />
