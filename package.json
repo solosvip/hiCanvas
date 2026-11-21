@@ -1,0 +1,14 @@
+{
+  "name": "hicanvas",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Independent canvas based on Cowart, with custom image providers and MCP access.",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "check": "node --test tools/check.test.mjs && node tools/check.mjs",
+    "check:staged": "node --test tools/check.test.mjs && node tools/check.mjs --staged"
+  }
+}
