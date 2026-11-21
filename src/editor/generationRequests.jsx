@@ -1,4 +1,5 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
+import { generateOnCanvas } from '../image-models/canvasImages.js'
 import { filmAnalyticsContext } from "../filmAnalytics.js"
 import { hasCowartWidgetBridge, saveCowartReferenceImage } from "../cowartClient.js"
 import { AI_IMAGE_REFERENCE_MAX_FILES } from './configuration.jsx'
@@ -6,7 +7,16 @@ import { dataUrlToImageContent, followUpSender, supportsCowartMessageImages } fr
 import { buildAiImageGenerationPrompt, buildAiDraftGenerationPrompt, buildAiFilmGenerationPrompt, buildAiSlidesGenerationPrompt } from './generationPrompts.jsx'
 import { readFileAsDataUrl } from './readFileAsDataUrl.jsx'
 import { isAiFilmHolderShape } from './holderMeta.jsx'
-async function sendAiImageGenerationRequest({ holderShape, userPrompt, referenceFiles = [] }) {
+async function sendAiImageGenerationRequest({ editor, modelId, holderShape, userPrompt, referenceFiles = [] }) {
+  if (!hasCowartWidgetBridge()) {
+    const pageId = editor.getCurrentPageId()
+    const references = await Promise.all(referenceFiles.map(readFileAsDataUrl))
+    return generateOnCanvas(editor, {
+      anchorId: holderShape.id, modelId, pageId,
+      prompt: `${userPrompt.trim() || '参考所提供的图片生成新图片。'}\n画面比例参考：${holderShape.props.w}:${holderShape.props.h}。`,
+      references
+    })
+  }
   const sender = followUpSender()
   if (!sender) {
     throw new Error('当前 Cowart 画布没有可用的 Codex MCP 消息桥。')

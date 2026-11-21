@@ -12,6 +12,7 @@ colors:
   error: "#c2410c"
   success: "#1f8f4d"
   outline: "#d1d5db"
+  scrim: "#25282d80"
 typography:
   body-md:
     fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -22,6 +23,7 @@ typography:
     fontWeight: 500
     lineHeight: 1
 spacing:
+  none: 0px
   xs: 4px
   sm: 8px
   md: 12px
@@ -81,3 +83,5 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 ## Do's and Don'ts
 
 既有样式值记录在 `tools/upstream-styles.json`，允许逐步替换成令牌，不允许新增或复制字面量扩张例外。新增 hiCanvas 界面使用由本文件生成的令牌，优先扩展现有组件。修改上游视觉时先提炼涉及的实际值并确认，不借独立运行改造重画界面。API、MCP、模型配置尚未接入的能力不得提示已经成功执行。
+
+模型设置沿用画板浮层的白色表面、圆角和间距，使用原生模态窗口承载可增删改的配置列表。主按钮使用正文色底与白字；生成结果以小图列表供找回、放入当前页或下载。

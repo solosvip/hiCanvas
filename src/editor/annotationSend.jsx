@@ -1,9 +1,11 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
-import { saveCowartReferenceImage } from "../cowartClient.js"
+import { generateOnCanvas } from '../image-models/canvasImages.js'
+import { hasCowartWidgetBridge, saveCowartReferenceImage } from "../cowartClient.js"
 import { buildAnnotationEditPrompt, annotationEditScreenshotFileName, dataUrlToImageContent, followUpSender, supportsCowartMessageImages, expandBox, collectAnnotationEditShapeIds, buildAnnotationHtmlPrompt, getAnnotationEditExportPixelRatio, annotationHtmlScreenshotFileName } from './annotationRequests.jsx'
 import { ANNOTATION_EDIT_EXPORT_PADDING } from './configuration.jsx'
 import { isImageShape } from './holderMeta.jsx'
 async function sendAnnotationEditRequest(editor, imageShapeId, request) {
+  const pageId = editor.getCurrentPageId()
   const { shapeIds, exportBounds, exportSize } = request
   const exportResult = await editor.toImageDataUrl(shapeIds, {
     bounds: exportBounds,
@@ -13,6 +15,13 @@ async function sendAnnotationEditRequest(editor, imageShapeId, request) {
     padding: 0,
     pixelRatio: exportSize.pixelRatio
   })
+  if (!hasCowartWidgetBridge()) {
+    return generateOnCanvas(editor, {
+      anchorId: imageShapeId, beside: true, pageId,
+      prompt: '根据图片中的文字和箭头标注意见修改原图。标注仅是修改指令，结果中不要保留这些箭头、文字和画布边缘。保留未要求修改的内容。',
+      references: [exportResult.url]
+    })
+  }
   const screenshotAsset = await saveCowartReferenceImage({
     anchorShapeId: imageShapeId,
     fileName: annotationEditScreenshotFileName(),

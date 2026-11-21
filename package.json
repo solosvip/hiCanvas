@@ -1,6 +1,6 @@
 {
   "name": "hicanvas",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "description": "Standalone canvas based on Cowart. Custom image providers and MCP are planned.",
   "type": "module",

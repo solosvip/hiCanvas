@@ -1,4 +1,5 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
+import { ModelPicker, useModels } from '../image-models/ModelContext.jsx'
 import { TldrawUiButtonIcon, useEditor, useValue } from "tldraw"
 import { useEffect, useRef, useState } from "react"
 import { AI_IMAGE_GENERATION_STATUS_RESET_MS, AI_IMAGE_REFERENCE_MAX_FILES } from './configuration.jsx'
@@ -7,6 +8,9 @@ import { getAiImageGenerationPanelLayout, clipboardImageFiles, stopEditorOverlay
 import { sendAiImageGenerationRequest } from './generationRequests.jsx'
 function CowartAiImageGenerationPanel() {
   const editor = useEditor()
+  const { activeModelId, loading: modelsLoading } = useModels()
+  const panelRef = useRef(null)
+  const [panelHeight, setPanelHeight] = useState(undefined)
   const selectedTarget = useValue(
     'selected ai image holder generation panel target',
     () => {
@@ -14,15 +18,21 @@ function CowartAiImageGenerationPanel() {
       if (!isAiImageHolderShape(shape)) return null
       editor.getCamera()
       editor.getViewportScreenBounds()
-      const layout = getAiImageGenerationPanelLayout(editor, shape.id)
+      const layout = getAiImageGenerationPanelLayout(editor, shape.id, panelHeight)
       if (!layout) return null
       return {
         shape,
         layout
       }
     },
-    [editor]
+    [editor, panelHeight]
   )
+  useEffect(() => {
+    if (!panelRef.current) return
+    const observer = new ResizeObserver(([entry]) => setPanelHeight(entry.target.getBoundingClientRect().height))
+    observer.observe(panelRef.current)
+    return () => observer.disconnect()
+  }, [selectedTarget?.shape.id])
   const fileInputRef = useRef(null)
   const submitInFlightRef = useRef(false)
   const [promptValue, setPromptValue] = useState('')
@@ -31,6 +41,7 @@ function CowartAiImageGenerationPanel() {
   const [status, setStatus] = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
   useEffect(() => {
+    if (submitInFlightRef.current) return
     setStatus('idle')
     setErrorMessage('')
   }, [selectedTarget?.shape.id])
@@ -106,6 +117,7 @@ function CowartAiImageGenerationPanel() {
     setErrorMessage('')
     try {
       await sendAiImageGenerationRequest({
+        editor, modelId: activeModelId,
         holderShape: editor.getShape(shape.id) || shape,
         userPrompt: promptValue,
         referenceFiles
@@ -150,8 +162,9 @@ function CowartAiImageGenerationPanel() {
   return (
     <div className="cowart-ai-generation-overlay" aria-hidden={false}>
       <form
+        ref={panelRef}
         aria-label="AI 图片生成"
-        className="cowart-ai-generation-panel"
+        className="cowart-ai-generation-panel hc-image-generation-panel"
         data-status={status}
         onClick={stopEditorOverlayEvent}
         onDoubleClick={stopEditorOverlayEvent}
@@ -164,6 +177,7 @@ function CowartAiImageGenerationPanel() {
           width: `${layout.width}px`
         }}
       >
+        <ModelPicker disabled={isSending} />
         <div className="cowart-ai-generation-reference-row">
           <div className="cowart-ai-generation-reference-strip">
             {referencePreviews.map((preview, index) => (
@@ -215,18 +229,18 @@ function CowartAiImageGenerationPanel() {
         <div className="cowart-ai-generation-footer">
           <div className="cowart-ai-generation-status" aria-live="polite">
             {status === 'sending'
-              ? '正在发送'
+              ? '正在生成，请稍候…'
               : status === 'sent'
-                ? '已发送'
+                ? '已生成'
                 : errorMessage}
           </div>
           <button
             aria-label="发送生成请求"
             className="cowart-ai-generation-send"
-            disabled={!canSend || isSending}
+            disabled={!canSend || isSending || modelsLoading || !activeModelId}
             type="submit"
           >
-            <span>{isSending ? '发送中' : '发送'}</span>
+            <span>{isSending ? '生成中' : '生成'}</span>
           </button>
         </div>
       </form>

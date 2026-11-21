@@ -6,8 +6,10 @@ import { CowartSlidesPresentationOverlay } from './SlidesPresentation.jsx'
 import { CowartAiImageGenerationPanel } from './ImageGenerationPanel.jsx'
 import { CowartAiDraftGenerationPanel } from './DraftGenerationPanel.jsx'
 import { CowartAiSlidesGenerationPanel } from './SlidesGenerationPanel.jsx'
+import { ModelSettings } from '../image-models/ModelSettings.jsx'
 const cowartComponents = {
   Toolbar: CowartToolbar,
+  SharePanel: ModelSettings,
   ImageToolbar: CowartSelectionToolbar,
   InFrontOfTheCanvas: CowartCanvasOverlay,
   StylePanel: CowartStylePanel
