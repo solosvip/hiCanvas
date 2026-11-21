@@ -1,0 +1,83 @@
+---
+name: hiCanvas — Cowart baseline
+description: 沿用用户选定的 Cowart 画板；本次导入保持原有视觉与组件，不做风格合并或重新设计。
+colors:
+  primary: "#2f80ed"
+  secondary: "#596170"
+  tertiary: "#0ea5e9"
+  neutral: "#f7f5ef"
+  surface: "#ffffff"
+  on-surface: "#25282d"
+  on-neutral: "#1f2430"
+  error: "#c2410c"
+  success: "#1f8f4d"
+  outline: "#d1d5db"
+typography:
+  body-md:
+    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: 14px
+  label-md:
+    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: 13px
+    fontWeight: 500
+    lineHeight: 1
+spacing:
+  xs: 4px
+  sm: 8px
+  md: 12px
+  lg: 16px
+  xl: 24px
+rounded:
+  xs: 4px
+  sm: 6px
+  md: 8px
+  lg: 12px
+  xl: 16px
+  full: 9999px
+components:
+  toolbar-handle:
+    width: 28px
+    height: 32px
+  annotation-tool:
+    width: 76px
+    padding: "{spacing.md}"
+    typography: "{typography.label-md}"
+  generation-panel:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.on-surface}"
+    rounded: "{rounded.lg}"
+---
+
+## Overview
+
+来源是 Cowart 提交 `38bdafeff47374ddbc11b12bddbc4f1f4cf14587`。用户已确认以它为基础、保留现有界面；本轮只改变运行方式，不重新安排组件，也不把近似样式值合并。
+
+Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/cowart-*.css` 是按完整规则拆分的上游样式；画板形状的坐标、比例、尺寸、颜色属于用户文档数据，不作为应用界面令牌收敛。
+
+## Colors
+
+画布外层使用原有暖色底板，浮层和工具栏保持原有表面、文字与焦点色。成功、错误与禁用状态沿用来源组件的反馈；不得用品牌色重染用户画出的形状。
+
+## Typography
+
+字体沿用系统无衬线字体序列。标注按钮的字号、字重和行高直接取自 Cowart。tldraw 自带的字体、形状文字与编辑器内部尺寸由其组件维护。
+
+## Layout
+
+画布铺满窗口。保留可拖动工具栏、页切换、右侧样式控件、上下文工具栏，以及所选 AI 框下方的原有面板布局。工具栏在窄窗口中使用上游的折叠菜单，不新增侧栏。
+
+## Elevation & Depth
+
+沿用上游浮层、菜单和演示层的阴影与层级；本轮不改变原有阴影与透明度组合。
+
+## Shapes
+
+保留 Cowart/tldraw 的圆角、图标与标注箭头。标注箭头的默认曲率、文本位置与连续标注交互保持不变。
+
+## Components
+
+基础画板、拖动手柄、标注工具、颜色与样式面板、图片工具栏、AI 框及生成面板、HTML 编辑工具栏、Slides 工具栏与演示层均复用上游组件。默认、悬停、焦点、选中、禁用、加载、错误状态沿用已有实现。
+
+## Do's and Don'ts
+
+既有样式值记录在 `tools/upstream-styles.json`，允许逐步替换成令牌，不允许新增或复制字面量扩张例外。新增 hiCanvas 界面使用由本文件生成的令牌，优先扩展现有组件。修改上游视觉时先提炼涉及的实际值并确认，不借独立运行改造重画界面。API、MCP、模型配置尚未接入的能力不得提示已经成功执行。
