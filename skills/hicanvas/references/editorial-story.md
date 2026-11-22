@@ -26,5 +26,4 @@ Use a coherent editorial palette and a consistent drawing/material language. Sup
 
 When the user/reference calls for this look, build recognizable solid silhouettes with a small palette, irregular ink contours, selective translucent color/shading, and quiet paper texture. Keep the action layer clearer than the background. Cache texture/stamps during initialization and use object-keyed seeded roughness; optional slow line boil must not make important text or faces vibrate. Use a foreground edge, page flap, or painted stroke as a motivated occluder only when it suits the scene. Important copy stays in DOM even when the illustration is painted on Canvas.
 
-Apply the rig, material, camera, and handoff guidance in [directing.md](directing.md). 
-
+Apply the rig, material, camera, and handoff guidance in [directing.md](directing.md).

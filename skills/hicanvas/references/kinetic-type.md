@@ -21,4 +21,3 @@ Create an original sparse pulse bed plus small tick or thump accents connected t
 - On a portrait target, reduce phrase length and use vertical rhythm; on a wide target, use the full width without stretching glyphs.
 - Preserve contrast and text edges during the strongest movement. Avoid multiple repeated blurs, unrelated neon colors, and camera shake that makes the words unreadable.
 - Inspect the densest phrase at the actual target dimensions, and test text edits followed by seeking.
-

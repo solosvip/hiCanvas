@@ -21,4 +21,3 @@ Give materials distinct response: a heavy body has a short impact and slow recov
 - Animate volume-preserving squash/stretch around the contact point when useful. A drifting contact shadow is a visible error.
 - Maintain a hierarchy: one force transfers attention; avoid every object bouncing at once.
 - Inspect frames just before contact, at maximum compression, during rebound, and after settlement. Compare forward and backward seeks and listen for duplicated effects.
-

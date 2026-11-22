@@ -268,4 +268,3 @@ The AI film container on the infinite canvas owns play/pause, progress, and mute
 - Toggle mute while playing, then seek backward. Previous sources must be stopped, all audio must respect mute, and a paused scrub must stay silent.
 - Edit a visible phrase, then seek across the scene; the edited phrase must remain.
 - Load the exported HTML with network disabled and check embedded assets and the playback API. Test play/pause, progress, and mute through the canvas container; confirm the HTML contains no player controls.
-

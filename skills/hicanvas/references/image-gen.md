@@ -1,8 +1,3 @@
----
-name: hicanvas-image-gen
-description: 使用 hiCanvas 已配置的生图模型生成单张或批量图片，原位替换 AI 图片占位框，或在当前页面排列新图片。
----
-
 # 在 hiCanvas 生成图片
 
 ## 目标与输入
@@ -22,7 +17,7 @@ description: 使用 hiCanvas 已配置的生图模型生成单张或批量图片
 ## 约束
 
 - 已有图片只需放入画板时，用 `insert_cowart_image`，不重新生图。
-- 保留用户已有图片和标注。改图新稿放原图旁，使用 `hicanvas-image-edit`。
+- 保留用户已有图片和标注。改图新稿放原图旁，阅读 [改图操作](image-edit.md)。
 - `revision-conflict` 时重新读取并合并后提交；结果不明或已经返回 `jobId` 时先查任务，不重复提交收费请求。
 - 失败不自动重试。图片已保存但目标框已删除时，用 `list_image_results` 找回，不重新生成。
 - 不直接修改画板文件，不重新打开窗口或擅自改变用户视角。

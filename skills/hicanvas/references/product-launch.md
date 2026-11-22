@@ -21,4 +21,3 @@ Use disciplined materials, a coherent main light, restrained specular movement, 
 - Treat cursor actions as meaningful events when showing UI. Fake typing or clicks should lead to a visible result.
 - One or two benefits are enough for a short film. Text must be readable without requiring audio.
 - Verify reference-image crops, product identity, final logo/name spelling, and that the target ratio preserves the subject rather than stretching it.
-

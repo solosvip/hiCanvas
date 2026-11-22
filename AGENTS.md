@@ -118,7 +118,7 @@
 - 界面与视觉规范：2026-11-20 用户同意导入 Cowart 并保留现有界面；根 `DESIGN.md` 记录此次既有设计提炼，生成 `src/styles/tokens.css`。本轮迁移的既有 JSX、`cowart-*.css` 和第三方 tldraw 样式保留上游原值，作为继承基线；新增 hiCanvas 界面按 B 段使用令牌；`tools/check-styles.mjs` 守住 CSS 与 JSX 内联静态值，`tools/upstream-styles.json` 只记录这次上游迁移的既有值，数量不能增加，不作为新样式的放行清单。修改既有视觉前先提炼涉及的令牌，不在迁移中顺带重画。
 - 部署与上线细节：当前是本机开发与测试版本，不是安装包。默认数据保存在用户 `Documents/hiCanvas/canvas/`，可用 `HICANVAS_PROJECT_DIR` 或 `HICANVAS_CANVAS_DIR` 改路径；数据与源码分离。tldraw 单独授权，正式生产使用前必须解决其许可要求，保留官方许可提示。
 - 当前阶段工作方式（适用阶段：基础画板、自定义生图模型、对话隔离与通用 MCP；2026-11-20 用户同意基础导入，2026-11-21 用户要求继续并明确模型由用户在界面添加）：从 main 开独立功能分支，一件事一个提交及一个 PR；用户正在试用的画板目录保持运行，新阶段使用独立 worktree 和隔离数据自测。本机先完成数据测试、构建和基础浏览器验证，再推功能分支创建 PR；main 保持不动，合并前向用户报告验证与限制并另行确认。CI 使用公开仓库的 GitHub Actions 云端 Ubuntu 检查机；仓库可见性已由用户于 2026-11-20 明确同意改为公开，远程完整检查已通过。不修改账户账单或保护规则，不把未运行的 CI 当作通过。用户体验由用户集中验收。出问题优先撤销该次提交或回到已验证标签。版本条目随功能提交准备，进入 main 后才打对应标签。
-- 文档地图补充：可分发的 Agent 操作技能放 `skills/<技能名>/SKILL.md`，按需加载的说明放该技能的 `references/*.md`；接口或工作流变化时同步更新，能力移除时删除对应技能。临时材料只放不进 Git 的 `.scratch/`；新增文档类别时同步更新 `tools/check.mjs`。第三方许可原文放 `LICENSE` 与 `licenses/*.txt`。
+- 文档地图补充：画板只分发一个 `hicanvas` 技能，入口放 `skills/hicanvas/SKILL.md`，按任务加载的操作与参考放 `skills/hicanvas/references/*.md`；本机安装到 `/Users/solos/Documents/skills/hicanvas/` 供宿主共用；接口或工作流变化时同步更新，能力移除时删除对应技能。临时材料只放不进 Git 的 `.scratch/`；新增文档类别时同步更新 `tools/check.mjs`。第三方许可原文放 `LICENSE` 与 `licenses/*.txt`。
 - 本项目禁令与前置条件：保留 Cowart 上游许可证与来源，依赖授权单独核对；API 密钥、用户画板、生成图片和数据库不进 Git；配置及生成工具只向 Agent 暴露必要参数，不把 API 密钥作为 MCP 工具入参；所有画板写入必须显式指定对话并检查 expectedRevision；冲突后先读取、合并，禁止不带版本重试或强制覆盖。
 <!-- sxx-project-init:end -->
 

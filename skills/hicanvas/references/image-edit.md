@@ -1,8 +1,3 @@
----
-name: hicanvas-image-edit
-description: 根据用户提供的标注截图和修改意见，在 hiCanvas 中生成干净的新图并放到原图旁，保留原图和标注。
----
-
 # 在 hiCanvas 按标注改图
 
 ## 目标与输入

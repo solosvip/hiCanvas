@@ -96,16 +96,16 @@ MCP 不提供密钥的读取与修改工具。画板通过本机 HTTP 复用同�
 
 ### 配套 Skill
 
-`skills/` 提供六个可独立加载的技能：打开画板、单张与批量生图、标注改图、HTML 网页、幻灯片、动效影片。技能使用同一套 hiCanvas MCP；先完成上面的 MCP 配置，再安装到宿主的技能目录。
+`skills/hicanvas/` 提供一个 `hicanvas` 技能，统一处理画板对话、生图、改图、HTML、幻灯片和影片；各项说明按任务加载。先完成上面的 MCP 配置，再安装技能。
 
-Codex 可在仓库根目录运行：
+使用共享技能目录时，在仓库根目录运行：
 
 ```sh
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/hicanvas-* "${CODEX_HOME:-$HOME/.codex}/skills/"
+mkdir -p "$HOME/Documents/skills"
+cp -R skills/hicanvas "$HOME/Documents/skills/"
 ```
 
-安装后按宿主方式重新加载技能，必要时重开 Agent 会话。其他支持 Skill 的宿主将这六个目录放进各自技能目录；只接 MCP 的宿主仍可直接使用工具。影片的风格与播放协议随技能一同分发。
+宿主的技能入口应指向这份共享目录。需要单独安装的 Codex 环境可将 `skills/hicanvas/` 放入 `${CODEX_HOME:-$HOME/.codex}/skills/`；其他宿主使用各自的技能入口。安装后重载技能或新开 Agent 会话。只接 MCP 的宿主仍可直接使用工具。
 
 ### 从画板唤起 REX Agent
 

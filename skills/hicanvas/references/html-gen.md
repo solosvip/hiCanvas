@@ -1,8 +1,3 @@
----
-name: hicanvas-html-gen
-description: 在 hiCanvas 生成或修改可运行的 HTML 页面与原型，根据标注生成新稿，并写回指定网页框。
----
-
 # 在 hiCanvas 生成 HTML
 
 ## 操作步骤

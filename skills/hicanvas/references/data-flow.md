@@ -21,4 +21,3 @@ Use a precise diagram-like layout with subtle depth, two neutrals and a small se
 - Animate a path by its arc length or a deterministic Bézier parameter, not by unrelated x/y easings. A directional trail should follow that route.
 - For a portrait holder, use stacked stages; for a wide holder, use a horizontal progression. Keep labels readable at the actual selected size.
 - Check that every label matches the visible state, edge direction is unambiguous, and repeated seeking recreates identical token positions. Watch a muted pass to confirm the explanation stands alone.
-

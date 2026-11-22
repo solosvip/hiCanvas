@@ -1,8 +1,3 @@
----
-name: hicanvas-slides-gen
-description: 在 hiCanvas 生成或修改由独立 HTML 页面组成的幻灯片，将每页按顺序加入指定 Slides 容器。
----
-
 # 在 hiCanvas 生成幻灯片
 
 ## 操作步骤
