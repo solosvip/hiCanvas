@@ -11,7 +11,12 @@ export function attachCanvasNavigation(editor, { save, didSave }) {
     didSave()
   }
   navigation.set(editor, flush)
-  return () => { if (navigation.get(editor) === flush) navigation.delete(editor) }
+  const host = editor.getContainer?.()?.ownerDocument?.defaultView
+  if (host) host.hiCanvasPrepareNavigation = flush
+  return () => {
+    if (navigation.get(editor) === flush) navigation.delete(editor)
+    if (host?.hiCanvasPrepareNavigation === flush) delete host.hiCanvasPrepareNavigation
+  }
 }
 
 export async function prepareCanvasNavigation(editor) {

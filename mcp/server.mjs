@@ -79,7 +79,7 @@ export function createHiCanvasMcp({ baseUrl = 'http://127.0.0.1:43218', bindingK
       return { content: [{ type: 'image', data: bytes.toString('base64'), mimeType }] }
     } catch (e) { return { isError: true, content: [{ type: 'text', text: e.message }] } }
   })
-  tool('open_canvas', '在浏览器打开指定对话。已有浏览器对话的切换不会改变 Agent 操作的对话。', { conversationId }, async ({ conversationId: id }) => {
+  tool('open_canvas', '打开指定对话；已安装桌面应用时在应用中打开，否则使用浏览器。窗口切换不会改变 Agent 操作的对话。', { conversationId }, async ({ conversationId: id }) => {
     await api(canvasPath(id))
     const url = new URL(`/?conversation=${encodeURIComponent(id)}`, baseUrl).href
     await open(url)

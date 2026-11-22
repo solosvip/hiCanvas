@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 
+import { findRexBinary } from './rex-binary.mjs'
 const run = promisify(execFile)
 const agentNames = /(?:^|[/\\._-])(codex|claude|opencode|gemini|qwen|aider|goose|pi)(?:$|[/\\._-])/i
 export function rexReceiver(env = process.env) {
@@ -10,7 +11,7 @@ export function rexReceiver(env = process.env) {
   return { kind: 'rex', sessionId: env.REX_SESSION, blockId: env.REX_BLOCK, server: env.REX_SERVER || '', binary: env.REX_BIN_DIR ? `${env.REX_BIN_DIR}/rex` : 'rex' }
 }
 export async function callRex(receiver, method, args) {
-  const { stdout } = await run(process.env.REX_BIN_DIR ? `${process.env.REX_BIN_DIR}/rex` : 'rex', ['--autostart=false', ...(receiver.server ? ['-S', receiver.server] : []), 'api', 'call', method, JSON.stringify({ session_id: receiver.sessionId, block_id: receiver.blockId, args })], { timeout: 10000, maxBuffer: 256 * 1024 })
+  const { stdout } = await run(await findRexBinary(), ['--autostart=false', ...(receiver.server ? ['-S', receiver.server] : []), 'api', 'call', method, JSON.stringify({ session_id: receiver.sessionId, block_id: receiver.blockId, args })], { timeout: 10000, maxBuffer: 256 * 1024 })
   return JSON.parse(stdout)
 }
 export async function prepareRexReceiver(receiver, invoke = callRex) {

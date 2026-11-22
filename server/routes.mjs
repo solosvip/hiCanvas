@@ -1,5 +1,7 @@
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { workspaceIdentity } from './workspace-identity.mjs'
+import { imageSettingsDirectory } from './image-settings-path.mjs'
 import { sendJson, isSelectionState, isViewState } from './protocol.mjs'
 import { createConversations, conversations } from './conversations.mjs'
 import { getCanvasEvents } from './events.mjs'
@@ -10,7 +12,7 @@ import { createCanvasMedia } from './canvas-media.mjs'
 import { createAgentRequests } from './agent-requests.mjs'
 import { saveExport } from './exports.mjs'
 
-export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions } = {}) {
+export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir } = {}) {
   const events = getCanvasEvents(workspace)
   const media = createCanvasMedia(workspace)
   const requests = createAgentRequests(workspace, agentOptions)
@@ -21,7 +23,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
     if (path.startsWith('/api/image')) return next()
     try {
       requireLocalRead(req)
-      if (path === '/api/health' && req.method === 'GET') return sendJson(res, 200, { name: 'hiCanvas', protocol: 2, workspace: createHash('sha256').update(workspace.root).digest('hex') })
+      if (path === '/api/health' && req.method === 'GET') return sendJson(res, 200, { name: 'hiCanvas', protocol: 2, workspace: createHash('sha256').update(workspace.root).digest('hex'), settingsWorkspace: workspaceIdentity(settingsDir || imageSettingsDirectory()) })
       const scopedAsset = path.match(/^\/c\/([^/]+)\/(assets|page-assets)\//)
       if (scopedAsset || /^\/(?:page-assets|assets)\//.test(path)) {
         if (req.method !== 'GET' && req.method !== 'HEAD') throw httpError('方法不支持。', 405)

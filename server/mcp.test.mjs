@@ -129,7 +129,7 @@ test('真实 stdio MCP 进程可被通用客户端发现并调用工具', async 
   const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
   const { fileURLToPath } = await import('node:url')
   const { base, root } = await fixture(t)
-  const transport = new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../bin/hicanvas-mcp.mjs', import.meta.url))], env: { HICANVAS_URL: base, HICANVAS_CANVAS_DIR: root, HICANVAS_CONVERSATION_KEY: 'stdio-reconnect' }, stderr: 'pipe' })
+  const transport = new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../bin/hicanvas-mcp.mjs', import.meta.url))], env: { HICANVAS_URL: base, HICANVAS_CANVAS_DIR: root, HICANVAS_SETTINGS_DIR: `${root}/settings`, HICANVAS_CONVERSATION_KEY: 'stdio-reconnect' }, stderr: 'pipe' })
   const client = new Client({ name: 'generic-mcp-harness', version: '1' })
   await client.connect(transport)
   t.after(() => client.close())
