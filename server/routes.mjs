@@ -23,7 +23,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
     if (path.startsWith('/api/image')) return next()
     try {
       requireLocalRead(req)
-      if (path === '/api/health' && req.method === 'GET') return sendJson(res, 200, { name: 'hiCanvas', protocol: 2, workspace: createHash('sha256').update(workspace.root).digest('hex'), settingsWorkspace: workspaceIdentity(settingsDir || imageSettingsDirectory()) })
+      if (path === '/api/health' && req.method === 'GET') return sendJson(res, 200, { name: 'hiCanvas', protocol: 2, canvasMode: 'single', workspace: createHash('sha256').update(workspace.root).digest('hex'), settingsWorkspace: workspaceIdentity(settingsDir || imageSettingsDirectory()) })
       const scopedAsset = path.match(/^\/c\/([^/]+)\/(assets|page-assets)\//)
       if (scopedAsset || /^\/(?:page-assets|assets)\//.test(path)) {
         if (req.method !== 'GET' && req.method !== 'HEAD') throw httpError('方法不支持。', 405)

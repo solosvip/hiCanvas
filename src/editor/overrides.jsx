@@ -10,10 +10,11 @@ import { renderCowartHtmlDraftCanvas } from './htmlCapture.jsx'
 import { downloadCowartImageShape } from './exports.jsx'
 const cowartUiOverrides = {
   actions(editor, actions, helpers) {
+    const canvasActions = Object.fromEntries(Object.entries(actions).filter(([id]) => !['change-page-prev', 'change-page-next', 'move-to-new-page'].includes(id)))
     const defaultDownloadOriginal = actions['download-original']
     const defaultCopyAsPng = actions['copy-as-png']
     return {
-      ...actions,
+      ...canvasActions,
       'copy-as-png': {
         ...defaultCopyAsPng,
         async onSelect(source) {

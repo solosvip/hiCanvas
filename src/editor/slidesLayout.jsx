@@ -157,6 +157,7 @@ function movePastedItemsIntoAiSlides(editor) {
   return true
 }
 const cowartTldrawOptions = {
+  maxPages: 1,
   onBeforeCopyToClipboard({ editor, content }) {
     cowartCopiedContent.set(editor, structuredClone(content))
   },

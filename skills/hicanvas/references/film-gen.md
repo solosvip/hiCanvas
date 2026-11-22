@@ -4,7 +4,7 @@
 
 ## 目标与输入
 
-复用 `conversationId`。画板通知先用 `get_canvas_requests` 领取，使用请求的目标 ID、参考图、比例、风格和时长。用 `get_canvas` 读取目标框及最新 `revision`；页面优先请求或目标所属页面，其次 `viewState.currentPageId`，新对话无视角时取快照中的唯一 page。已有画板不重新打开。
+复用 `conversationId`。画板通知先用 `get_canvas_requests` 领取，使用请求的目标 ID、参考图、比例、风格和时长。用 `get_canvas` 读取目标框及最新 `revision`。已有画板不重新打开。
 
 影片框标记为 `meta.cowartAiFilmHolder: true`，已生成影片标记为 `meta.cowartFilm: true`。目标框的宽高是构图和放置契约；没有框时使用用户要求的比例，默认 16:9。未指定时长时取约 15 秒。
 
@@ -27,7 +27,7 @@
 3. 制作单文件 HTML。所有视觉状态由统一时间线计算，30 FPS 量化；直接跳到任意时间都能重建该帧，随机效果使用固定种子。重要文字为可编辑 DOM，跳转时不重写用户编辑的文字。
 4. 按播放协议实现 `window.CowartFilm` 与 `cowart-film` 消息，提供 `duration`、`seek`、`play`、`pause`、`setMuted` 和 `renderAudio`，异步初始化提供 `ready`。`renderAudio` 返回完整时长的 AudioBuffer，包含音乐与音效；声音和动作共享事件时间。
 5. 按 [视觉检查](visual-review.md) 检查开头、动作峰值、转场和最后编码帧，以及前后跳转、文字编辑、静音和音轨。没有相应工具时说明未验证项，继续完成可执行的交付。
-6. 调用 `insert_cowart_html_draft`，传 `conversationId`、`expectedRevision`、`pageId`、目标 `draftShapeId`、完整 `htmlContent` 或 `htmlPath`。新稿显式设 `updateExistingDraft: false`；临时影片框使用 `matchAnchor: true`、`replaceDraftHolder: true`，只有明确原位编辑才设 `updateExistingDraft: true`。
+6. 调用 `insert_cowart_html_draft`，传 `conversationId`、`expectedRevision`、目标 `draftShapeId`、完整 `htmlContent` 或 `htmlPath`。新稿显式设 `updateExistingDraft: false`；临时影片框使用 `matchAnchor: true`、`replaceDraftHolder: true`，只有明确原位编辑才设 `updateExistingDraft: true`。
 7. `shapeMeta` 设置 `cowartFilm: true`、真实的 `cowartFilmStyle` 和 `cowartFilmDuration`。无目标时传设计的 `displayWidth`、`displayHeight`。按标注生成新稿时设 `updateExistingDraft: false`、`replaceDraftHolder: false`、`placement: "right"`，保留原影片。
 8. 核对真实写回返回的形状、尺寸与资源路径；有领取请求时再用 `complete_canvas_request` 标记完成。失败保留已完成 HTML，不重新制作已有结果。
 
