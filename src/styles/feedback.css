@@ -1,0 +1,30 @@
+.hicanvas-save-feedback {
+  position: fixed;
+  z-index: var(--tl-layer-toasts);
+  top: calc(var(--spacing-xl) + var(--spacing-xl));
+  left: var(--spacing-md);
+  right: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  color: var(--color-error);
+  background: var(--color-surface);
+  border: var(--spacing-xs) solid var(--color-error);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body-md);
+  font-size: var(--text-body-md);
+}
+.hicanvas-save-feedback button {
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--color-on-surface);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.hicanvas-save-feedback button:hover,
+.hicanvas-save-feedback button:focus-visible {
+  color: var(--color-primary);
+  outline-color: var(--color-primary);
+}

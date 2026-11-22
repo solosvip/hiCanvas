@@ -1,0 +1,39 @@
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.vite/
+
+# Credentials and machine-specific settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.npmrc.local
+.DS_Store
+
+# User canvases, generated media, models and databases
+canvas/
+data/
+userdata/
+models/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.log
+
+# Temporary work and local environments
+.scratch/
+.local/
+.tmp/
+tmp/
+.venv/
+venv/
+__pycache__/
+*.pyc
