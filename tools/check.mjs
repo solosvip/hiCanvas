@@ -76,6 +76,7 @@ function checkDocument(path) {
   const allowed = rootDocs.has(path)
     || /^docs\/(?:adr|agents|验收)\/.+\.md$/.test(path)
     || path === 'docs/事故档案.md'
+    || /^skills\/[a-z0-9-]+\/(?:SKILL\.md|references\/[^/]+\.md)$/.test(path)
   if (!allowed) errors.push(`${path}：文档位置尚未登记，请先更新 AGENTS.md 文档地图及检查。`)
 }
 

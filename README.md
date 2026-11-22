@@ -94,6 +94,19 @@ Agent 的使用顺序：
 
 MCP 不提供密钥的读取与修改工具。画板通过本机 HTTP 复用同一套保存和生图逻辑，MCP 客户端不直接写文件。
 
+### 配套 Skill
+
+`skills/` 提供六个可独立加载的技能：打开画板、单张与批量生图、标注改图、HTML 网页、幻灯片、动效影片。技能使用同一套 hiCanvas MCP；先完成上面的 MCP 配置，再安装到宿主的技能目录。
+
+Codex 可在仓库根目录运行：
+
+```sh
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/hicanvas-* "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+安装后按宿主方式重新加载技能，必要时重开 Agent 会话。其他支持 Skill 的宿主将这六个目录放进各自技能目录；只接 MCP 的宿主仍可直接使用工具。影片的风格与播放协议随技能一同分发。
+
 ### 从画板唤起 REX Agent
 
 在 REX 内启动的 MCP 进程继承 `REX_SESSION`、`REX_BLOCK` 和 `REX_SERVER` 时，`open_conversation` 会绑定当前前台 AI 进程，返回 `agentConnection.connected: true`。之后点击网页、影片、幻灯片的发送按钮，或针对内容按标注修改，请求及参考图先持久保存在该对话，再由 REX 通知原 Agent。Agent 调用 `get_canvas_requests` 领取，按请求写回，最后 `complete_canvas_request` 报告完成或失败。原 AI 退出后不会把请求当命令输入 shell；重新连接该对话可继续处理，等待和失败都有提示。

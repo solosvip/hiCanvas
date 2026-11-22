@@ -62,6 +62,16 @@ test('允许合规的初始仓库及无密钥配置模板', () => fixture(({ wri
   assert.equal(check().status, 0)
 }))
 
+test('允许分发技能和参考文档，仍拦住技能目录中的任意笔记', () => fixture(({ write, check }) => {
+  write('skills/hicanvas-open-canvas/SKILL.md', '---\nname: hicanvas-open-canvas\ndescription: 打开画板\n---\n')
+  write('skills/hicanvas-film-gen/references/runtime-contract.md', '# 播放协议\n')
+  assert.equal(check().status, 0)
+  write('skills/hicanvas-open-canvas/notes.md', '# 未登记笔记\n')
+  const result = check()
+  assert.equal(result.status, 1)
+  assert.ok(result.output.includes('skills/hicanvas-open-canvas/notes.md：文档位置尚未登记'))
+}))
+
 for (const [name, path, content, reason] of [
   ['未登记文档', 'notes.md', '# Notes\n', '文档位置尚未登记'],
   ['超长源码', 'src/large.js', '// line\n'.repeat(901), '超过源码 900 行上限'],
