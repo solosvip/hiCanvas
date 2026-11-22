@@ -1,5 +1,6 @@
 import { AssetRecordType, createShapeId } from 'tldraw'
 import { imageApi } from './client.js'
+import { saveCowartEditorSnapshot } from '../cowartCanvasSave.js'
 
 function dimensions(src) {
   return new Promise((resolve, reject) => {
@@ -35,7 +36,17 @@ export async function insertGeneratedImages(editor, images, { anchorId, pageId =
 }
 
 export async function generateOnCanvas(editor, { anchorId, modelId, prompt, references = [], beside = false, pageId = editor.getCurrentPageId() }) {
-  const result = await imageApi('/api/images', 'POST', { modelId, prompt, references })
-  await insertGeneratedImages(editor, result.images, { anchorId, pageId, beside })
-  return result
+  const saved = await saveCowartEditorSnapshot(editor)
+  if (saved?.ok === false) throw new Error(saved.message || '画板尚未保存，未调用生图。')
+  const state = await imageApi('/api/canvas')
+  const anchor = anchorId ? state.snapshot.store[anchorId] : null
+  if (anchorId && !anchor) throw new Error('原目标已删除，未调用生图。')
+  const bounds = anchorId ? editor.getShapePageBounds(anchorId) : null
+  const width = Math.round(bounds?.w || 512), height = Math.round(bounds?.h || 512)
+  return imageApi('/api/images/jobs', 'POST', {
+    expectedRevision: state.revision, modelId, pageId,
+    anchorShapeId: anchorId, displayWidth: width, displayHeight: height,
+    ...(beside && bounds ? { x: bounds.x + width + 40, y: bounds.y } : {}),
+    requests: [{ prompt, references, aspectRatio: `${width}:${height}` }]
+  })
 }

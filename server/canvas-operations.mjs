@@ -12,7 +12,7 @@ function defaultProps(type) {
     case 'arrow': return { ...text, kind: 'arc', elbowMidPoint: 0.5, dash: 'solid', fill: 'none', labelColor: 'black', bend: 0, start: { x: 0, y: 0 }, end: { x: 200, y: 0 }, arrowheadStart: 'none', arrowheadEnd: 'arrow', labelPosition: 0.5 }
     case 'image': return { w: 512, h: 512, assetId: null, playing: true, url: '', crop: null, flipX: false, flipY: false, altText: '' }
     case 'embed': return { w: 1024, h: 576, url: '' }
-    case 'frame': return { w: 1024, h: 576, name: '' }
+    case 'frame': return { w: 1024, h: 576, name: '', color: 'black' }
     case 'group': return {}
     default: throw httpError('这种形状需要使用 put 操作提供完整 tldraw 记录。')
   }

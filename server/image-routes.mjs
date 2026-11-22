@@ -5,10 +5,13 @@ import { createModelStore, inputError } from './image-models.mjs'
 import { requestImages } from './image-provider.mjs'
 import { createImageResults } from './image-results.mjs'
 import { readRequestBody, sendJson } from './protocol.mjs'
+import { createImageJobs } from './image-jobs.mjs'
 
 export function createImageMiddleware({ settingsDir, assetsDir, workspace = conversations } = {}) {
+  if (process.env.NODE_TEST_CONTEXT && workspace === conversations) throw new Error('自动测试必须显式传入隔离 workspace，禁止读取或恢复真实资料目录。')
   const projectDir = process.env.HICANVAS_PROJECT_DIR || join(homedir(), 'Documents', 'hiCanvas')
   const models = createModelStore(settingsDir || process.env.HICANVAS_SETTINGS_DIR || join(projectDir, 'settings'))
+  const jobs = createImageJobs(workspace, models)
   const legacyResults = createImageResults(assetsDir || join(process.env.HICANVAS_CANVAS_DIR || join(projectDir, 'canvas'), 'assets'))
   return async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost')
@@ -30,6 +33,9 @@ export function createImageMiddleware({ settingsDir, assetsDir, workspace = conv
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw inputError('请求内容必须是对象。')
       }
       if (pathname === '/api/images/results' && req.method === 'GET') return sendJson(res, 200, { images: await results.list() })
+      if (pathname === '/api/images/jobs' && req.method === 'POST') return sendJson(res, 202, await jobs.submit(url.searchParams.get('conversation'), body))
+      const jobMatch = pathname.match(/^\/api\/images\/jobs\/([a-f0-9-]{36})$/)
+      if (jobMatch && req.method === 'GET') return sendJson(res, 200, await jobs.get(url.searchParams.get('conversation'), jobMatch[1]))
       if (pathname === '/api/images' && req.method === 'POST') {
         const images = await requestImages(await models.get(body.modelId), body)
         return sendJson(res, 200, { images: await results.save(images) })
@@ -46,12 +52,12 @@ export function createImageMiddleware({ settingsDir, assetsDir, workspace = conv
       }
       throw inputError('接口或方法不存在。', 404)
     } catch (error) {
-      sendJson(res, error.status || 500, { error: error.status ? error.message : '本机操作失败，请检查资料目录是否可写。' })
+      sendJson(res, error.status || 500, { error: error.status ? error.message : '本机操作失败，请检查资料目录是否可写。', storage: error.storage, revision: error.revision })
     }
   }
 }
 
-export function imageToolsPlugin() {
-  const configure = server => { server.middlewares.use(createImageMiddleware()) }
+export function imageToolsPlugin(options = {}) {
+  const configure = server => { server.middlewares.use(createImageMiddleware(options)) }
   return { name: 'hicanvas-images', configureServer: configure, configurePreviewServer: configure }
 }

@@ -10,6 +10,7 @@ import { CowartAiSlidesGenerationPanel } from './SlidesGenerationPanel.jsx'
 import { ImageResults } from '../conversations/ImageResults.jsx'
 import { ConversationMenu } from '../conversations/ConversationMenu.jsx'
 import { SettingsPanel } from '../image-models/ModelSettings.jsx'
+import { AgentRequestFeedback } from './AgentRequestFeedback.jsx'
 
 function CowartMainMenu() {
   return <>
@@ -17,6 +18,7 @@ function CowartMainMenu() {
     <SettingsPanel />
     <ConversationMenu />
     <ImageResults />
+    <AgentRequestFeedback />
   </>
 }
 

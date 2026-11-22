@@ -26,7 +26,7 @@ export async function ensureService(baseUrl) {
     catch { return false }
     let health
     try { health = await response.json() } catch { throw new Error('端口已被旧版画板或其他程序占用；请先停止旧服务，再重新连接 MCP。') }
-    if (health.name !== 'hiCanvas' || health.protocol !== 1 || health.workspace !== identity) throw new Error('端口对应其他服务或资料目录，未连接也未停止该服务。请核对 HICANVAS_URL 和资料目录。')
+    if (health.name !== 'hiCanvas' || health.protocol !== 2 || health.workspace !== identity) throw new Error('端口对应其他服务或资料目录，未连接也未停止该服务。请核对 HICANVAS_URL 和资料目录。')
     return true
   }
   if (await running()) return

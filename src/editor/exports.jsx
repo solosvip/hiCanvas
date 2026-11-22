@@ -121,7 +121,7 @@ async function exportCowartHtmlDraft(editor, draftShapeId, format) {
   const shape = editor.getShape(draftShapeId)
   if (format === 'html') {
     const source = await readCowartHtmlDraftContent(shape)
-    const htmlContent = isCowartFilmShape(shape) ? await hydrateCowartHtmlDraftLocalImages(source) : source
+    const htmlContent = await hydrateCowartHtmlDraftLocalImages(source)
     const fileName = htmlDraftExportFileName(shape, 'html')
     const dataUrl = textDataUrl(htmlContent, 'text/html')
     if (hasCowartWidgetBridge()) {
@@ -173,9 +173,6 @@ async function exportCowartFilm(editor, draftShapeId, onProgress, signal) {
   }, filmAnalyticsContext(shape), trackFilmExport, signal)
 }
 async function exportCowartSlides(editor, slidesShapeId, format) {
-  if (!hasCowartWidgetBridge()) {
-    throw new Error('导出幻灯片文件夹需要在 Codex Cowart 小组件中使用。')
-  }
   const slidesShape = editor.getShape(slidesShapeId)
   if (!isAiSlidesShape(slidesShape)) throw new Error('请选择一个 AI 幻灯片。')
   const items = getAiSlidesItems(editor, slidesShapeId)
@@ -215,7 +212,7 @@ async function exportCowartSlides(editor, slidesShapeId, format) {
     const fileName = `page-${String(index + 1).padStart(2, '0')}.html`
     let htmlContent
     if (isCowartHtmlDraftEmbedShape(item)) {
-      htmlContent = await readCowartHtmlDraftContent(item)
+      htmlContent = await hydrateCowartHtmlDraftLocalImages(await readCowartHtmlDraftContent(item))
     } else {
       const imageDataUrl = await readCowartImageDataUrl(editor, item)
       htmlContent = cowartImageSlideHtml(imageDataUrl, `${directoryName} · ${index + 1}`)

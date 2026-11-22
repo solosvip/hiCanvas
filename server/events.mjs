@@ -1,3 +1,8 @@
+const eventsByWorkspace = new WeakMap()
+export function getCanvasEvents(workspace) {
+  if (!eventsByWorkspace.has(workspace)) eventsByWorkspace.set(workspace, createCanvasEvents())
+  return eventsByWorkspace.get(workspace)
+}
 export function createCanvasEvents() {
   const clients = new Map()
   return {

@@ -1,3 +1,4 @@
+import { saveCowartEditorSnapshot } from '../cowartCanvasSave.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { generateOnCanvas } from '../image-models/canvasImages.js'
 import { hasCowartWidgetBridge, saveCowartReferenceImage } from "../cowartClient.js"
@@ -22,6 +23,8 @@ async function sendAnnotationEditRequest(editor, imageShapeId, request) {
       references: [exportResult.url]
     })
   }
+  const saved = await saveCowartEditorSnapshot(editor)
+  if (saved?.ok === false) throw new Error(saved.message || '画板尚未保存，未发送请求。')
   const screenshotAsset = await saveCowartReferenceImage({
     anchorShapeId: imageShapeId,
     fileName: annotationEditScreenshotFileName(),
@@ -71,6 +74,8 @@ async function sendAnnotationHtmlRequest(editor, imageShapeId) {
     padding: 0,
     pixelRatio: getAnnotationEditExportPixelRatio(exportBounds)
   })
+  const saved = await saveCowartEditorSnapshot(editor)
+  if (saved?.ok === false) throw new Error(saved.message || '画板尚未保存，未发送请求。')
   const screenshotAsset = await saveCowartReferenceImage({
     anchorShapeId: imageShapeId,
     fileName: annotationHtmlScreenshotFileName(),

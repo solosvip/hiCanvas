@@ -120,10 +120,10 @@ export async function renderCowartFilmMp4({ html, width, height, duration, onPro
   const audioQuality = new Quality({ bitrate: 192_000 })
   const options = { signal, timeout: taskTimeout }
   if (!await waitForFilmTask(() => canEncodeVideo('avc', { ...size, frameRate: COWART_FILM_FPS, quality: videoQuality }), options)) {
-    throw new Error('当前 Widget 环境不支持 H.264 MP4 编码，请在支持 WebCodecs 的新版 Codex 中导出。')
+    throw new Error('当前浏览器不支持 H.264 MP4 编码，请使用支持 WebCodecs 的新版浏览器导出。')
   }
   if (!await waitForFilmTask(() => canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: 48000, quality: audioQuality }), options)) {
-    throw new Error('当前 Widget 环境不支持 AAC 音频编码，无法导出带音乐的 MP4。')
+    throw new Error('当前浏览器不支持 AAC 音频编码，无法导出带音乐的 MP4。')
   }
   const checkCanceled = () => { if (signal?.aborted) throw new DOMException('已取消影片导出。', 'AbortError') }
   let iframe, output, videos

@@ -299,7 +299,7 @@ export async function saveCowartViewState(viewState) {
 
 export async function saveCowartReferenceImage(reference) {
   if (!hasCowartWidgetBridge()) {
-    throw new Error('当前 Cowart 画布没有可用的 Codex MCP 文件保存桥。')
+    return fetchJson('/api/canvas/reference', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(reference) })
   }
 
   return callCowartServerTool(TOOL_SAVE_REFERENCE_IMAGE, reference)
@@ -307,6 +307,7 @@ export async function saveCowartReferenceImage(reference) {
 
 export async function downloadCowartFile(download) {
   if (!hasCowartWidgetBridge()) {
+    if (download.directoryName) return fetchJson('/api/exports/file', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(download) })
     const link = document.createElement('a')
     link.href = download.dataUrl
     link.download = download.fileName || 'hicanvas-backup.json'
@@ -367,7 +368,7 @@ export async function updateCowartHtmlDraft({ draftShapeId, htmlContent }, { app
 
 export async function readCowartPageAsset(assetUrl, options = {}) {
   if (!hasCowartWidgetBridge()) {
-    throw new Error('当前 Cowart 画布没有可用的 Codex MCP 文件读取桥。')
+    return fetchJson('/api/canvas/asset/read', { method: 'POST', signal: options.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ assetUrl }) })
   }
 
   return callCowartServerTool(TOOL_READ_PAGE_ASSET, { assetUrl }, options)

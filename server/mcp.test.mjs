@@ -59,6 +59,15 @@ async function provider(t, handler) {
   return `http://127.0.0.1:${server.address().port}`
 }
 
+async function waitJob(call, id, jobId) {
+  for (let i = 0; i < 200; i++) {
+    const result = (await call('get_generation_job', { conversationId: id, jobId })).structuredContent
+    if (result.finished) { await new Promise(resolve => setTimeout(resolve, 30)); return result }
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  throw new Error('任务没有完成')
+}
+
 test('MCP 复用用户配置生图、插入图片、看图并参考改图；模型密钥不进入 MCP 输出', async t => {
   const { api, base } = await fixture(t)
   let calls = 0
@@ -76,15 +85,17 @@ test('MCP 复用用户配置生图、插入图片、看图并参考改图；模�
   const pageId = Object.values(canvas.snapshot.store).find(r => r.typeName === 'page').id
   assert.ok(!JSON.stringify(await call('list_image_models')).includes('synthetic-secret'))
   const result = (await call('generate_image', { conversationId: id, expectedRevision: canvas.revision, modelId: model.activeModelId, prompt: '蓝色海报', pageId })).structuredContent
-  assert.equal(result.inserted, true)
+  assert.ok(result.jobId)
+  const completed = await waitJob(call, id, result.jobId)
+  assert.equal(completed.items[0].status, 'succeeded')
   assert.equal(calls, 1)
-  const src = result.images[0].src
+  const src = completed.items[0].images[0].src
   const image = await call('read_image', { conversationId: id, src })
   assert.equal(image.content[0].type, 'image')
   assert.equal(image.content[0].data, png)
   assert.equal((await call('read_image', { conversationId: 'legacy', src })).isError, true)
-  const edited = (await call('generate_image', { conversationId: id, expectedRevision: result.revision, modelId: model.activeModelId, prompt: '改成绿色', pageId, referenceUrls: [src] })).structuredContent
-  assert.equal(edited.inserted, true)
+  const edited = (await call('generate_image', { conversationId: id, expectedRevision: (await call('get_canvas', { conversationId: id })).structuredContent.revision, modelId: model.activeModelId, prompt: '改成绿色', pageId, referenceUrls: [src] })).structuredContent
+  assert.equal((await waitJob(call, id, edited.jobId)).items[0].status, 'succeeded')
   assert.equal(calls, 2)
   assert.equal((await call('generate_image', { conversationId: id, expectedRevision: result.revision, prompt: '旧版本', pageId })).isError, true)
   assert.equal(calls, 2, '冲突时不调用收费接口')
@@ -100,15 +111,15 @@ test('生图期间出现并发编辑，结果仍可找回且不会覆盖画板�
   let calls = 0
   const url = await provider(t, async (req, res) => {
     calls++; for await (const _ of req) {}
-    await api(`/api/canvas/operations?conversation=${id}`, 'POST', { expectedRevision: canvas.revision, operations: [{ type: 'create_shape', id: 'shape:concurrent', shapeType: 'text', text: '不能覆盖我' }] })
+    await api(`/api/canvas/operations?conversation=${id}`, 'POST', { expectedRevision: (await api(`/api/canvas?conversation=${id}`)).body.revision, operations: [{ type: 'create_shape', id: 'shape:concurrent', shapeType: 'text', text: '不能覆盖我' }] })
     res.end(JSON.stringify({ data: [{ b64_json: png }] }))
   })
   await api('/api/image-models', 'POST', { name: '模拟服务', protocol: 'openai-images', baseUrl: url, model: 'custom-image', apiKey: '' })
   const result = (await call('generate_image', { conversationId: id, expectedRevision: canvas.revision, prompt: '生成', pageId })).structuredContent
-  assert.equal(result.inserted, false)
-  assert.equal(result.storage, 'revision-conflict')
+  const completed = await waitJob(call, id, result.jobId)
+  assert.equal(completed.items[0].status, 'succeeded')
   assert.equal(calls, 1)
-  assert.equal((await call('list_image_results', { conversationId: id })).structuredContent.images[0].src, result.images[0].src)
+  assert.equal((await call('list_image_results', { conversationId: id })).structuredContent.images[0].src, completed.items[0].images[0].src)
   assert.equal((await call('list_image_results', { conversationId: 'legacy' })).structuredContent.images.length, 0)
   const latest = (await call('get_canvas', { conversationId: id })).structuredContent
   assert.ok(latest.snapshot.store['shape:concurrent'])

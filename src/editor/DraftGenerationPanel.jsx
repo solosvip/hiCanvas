@@ -62,7 +62,7 @@ function CowartAiDraftGenerationPanel() {
   const { shape, layout } = selectedTarget
   const isFilm = isAiFilmHolderShape(shape)
   const canSend = promptValue.trim().length > 0 || referenceFiles.length > 0
-  const isSending = status === 'sending'
+  const isSending = status === 'sending' || ['queued', 'running', 'pending', 'working', 'waiting'].includes(shape.meta?.hicanvasGeneration?.status)
   function handleReferenceChange(event) {
     const selectedFiles = Array.from(event.target.files || [])
     if (!selectedFiles.length) return
@@ -232,7 +232,7 @@ function CowartAiDraftGenerationPanel() {
               {status === 'sending'
                 ? '正在发送'
                 : status === 'sent'
-                  ? '已发送'
+                  ? '请求已保存'
                   : errorMessage}
             </div>
           </div>
@@ -242,7 +242,7 @@ function CowartAiDraftGenerationPanel() {
             disabled={!canSend || isSending}
             type="submit"
           >
-            <span>{isSending ? '发送中' : '发送'}</span>
+            <span>{shape.meta?.hicanvasGeneration?.status === 'waiting' ? '等待连接' : isSending ? '处理中' : '发送'}</span>
           </button>
         </div>
       </form>

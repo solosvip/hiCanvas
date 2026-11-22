@@ -251,7 +251,7 @@ async function sendAiSlidesAnnotationEditRequest(editor, slidesShapeId) {
     return await sender(
       { prompt, content },
       {
-        promptType: 'slides_annotation_edit',
+        promptType: 'slides_annotation_edit', targetShapeId: targetSlidesShapeId,
         aiType: 'slides',
         hasReference: true,
         pageCount: sourceItems.length
@@ -329,6 +329,8 @@ async function sendHtmlDraftAnnotationRequest(editor, draftShapeId, mode) {
   if (!isCowartHtmlDraftEmbedShape(draftShape)) {
     throw new Error('请选择一个已生成网页的 AI 网页。')
   }
+  const saveResult = await saveCowartEditorSnapshot(editor)
+  if (saveResult?.ok === false) throw new Error(saveResult.message || '画板尚未保存，未发送请求。')
   const exportResult = await exportCowartHtmlDraftAnnotationScreenshot(editor, draftShapeId)
   const screenshotAsset = await saveCowartReferenceImage({
     anchorShapeId: draftShapeId,

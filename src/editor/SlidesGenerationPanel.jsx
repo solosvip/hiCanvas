@@ -9,6 +9,7 @@ import { isAiSlidesShape } from './holderMeta.jsx'
 import { getAiSlidesItems } from './slidesLayout.jsx'
 import { clampNumber, getAiImageGenerationPanelLayout, clipboardImageFiles, stopEditorOverlayEvent, handleGenerationPromptKeyDown } from './generationPrompts.jsx'
 import { sendAiSlidesGenerationRequest } from './generationRequests.jsx'
+import { saveCowartEditorSnapshot } from '../cowartCanvasSave.js'
 function CowartFilmGenerationOptions({ shape, disabled, section = 'style' }) {
   const editor = useEditor()
   const { style, duration } = getFilmOptions(shape)
@@ -117,7 +118,7 @@ function CowartAiSlidesGenerationPanel() {
     : Number(pageCountMode)
   const pageCountLabel = pageCountMode === 'custom' ? '自定义' : `${pageCountMode} 页`
   const canSend = promptValue.trim().length > 0 || referenceFiles.length > 0
-  const isSending = status === 'sending'
+  const isSending = status === 'sending' || ['queued', 'running', 'pending', 'working', 'waiting'].includes(shape.meta?.hicanvasGeneration?.status)
   function addReferenceFiles(files) {
     const imageFiles = Array.from(files || []).filter((file) => file.type.startsWith('image/'))
     const availableSlots = Math.max(0, AI_IMAGE_REFERENCE_MAX_FILES - referenceFiles.length)
@@ -166,6 +167,8 @@ function CowartAiSlidesGenerationPanel() {
     setStatus('sending')
     setErrorMessage('')
     try {
+      const saved = await saveCowartEditorSnapshot(editor)
+      if (saved?.ok === false) throw new Error(saved.message || '幻灯片尚未保存，未发送请求。')
       await sendAiSlidesGenerationRequest({
         slidesShape: shape,
         pageCount,
@@ -260,7 +263,7 @@ function CowartAiSlidesGenerationPanel() {
         />
         <div className="cowart-ai-generation-footer">
           <div className="cowart-ai-generation-status" aria-live="polite">
-            {status === 'sending' ? '正在发送' : status === 'sent' ? '已发送' : errorMessage}
+            {status === 'sending' ? '正在发送' : status === 'sent' ? '请求已保存' : errorMessage}
           </div>
           <div className="cowart-ai-slides-generation-actions">
             <div className="cowart-ai-slides-page-count-menu" ref={pageCountMenuRef}>
@@ -327,7 +330,7 @@ function CowartAiSlidesGenerationPanel() {
               disabled={!canSend || isSending}
               type="submit"
             >
-              <span>{isSending ? '发送中' : '发送'}</span>
+              <span>{shape.meta?.hicanvasGeneration?.status === 'waiting' ? '等待连接' : isSending ? '处理中' : '发送'}</span>
             </button>
           </div>
         </div>

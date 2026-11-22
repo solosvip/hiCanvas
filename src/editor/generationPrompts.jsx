@@ -39,7 +39,7 @@ function getAiImageGenerationPanelLayout(editor, shapeId, panelHeight = AI_IMAGE
     Math.max(AI_IMAGE_GENERATION_PANEL_VIEWPORT_MARGIN, viewportWidth - panelWidth - AI_IMAGE_GENERATION_PANEL_VIEWPORT_MARGIN)
   )
   // The taller film panel must clear the fixed bottom tool palette.
-  const bottomMargin = panelHeight > AI_IMAGE_GENERATION_PANEL_ESTIMATED_H ? 88 : AI_IMAGE_GENERATION_PANEL_VIEWPORT_MARGIN
+  const bottomMargin = 88
   const preferredTop = bottomLeft.y + AI_IMAGE_GENERATION_PANEL_OFFSET
   const panelTop = clampNumber(
     preferredTop,
