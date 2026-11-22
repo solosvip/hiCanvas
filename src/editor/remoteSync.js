@@ -3,7 +3,7 @@ import { describeSkippedRecord, isCanvasSnapshot, sanitizeCanvasSnapshotForTldra
 function recordsAreEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right)
 }
-const REMOTE_REMOVABLE_RECORD_TYPES = new Set(['asset', 'binding', 'shape'])
+const REMOTE_REMOVABLE_RECORD_TYPES = new Set(['asset', 'binding', 'shape', 'page', 'document', 'user'])
 function isRemoteRemovableRecord(record) {
   return REMOTE_REMOVABLE_RECORD_TYPES.has(record?.typeName)
 }
@@ -41,10 +41,6 @@ function applyRemoteCanvasSnapshot(editor, snapshot, { preserveLocalChanges = fa
   }
   let changedRecords = 0
   editor.store.mergeRemoteChanges(() => {
-    if (recordsToRemove.length > 0) {
-      editor.store.remove(recordsToRemove)
-      changedRecords += recordsToRemove.length
-    }
     for (const record of recordsToPut) {
       try {
         editor.store.put([record])
@@ -53,7 +49,16 @@ function applyRemoteCanvasSnapshot(editor, snapshot, { preserveLocalChanges = fa
         sanitized.skippedRecords.push(describeSkippedRecord(record, error))
       }
     }
+    if (recordsToRemove.length > 0) {
+      editor.store.remove(recordsToRemove)
+      changedRecords += recordsToRemove.length
+    }
   })
+  // 批处理结束后新页面的相机和会话状态才齐备，提前切页会让编辑器崩溃。
+  if (!remoteRecordIds.has(editor.getCurrentPageId())) {
+    const page = Object.values(sanitized.snapshot.store).find(record => record.typeName === 'page')
+    if (page) editor.setCurrentPage(page.id)
+  }
   return { changedRecords, skippedRecords: sanitized.skippedRecords }
 }
 export { recordsAreEqual, REMOTE_REMOVABLE_RECORD_TYPES, isRemoteRemovableRecord, storeChangedSinceSnapshot, applyRemoteCanvasSnapshot }

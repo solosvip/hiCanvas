@@ -1,3 +1,4 @@
+import { canvasApiUrl, currentConversationId } from './conversations/client.js'
 import { reportCowartStartup } from './widgetStartup.js'
 
 const CANVAS_ENDPOINT = '/api/canvas'
@@ -62,7 +63,7 @@ function serverToolArgs(extra = {}) {
 }
 
 function canvasTargetKey() {
-  return JSON.stringify(serverToolArgs())
+  return hasCowartWidgetBridge() ? JSON.stringify(serverToolArgs()) : currentConversationId()
 }
 
 function cacheCanvasState(state, target) {
@@ -139,11 +140,14 @@ async function callCowartServerTool(name, args = {}, options = {}) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await window.fetch(url, options)
+  const response = await window.fetch(canvasApiUrl(url), { ...options, headers: { 'x-hicanvas-client': '1', ...options.headers } })
+  const result = await response.json()
   if (!response.ok) {
-    throw new Error(`Cowart request failed: ${response.status} - ${response.statusText}`)
+    const error = new Error(result.error || `本机请求失败：${response.status}`)
+    error.storage = result.storage
+    throw error
   }
-  return response.json()
+  return result
 }
 
 export async function loadCowartCanvasState(signal) {
@@ -189,6 +193,8 @@ export async function loadCowartCanvasState(signal) {
     fetchJson(CANVAS_ENDPOINT, { signal }),
     fetchJson(VIEW_STATE_ENDPOINT, { signal })
   ])
+  cacheCanvasState(canvasData, canvasTargetKey())
+  appliedCanvasState = cachedCanvasState
   return {
     snapshot: canvasData.snapshot,
     viewState: viewStateData.viewState ?? null,
@@ -214,6 +220,9 @@ export async function refreshCowartCanvasSnapshot(signal) {
   }
 
   const canvasData = await fetchJson(CANVAS_ENDPOINT, { signal })
+  const target = canvasTargetKey()
+  if (cachedCanvasState?.target === target && cachedCanvasState.revision === canvasData.revision) return cachedCanvasState.snapshot
+  cacheCanvasState(canvasData, target)
   return canvasData.snapshot
 }
 
@@ -250,11 +259,17 @@ export async function saveCowartCanvasSnapshot(snapshot, options = {}) {
     })
   }
 
-  const savingSnapshot = typeof snapshot === 'function' ? snapshot() : snapshot
-  return fetchJson(CANVAS_ENDPOINT, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(savingSnapshot)
+  const target = canvasTargetKey()
+  return queueCanvasWrite(async () => {
+    const baseline = appliedCanvasBaseline(target)
+    const savingSnapshot = typeof snapshot === 'function' ? snapshot() : snapshot
+    const result = await fetchJson(CANVAS_ENDPOINT, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ snapshot: savingSnapshot, expectedRevision: baseline.revision })
+    })
+    appliedCanvasState = { target, revision: result.revision, snapshot: savingSnapshot }
+    cachedCanvasState = null
+    return result
   })
 }
 
@@ -292,7 +307,13 @@ export async function saveCowartReferenceImage(reference) {
 
 export async function downloadCowartFile(download) {
   if (!hasCowartWidgetBridge()) {
-    throw new Error('当前 Cowart 画布没有可用的 Codex MCP 文件下载桥。')
+    const link = document.createElement('a')
+    link.href = download.dataUrl
+    link.download = download.fileName || 'hicanvas-backup.json'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    return { ok: true }
   }
 
   return callCowartServerTool(TOOL_DOWNLOAD_FILE, download)
@@ -307,26 +328,15 @@ export async function copyCowartImageToClipboard(image) {
 }
 
 export async function updateCowartHtmlDraft({ draftShapeId, htmlContent }, { applyResult } = {}) {
-  if (!hasCowartWidgetBridge()) {
-    const result = await fetchJson('/api/html-draft', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ draftShapeId, htmlContent })
-    })
-    if (applyResult) await applyResult(result)
-    return result
-  }
 
   const target = canvasTargetKey()
   return queueCanvasWrite(async () => {
     if (canvasTargetKey() !== target) throw new Error('Cowart canvas target changed before saving the HTML draft.')
     const baseline = appliedCanvasBaseline(target)
-    const result = await callCowartServerTool(TOOL_INSERT_HTML_DRAFT, {
-      draftShapeId,
-      htmlContent,
-      updateExistingDraft: true,
-      expectedRevision: baseline.revision
-    })
+    const args = { draftShapeId, htmlContent, updateExistingDraft: true, expectedRevision: baseline.revision }
+    const result = hasCowartWidgetBridge()
+      ? await callCowartServerTool(TOOL_INSERT_HTML_DRAFT, args)
+      : await fetchJson('/api/html-draft', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
     if (
       canvasTargetKey() !== target || appliedCanvasState?.target !== target ||
       appliedCanvasState.revision !== baseline.revision

@@ -5,14 +5,14 @@ function dimensions(src) {
   return new Promise((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve({ w: image.naturalWidth, h: image.naturalHeight })
-    image.onerror = () => reject(new Error('结果已保存，但图片未能载入。可在“设置 → 最近生成”中找回或下载。'))
+    image.onerror = () => reject(new Error('结果已保存，但图片未能载入。可在“菜单栏 → 图片结果”中找回或下载。'))
     image.src = src
   })
 }
 
 export async function insertGeneratedImages(editor, images, { anchorId, pageId = editor.getCurrentPageId(), beside = false } = {}) {
   const loaded = await Promise.all(images.map(async image => ({ ...image, ...await dimensions(image.src) })))
-  if (!editor.getPage(pageId) || (anchorId && (!editor.getShape(anchorId) || editor.getAncestorPageId(anchorId) !== pageId))) throw new Error('原页面或图片框已被删除。结果已保存，请在“设置 → 最近生成”中找回。')
+  if (!editor.getPage(pageId) || (anchorId && (!editor.getShape(anchorId) || editor.getAncestorPageId(anchorId) !== pageId))) throw new Error('原页面或图片框已被删除。结果已保存，请在“菜单栏 → 图片结果”中找回。')
   const anchor = anchorId ? editor.getShapePageBounds(anchorId) : null
   const viewport = editor.getViewportPageBounds()
   let x = anchor ? anchor.x + (beside ? anchor.w + 40 : 0) : viewport.center.x

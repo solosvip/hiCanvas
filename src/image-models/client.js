@@ -1,7 +1,8 @@
+import { canvasApiUrl } from '../conversations/client.js'
 export async function imageApi(path, method = 'GET', body) {
   let response
   try {
-    response = await fetch(path, {
+    response = await fetch(path.startsWith('/api/images') ? canvasApiUrl(path) : path, {
       method, headers: { 'content-type': 'application/json', 'x-hicanvas-client': '1' },
       body: body === undefined ? undefined : JSON.stringify(body)
     })

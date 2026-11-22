@@ -1,0 +1,18 @@
+.hc-conversation-trigger { display: flex; align-items: center; gap: var(--spacing-sm); max-width: calc(var(--spacing-xl) * 9); pointer-events: auto; }
+.hc-conversation-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hc-conversation-trigger svg { flex: none; }
+.hc-conversation-dialog { position: fixed; inset: var(--spacing-none); margin: auto; width: min(calc(var(--spacing-xl) * 20), calc(100% - var(--spacing-xl) * 2)); max-height: calc(100% - var(--spacing-xl) * 2); }
+.hc-conversation-dialog::backdrop { background: var(--color-scrim); }
+.hc-conversation-dialog .hc-model-heading { cursor: default; }
+.hc-conversation-list { list-style: none; padding: var(--spacing-none); margin: var(--spacing-xl) var(--spacing-none); max-height: calc(var(--spacing-xl) * 12); overflow: auto; }
+.hc-conversation-list li { margin-bottom: var(--spacing-xs); }
+.hc-conversation-list button { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md); border-color: transparent; text-align: left; }
+.hc-conversation-list button[aria-current] { background: var(--color-neutral); }
+.hc-conversation-list strong, .hc-conversation-list small { display: block; overflow-wrap: anywhere; }
+.hc-conversation-list small { margin-top: var(--spacing-xs); color: var(--color-secondary); font-size: var(--text-label-md); }
+.hc-conversation-add { display: inline-flex; align-items: center; gap: var(--spacing-xs); }
+.hc-conversation-form { display: grid; gap: var(--spacing-md); }
+.hc-conversation-form input { width: 100%; }
+.hc-image-results { display: grid; grid-template-columns: repeat(2, minmax(var(--spacing-none), 1fr)); gap: var(--spacing-lg); margin-top: var(--spacing-xl); }
+.hc-image-results img { display: block; width: 100%; height: calc(var(--spacing-xl) * 7); object-fit: contain; border-radius: var(--radius-md); background: var(--color-neutral); margin-bottom: var(--spacing-sm); }
+.hc-image-results a { color: var(--color-secondary); font-size: var(--text-label-md); }

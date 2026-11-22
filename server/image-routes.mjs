@@ -1,3 +1,4 @@
+import { conversations } from './conversations.mjs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { createModelStore, inputError } from './image-models.mjs'
@@ -5,17 +6,23 @@ import { requestImages } from './image-provider.mjs'
 import { createImageResults } from './image-results.mjs'
 import { readRequestBody, sendJson } from './protocol.mjs'
 
-export function createImageMiddleware({ settingsDir, assetsDir } = {}) {
+export function createImageMiddleware({ settingsDir, assetsDir, workspace = conversations } = {}) {
   const projectDir = process.env.HICANVAS_PROJECT_DIR || join(homedir(), 'Documents', 'hiCanvas')
   const models = createModelStore(settingsDir || process.env.HICANVAS_SETTINGS_DIR || join(projectDir, 'settings'))
-  const results = createImageResults(assetsDir || join(process.env.HICANVAS_CANVAS_DIR || join(projectDir, 'canvas'), 'assets'))
+  const legacyResults = createImageResults(assetsDir || join(process.env.HICANVAS_CANVAS_DIR || join(projectDir, 'canvas'), 'assets'))
   return async (req, res, next) => {
-    const pathname = new URL(req.url, 'http://localhost').pathname
+    const url = new URL(req.url, 'http://localhost')
+    const pathname = url.pathname
     if (!pathname.startsWith('/api/image-models') && !pathname.startsWith('/api/images')) return next()
     res.setHeader('cache-control', 'no-store')
     try {
       const host = req.headers.host || ''
       if (!/^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(host) || req.headers['x-hicanvas-client'] !== '1' || (req.headers.origin && req.headers.origin !== `http://${host}`)) throw inputError('只接受 hiCanvas 本机界面的请求。', 403)
+      let results = legacyResults
+      if (pathname.startsWith('/api/images') && !assetsDir) {
+        const id = url.searchParams.get('conversation')
+        results = createImageResults(await workspace.assetsDir(id), `/c/${id}/assets/`)
+      }
       let body
       if (['POST', 'PUT'].includes(req.method)) {
         if (!req.headers['content-type']?.startsWith('application/json')) throw inputError('需要 JSON 请求。', 415)

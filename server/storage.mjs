@@ -6,7 +6,8 @@ import { copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from 'nod
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 const projectDir = resolve(process.env.HICANVAS_PROJECT_DIR ?? process.env.COWART_PROJECT_DIR ?? join(homedir(), 'Documents', 'hiCanvas'))
-const canvasDir = resolve(process.env.HICANVAS_CANVAS_DIR ?? process.env.COWART_CANVAS_DIR ?? join(projectDir, 'canvas'))
+const defaultCanvasDir = resolve(process.env.HICANVAS_CANVAS_DIR ?? process.env.COWART_CANVAS_DIR ?? join(projectDir, 'canvas'))
+function createCanvasStorage(canvasDir = defaultCanvasDir) {
 const canvasFile = join(canvasDir, 'cowart-canvas.json')
 const selectionFile = join(canvasDir, 'cowart-selection.json')
 const viewStateFile = join(canvasDir, 'cowart-view-state.json')
@@ -17,9 +18,7 @@ const canvasFileName = 'cowart-canvas.json'
 const pageIdPrefix = 'page:'
 const globalAssetsRoute = '/assets/'
 const pageAssetsRoute = '/page-assets/'
-
 let canvasSnapshotSanitizerPromise = null
-
 const mimeTypes = new Map([
   ['.apng', 'image/apng'],
   ['.avif', 'image/avif'],
@@ -32,40 +31,32 @@ const mimeTypes = new Map([
   ['.htm', 'text/html; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8']
 ])
-
 async function sanitizeCanvasSnapshotForServer(snapshot) {
   canvasSnapshotSanitizerPromise ??= import('../src/canvasSnapshot.js')
   const { sanitizeCanvasSnapshotForTldraw } = await canvasSnapshotSanitizerPromise
   return sanitizeCanvasSnapshotForTldraw(snapshot)
 }
-
 function isSafeChildPath(parent, child) {
   const pathToChild = relative(parent, child)
   return pathToChild && !pathToChild.startsWith('..') && !pathToChild.includes(`..${sep}`)
 }
-
 function pageDirName(pageId) {
   return encodeURIComponent(pageId.replace(pageIdPrefix, ''))
 }
-
 function pageFilePath(pageId) {
   return join(canvasPagesDir, pageDirName(pageId), canvasFileName)
 }
-
 function pageAssetsDir(pageId) {
   return join(canvasPagesDir, pageDirName(pageId), 'assets')
 }
-
 function pageAssetUrl(pageId, fileName) {
   return `${pageAssetsRoute}${pageDirName(pageId)}/${encodeURIComponent(fileName)}`
 }
-
 function getPageRecords(snapshot) {
   return Object.values(snapshot.store)
     .filter((record) => record?.typeName === 'page')
     .sort((a, b) => String(a.index ?? '').localeCompare(String(b.index ?? '')))
 }
-
 function getAssetIdsForShapes(shapes) {
   return new Set(
     shapes
@@ -73,7 +64,6 @@ function getAssetIdsForShapes(shapes) {
       .filter((assetId) => typeof assetId === 'string')
   )
 }
-
 function getShapeRecordsForPage(snapshot, pageId) {
   const shapesByParent = new Map()
   for (const record of Object.values(snapshot.store)) {
@@ -82,7 +72,6 @@ function getShapeRecordsForPage(snapshot, pageId) {
     siblings.push(record)
     shapesByParent.set(record.parentId, siblings)
   }
-
   const shapes = []
   const queue = [...(shapesByParent.get(pageId) ?? [])]
   while (queue.length > 0) {
@@ -92,21 +81,18 @@ function getShapeRecordsForPage(snapshot, pageId) {
   }
   return shapes
 }
-
 function isBindingForShapes(record, shapeIds) {
   if (record?.typeName !== 'binding') return false
   const fromId = record.fromId ?? record.props?.fromId
   const toId = record.toId ?? record.props?.toId
   return shapeIds.has(fromId) || shapeIds.has(toId)
 }
-
 function snapshotForPage(snapshot, page) {
   const pageId = page.id
   const pageShapes = getShapeRecordsForPage(snapshot, pageId)
   const shapeIds = new Set(pageShapes.map((shape) => shape.id))
   const assetIds = getAssetIdsForShapes(pageShapes)
   const store = {}
-
   for (const record of Object.values(snapshot.store)) {
     if (!record?.id) continue
     if (record.typeName === 'page') {
@@ -127,13 +113,11 @@ function snapshotForPage(snapshot, page) {
     }
     store[record.id] = record
   }
-
   return {
     schema: snapshot.schema,
     store
   }
 }
-
 function extensionFromMimeType(mimeType) {
   switch (mimeType) {
     case 'image/apng':
@@ -156,7 +140,6 @@ function extensionFromMimeType(mimeType) {
       return '.bin'
   }
 }
-
 function sanitizeAssetFileName(name, fallbackName, mimeType) {
   const rawName = basename(String(name || fallbackName || 'asset'))
   const extension = extname(rawName) || extensionFromMimeType(mimeType)
@@ -166,7 +149,6 @@ function sanitizeAssetFileName(name, fallbackName, mimeType) {
     .replace(/^-+|-+$/g, '')
   return `${baseName || 'asset'}${extension}`
 }
-
 function parseDataUrl(src) {
   const match = /^data:([^;,]+)?(?:;[^,]*)?,(.*)$/s.exec(src)
   if (!match) return null
@@ -176,11 +158,9 @@ function parseDataUrl(src) {
   const buffer = isBase64 ? Buffer.from(encoded, 'base64') : Buffer.from(decodeURIComponent(encoded))
   return { buffer, mimeType }
 }
-
 function htmlDraftDataUrl(htmlContent) {
   return `data:text/html;base64,${Buffer.from(String(htmlContent || ''), 'utf8').toString('base64')}`
 }
-
 function localAssetFilePathFromUrl(src) {
   let route = null
   let baseDir = null
@@ -197,24 +177,19 @@ function localAssetFilePathFromUrl(src) {
   } else {
     return null
   }
-
   const requestedPath = decodeURIComponent(src.slice(route.length))
   const filePath = resolve(baseDir, requestedPath)
   return isSafeChildPath(baseDir, filePath) ? filePath : null
 }
-
 async function localizePageAsset(asset, pageId) {
   const src = asset?.props?.src
   if (!src || typeof src !== 'string' || /^https?:\/\//.test(src)) return asset
-
   const currentPagePrefix = `${pageAssetsRoute}${pageDirName(pageId)}/`
   if (src.startsWith(currentPagePrefix)) return asset
-
   const localizedAsset = structuredClone(asset)
   const dataUrl = src.startsWith('data:') ? parseDataUrl(src) : null
   const sourceFilePath = dataUrl ? null : localAssetFilePathFromUrl(src)
   if (!dataUrl && !sourceFilePath) return localizedAsset
-
   const fileName = sanitizeAssetFileName(
     dataUrl ? null : localizedAsset.props.name,
     sourceFilePath ? basename(sourceFilePath) : localizedAsset.id.replace(':', '-'),
@@ -222,7 +197,6 @@ async function localizePageAsset(asset, pageId) {
   )
   const destinationDir = pageAssetsDir(pageId)
   const destinationPath = join(destinationDir, fileName)
-
   await mkdir(destinationDir, { recursive: true })
   if (dataUrl) {
     await writeFile(destinationPath, dataUrl.buffer)
@@ -232,16 +206,13 @@ async function localizePageAsset(asset, pageId) {
     await copyFile(sourceFilePath, destinationPath)
     localizedAsset.props.fileSize = (await stat(destinationPath)).size
   }
-
   localizedAsset.props.name = fileName
   localizedAsset.props.src = pageAssetUrl(pageId, fileName)
   return localizedAsset
 }
-
 function isHtmlDraftShapeRecord(record) {
   return record?.typeName === 'shape' && record.type === 'embed' && record.meta?.cowartHtmlDraft === true
 }
-
 function pageIdForShape(store, shape) {
   let record = shape
   const visited = new Set()
@@ -252,7 +223,6 @@ function pageIdForShape(store, shape) {
   }
   return null
 }
-
 async function uniquePageAssetTarget(pageId, requestedName) {
   const directory = pageAssetsDir(pageId)
   const safeName = sanitizeAssetFileName(requestedName, 'html-draft.html', 'text/html')
@@ -260,7 +230,6 @@ async function uniquePageAssetTarget(pageId, requestedName) {
   const baseName = safeName.slice(0, safeName.length - extension.length)
   let fileName = safeName
   let counter = 2
-
   while (true) {
     const filePath = join(directory, fileName)
     try {
@@ -273,15 +242,12 @@ async function uniquePageAssetTarget(pageId, requestedName) {
     }
   }
 }
-
 async function updateHtmlDraftSnapshot(snapshot, { draftShapeId, htmlContent }) {
   const shape = snapshot.store[draftShapeId]
   if (!isHtmlDraftShapeRecord(shape)) throw new Error(`HTML draft shape not found: ${draftShapeId}`)
   if (typeof htmlContent !== 'string' || !htmlContent.trim()) throw new Error('HTML draft content is empty.')
-
   const pageId = pageIdForShape(snapshot.store, shape)
   if (!pageId) throw new Error(`Could not determine page for HTML draft: ${draftShapeId}`)
-
   const existingAssetUrl = shape.meta?.cowartHtmlDraftAssetUrl
   const expectedPrefix = `${pageAssetsRoute}${pageDirName(pageId)}/`
   const sharedAsset =
@@ -292,7 +258,6 @@ async function updateHtmlDraftSnapshot(snapshot, { draftShapeId, htmlContent }) 
         isHtmlDraftShapeRecord(record) &&
         record.meta?.cowartHtmlDraftAssetUrl === existingAssetUrl
     )
-
   let assetUrl = existingAssetUrl
   let assetPath = typeof existingAssetUrl === 'string' ? localAssetFilePathFromUrl(existingAssetUrl) : null
   if (!assetPath || !existingAssetUrl.startsWith(expectedPrefix) || sharedAsset) {
@@ -308,7 +273,6 @@ async function updateHtmlDraftSnapshot(snapshot, { draftShapeId, htmlContent }) 
     assetPath = target.filePath
     assetUrl = pageAssetUrl(pageId, target.fileName)
   }
-
   await mkdir(dirname(assetPath), { recursive: true })
   await writeFile(assetPath, htmlContent)
   snapshot.store[draftShapeId] = {
@@ -323,10 +287,8 @@ async function updateHtmlDraftSnapshot(snapshot, { draftShapeId, htmlContent }) 
       url: htmlDraftDataUrl(htmlContent)
     }
   }
-
   return { assetPath, assetUrl, forkedSharedHtmlDraftAsset: sharedAsset, pageId, shapeId: draftShapeId }
 }
-
 async function persistHtmlDraftAsset(record, pageId) {
   if (
     record?.typeName !== 'shape' ||
@@ -336,21 +298,17 @@ async function persistHtmlDraftAsset(record, pageId) {
   ) {
     return record
   }
-
   const assetUrl = record.meta?.cowartHtmlDraftAssetUrl
   const expectedPrefix = `${pageAssetsRoute}${pageDirName(pageId)}/`
   if (typeof assetUrl !== 'string' || !assetUrl.startsWith(expectedPrefix)) return record
-
   const parsed = record.props.url.startsWith('data:') ? parseDataUrl(record.props.url) : null
   if (!parsed || parsed.mimeType !== 'text/html') return record
-
   const assetPath = localAssetFilePathFromUrl(assetUrl)
   if (!assetPath) return record
   await mkdir(dirname(assetPath), { recursive: true })
   await writeFile(assetPath, parsed.buffer)
   return record
 }
-
 async function localizePageAssets(pageSnapshot, pageId) {
   const entries = await Promise.all(
     Object.entries(pageSnapshot.store).map(async ([id, record]) => {
@@ -363,11 +321,9 @@ async function localizePageAssets(pageSnapshot, pageId) {
     store: Object.fromEntries(entries)
   }
 }
-
 async function readJsonFile(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'))
 }
-
 async function readPageSnapshots() {
   let files
   try {
@@ -387,7 +343,6 @@ async function readPageSnapshots() {
       throw directoryError
     }
   }
-
   const snapshots = []
   for (const filePath of files) {
     const snapshot = await readJsonFile(filePath)
@@ -396,7 +351,6 @@ async function readPageSnapshots() {
   }
   return snapshots
 }
-
 async function loadCanvasSnapshot() {
   const pageSnapshots = await readPageSnapshots()
   if (pageSnapshots.length > 0) {
@@ -405,7 +359,6 @@ async function loadCanvasSnapshot() {
       schema: firstSnapshot.schema,
       store: {}
     }
-
     for (const { snapshot } of pageSnapshots) {
       Object.assign(mergedSnapshot.store, snapshot.store)
     }
@@ -415,7 +368,6 @@ async function loadCanvasSnapshot() {
       storage: 'per-page'
     }
   }
-
   try {
     return {
       snapshot: await readJsonFile(canvasFile),
@@ -429,21 +381,18 @@ async function loadCanvasSnapshot() {
     throw error
   }
 }
-
 async function writeJsonAtomic(filePath, payload) {
   await mkdir(dirname(filePath), { recursive: true })
   const tempFile = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`
   await writeFile(tempFile, `${JSON.stringify(payload, null, 2)}\n`)
   await rename(tempFile, filePath)
 }
-
 async function saveCanvasSnapshot(snapshot) {
   const pages = getPageRecords(snapshot)
   if (pages.length === 0) {
     await writeJsonAtomic(canvasFile, snapshot)
     return { storage: 'legacy-single-file', paths: [canvasFile] }
   }
-
   const paths = []
   for (const page of pages) {
     const filePath = pageFilePath(page.id)
@@ -451,7 +400,6 @@ async function saveCanvasSnapshot(snapshot) {
     await writeJsonAtomic(filePath, pageSnapshot)
     paths.push(filePath)
   }
-
   const manifest = {
     version: 1,
     source: 'cowart',
@@ -463,24 +411,20 @@ async function saveCanvasSnapshot(snapshot) {
     }))
   }
   await writeJsonAtomic(pagesManifestFile, manifest)
-
   return { storage: 'per-page', paths }
 }
-
 async function serveCanvasAsset(req, res, next) {
   const url = new URL(req.url, 'http://127.0.0.1')
   if (!url.pathname.startsWith(globalAssetsRoute) && !url.pathname.startsWith(pageAssetsRoute)) {
     next()
     return
   }
-
   const filePath = localAssetFilePathFromUrl(url.pathname)
   if (!filePath) {
     res.statusCode = 403
     res.end('Forbidden')
     return
   }
-
   try {
     const fileStat = await stat(filePath)
     if (!fileStat.isFile()) {
@@ -502,5 +446,7 @@ async function serveCanvasAsset(req, res, next) {
     next(error)
   }
 }
-
-export { canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset, updateHtmlDraftSnapshot }
+return { canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset, updateHtmlDraftSnapshot }
+}
+const { canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset, updateHtmlDraftSnapshot } = createCanvasStorage()
+export { createCanvasStorage, canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset, updateHtmlDraftSnapshot }

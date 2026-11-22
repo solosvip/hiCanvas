@@ -1,15 +1,18 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { Tldraw } from "tldraw"
+import { backupCanvas } from './backupCanvas.js'
+import { canvasApiUrl } from '../conversations/client.js'
 import { reportCowartStartup } from "../widgetStartup.js"
 import { useCallback, useEffect, useState } from "react"
 import { trackCanvasOpened } from "../analytics.js"
-import { IS_COWART_WIDGET_BUILD, acceptCowartCanvasSnapshot, downloadCowartFile, hasCowartWidgetBridge, loadCowartCanvasState, refreshCowartCanvasSnapshot, saveCowartSelectionState, saveCowartViewState } from "../cowartClient.js"
+import { IS_COWART_WIDGET_BUILD, acceptCowartCanvasSnapshot, hasCowartWidgetBridge, loadCowartCanvasState, refreshCowartCanvasSnapshot, saveCowartSelectionState, saveCowartViewState } from "../cowartClient.js"
 import { attachCowartCanvasSaveSession } from "../cowartCanvasSave.js"
 import { createPersistenceFeedback } from '../persistenceFeedback.js'
 import { sanitizeCanvasSnapshotForTldraw } from "../canvasSnapshot.js"
 import { SELECTION_STATE_ELEMENT_ID, ANNOTATION_TOOL_ID, ANNOTATION_LABEL_POSITION } from './configuration.jsx'
 import { cowartAssetUrls, cowartTldrawAssetStore, revokeCowartAssetObjectUrls, retainCowartEditorAssets, cowartAssetReferencesChanged } from './assets.jsx'
-import { storeChangedSinceSnapshot, applyRemoteCanvasSnapshot } from './remoteSync.jsx'
+import { storeChangedSinceSnapshot, applyRemoteCanvasSnapshot } from './remoteSync.js'
+import { attachCanvasNavigation } from '../canvasNavigation.js'
 import { layoutAllAiSlides, adoptGeneratedAiSlidesItems, normalizeAiDraftHolderLabels, copySelectedCowartContent, preparePastedItemForAiSlides, movePastedItemsIntoAiSlides, cowartTldrawOptions } from './slidesLayout.jsx'
 import { CowartAnnotationTool } from './annotationTools.jsx'
 import { cowartShapeUtils } from './shapes.jsx'
@@ -189,6 +192,10 @@ function App() {
     let isSyncingAnnotationShape = false
     let remoteLoadController = null
     let lastAppliedRemoteSnapshot = null
+    const disposeNavigation = attachCanvasNavigation(editor, {
+      save: () => saveConflict ? Promise.reject(new Error('请先处理画板版本冲突。')) : canvasSaveSession.save(),
+      didSave: () => { window.clearTimeout(saveTimer); hasPendingSave = hasUnsavedChanges = false; feedback.saved('canvas') }
+    })
     function showSaveConflict() {
       if (conflictNotice || isDisposed) return
       const notice = containerDocument.createElement('div')
@@ -213,14 +220,7 @@ function App() {
         backup.disabled = true
         const backupVersion = documentChangeVersion
         try {
-          const json = JSON.stringify(editor.store.getStoreSnapshot(), null, 2)
-          const backupStore = JSON.parse(json).store
-          const downloaded = await downloadCowartFile({
-            fileName: `cowart-unsaved-${Date.now()}.json`,
-            mimeType: 'application/json',
-            dataUrl: `data:application/json;charset=utf-8,${encodeURIComponent(json)}`
-          })
-          if (!downloaded?.ok) throw new Error('备份未保存，请重试。')
+          const backupStore = await backupCanvas(editor)
           if (isDisposed) return
           conflictBackupVersion = backupVersion
           conflictBackupStore = backupStore
@@ -325,8 +325,6 @@ function App() {
       saveTimer = window.setTimeout(saveCanvas, 500)
     }
     async function loadRemoteCanvasSnapshot() {
-      // An MCP call can outlive the polling interval. Keep one request in flight
-      // instead of abandoning it and accumulating work in the host bridge.
       if (isDisposed || saveConflict || remoteLoadController) return
       const controller = new AbortController()
       remoteLoadController = controller
@@ -338,8 +336,6 @@ function App() {
         if (nextSnapshot === lastAppliedRemoteSnapshot) return
         const effectivePreserve =
           preserveLocalChanges || (preFetchStore && storeChangedSinceSnapshot(editor, preFetchStore))
-        // The client retains the latest remote response until local edits are
-        // saved. Reconciliation cannot apply it while those edits are pending.
         if (effectivePreserve) return
         const result = applyRemoteCanvasSnapshot(editor, nextSnapshot)
         if (!result.skippedRecords?.length) {
@@ -374,7 +370,7 @@ function App() {
     if (hasCowartWidgetBridge()) {
       canvasRefreshTimer = window.setInterval(loadRemoteCanvasSnapshot, 1600)
     } else if (!IS_COWART_WIDGET_BUILD && 'EventSource' in window) {
-      canvasEvents = new window.EventSource('/api/canvas-events')
+      canvasEvents = new window.EventSource(canvasApiUrl('/api/canvas-events'))
       canvasEvents.addEventListener('canvas-changed', loadRemoteCanvasSnapshot)
       canvasEvents.onerror = (error) => {
         console.warn('Cowart canvas live refresh disconnected.', error)
@@ -435,6 +431,7 @@ function App() {
       }
     )
     return () => {
+      disposeNavigation()
       feedback.dispose()
       isDisposed = true
       window.clearTimeout(saveTimer)

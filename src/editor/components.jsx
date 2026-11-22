@@ -7,12 +7,16 @@ import { DefaultMainMenu } from 'tldraw'
 import { CowartAiImageGenerationPanel } from './ImageGenerationPanel.jsx'
 import { CowartAiDraftGenerationPanel } from './DraftGenerationPanel.jsx'
 import { CowartAiSlidesGenerationPanel } from './SlidesGenerationPanel.jsx'
+import { ImageResults } from '../conversations/ImageResults.jsx'
+import { ConversationMenu } from '../conversations/ConversationMenu.jsx'
 import { SettingsPanel } from '../image-models/ModelSettings.jsx'
 
 function CowartMainMenu() {
   return <>
     <DefaultMainMenu />
     <SettingsPanel />
+    <ConversationMenu />
+    <ImageResults />
   </>
 }
 
