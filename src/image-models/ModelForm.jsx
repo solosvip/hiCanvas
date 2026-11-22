@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useModels } from './ModelContext.jsx'
+import { ModelSelect, useModels } from './ModelContext.jsx'
 
 export function ModelForm({ model, onSaved, onCancel }) {
   const { update } = useModels()
@@ -20,7 +20,7 @@ export function ModelForm({ model, onSaved, onCancel }) {
     <h3>{model ? '编辑模型' : '添加模型'}</h3>
     <fieldset disabled={busy}>
       <label>显示名称<input required maxLength={80} autoFocus {...field('name')} placeholder="给这组配置起个名字" /></label>
-      <label>接口格式<select {...field('protocol')}><option value="openai-images">OpenAI Images 兼容</option><option value="gemini">Gemini generateContent</option></select></label>
+      <label>接口格式<ModelSelect ariaLabel="接口格式" value={form.protocol} onChange={protocol => setForm(current => ({ ...current, protocol }))} options={[{ value: 'openai-images', label: 'OpenAI Images 兼容' }, { value: 'gemini', label: 'Gemini generateContent' }]} /></label>
       <label>API 基础地址<input required type="url" maxLength={2048} {...field('baseUrl')} placeholder="填写服务商提供的基础地址" aria-describedby="hc-api-help" /></label>
       <p id="hc-api-help">{form.protocol === 'gemini' ? '通常以 /v1beta 结尾。自动追加 /models/模型名:generateContent。' : '通常以 /v1 结尾。自动追加 /images/generations 或 /images/edits。'}</p>
       <label>模型名<input required maxLength={256} {...field('model')} placeholder="填写服务商给出的模型标识，不限预设列表" /></label>

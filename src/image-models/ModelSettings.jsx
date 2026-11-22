@@ -1,66 +1,89 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
+import { Settings2, X } from 'lucide-react'
 import { TldrawUiButton, useEditor } from 'tldraw'
-import { Settings2 } from 'lucide-react'
 import { useModels, ModelPicker } from './ModelContext.jsx'
 import { ModelForm } from './ModelForm.jsx'
-import { imageApi } from './client.js'
-import { insertGeneratedImages } from './canvasImages.js'
 
 export function SettingsPanel() {
-  const editor = useEditor()
+  useEditor()
   const { models, loading, error: loadError, reload, update, open, setOpen } = useModels()
-  const dialog = useRef(null)
+  const panelRef = useRef(null)
+  const dragState = useRef(null)
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [results, setResults] = useState([])
+  const [position, setPosition] = useState(null)
+
   useEffect(() => {
     if (open) {
-      dialog.current?.showModal()
-      imageApi('/api/images/results').then(data => setResults(data.images)).catch(error => setError(error.message))
-    } else { dialog.current?.close(); setEditing(null); setError('') }
+      setPosition({ x: Math.max(16, (window.innerWidth - 624) / 2), y: Math.max(16, (window.innerHeight - 560) / 2) })
+    } else {
+      setEditing(null)
+      setError('')
+    }
   }, [open])
+
+  function beginDrag(event) {
+    if (event.button !== 0 || !position) return
+    dragState.current = { startX: event.clientX, startY: event.clientY, originX: position.x, originY: position.y }
+    function move(pointerEvent) {
+      const current = dragState.current
+      if (!current) return
+      const panel = panelRef.current
+      const maxX = Math.max(16, window.innerWidth - (panel?.offsetWidth || 624) - 16)
+      const maxY = Math.max(16, window.innerHeight - (panel?.offsetHeight || 560) - 16)
+      setPosition({
+        x: Math.min(maxX, Math.max(16, current.originX + pointerEvent.clientX - current.startX)),
+        y: Math.min(maxY, Math.max(16, current.originY + pointerEvent.clientY - current.startY))
+      })
+    }
+    function end() {
+      dragState.current = null
+      document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', end)
+    }
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', end)
+    event.preventDefault()
+  }
+
   async function remove(model) {
     if (!window.confirm(`删除模型配置“${model.name}”？已生成的图片会保留。`)) return
     setBusy(true)
     try { await update(`/api/image-models/${model.id}`, 'DELETE'); setError('') }
-    catch (error) { setError(error.message) }
+    catch (removeError) { setError(removeError.message) }
     finally { setBusy(false) }
   }
-  async function insert(image) {
-    setBusy(true)
-    try { await insertGeneratedImages(editor, [image]); setOpen(false) }
-    catch (error) { setError(error.message) }
-    finally { setBusy(false) }
-  }
+
+  const content = open && position ? (
+    <div className="hc-settings-layer" onClick={event => { if (event.target === event.currentTarget && !busy) setOpen(false) }} onPointerDown={event => event.stopPropagation()}>
+      <section ref={panelRef} className="hc-model-dialog" aria-describedby="hc-model-help" aria-labelledby="hc-model-title" aria-modal="true" role="dialog" style={{ left: `${position.x}px`, top: `${position.y}px` }}>
+        <div className="hc-model-heading" onPointerDown={beginDrag}>
+          <div><span className="hc-model-eyebrow">画板设置</span><h2 id="hc-model-title">设置</h2></div>
+          <button aria-label="关闭设置" className="hc-model-close" disabled={busy} onClick={() => setOpen(false)} type="button"><X aria-hidden="true" size={16} strokeWidth={2} /></button>
+        </div>
+        <p className="hc-model-help" id="hc-model-help">自行添加服务和模型。密钥只保存在本机；保存设置不会调用生图接口。</p>
+        {loading ? <p role="status">加载中…</p> : loadError ? <div role="alert"><p>{loadError}</p><button onClick={reload} type="button">重新加载</button></div> : editing ?
+          <ModelForm key={editing.id || 'new'} model={editing.id ? editing : null} onSaved={() => setEditing(null)} onCancel={() => setEditing(null)} /> : <>
+            <div className="hc-model-section-heading"><div><span className="hc-model-eyebrow">IMAGE</span><h3>生图模型</h3></div><span className="hc-model-count">{models.length} 个</span></div>
+            <ModelPicker disabled={busy} />
+            {!models.length && <p>尚未添加模型。添加后即可在 AI 图片框中生成或使用参考图改图。</p>}
+            <ul className="hc-model-list">{models.map(model => <li key={model.id}>
+              <div className="hc-model-info"><strong>{model.name}</strong><span>{model.model}</span><small>{model.baseUrl}</small></div>
+              <div className="hc-model-actions"><button disabled={busy} aria-label={`编辑模型 ${model.name}`} onClick={() => setEditing(model)} type="button">编辑</button><button disabled={busy} aria-label={`删除模型 ${model.name}`} onClick={() => remove(model)} type="button">删除</button></div>
+            </li>)}</ul>
+            <button className="hc-primary hc-add-model" disabled={busy} onClick={() => setEditing({})} type="button"><span>＋</span>添加模型</button>
+          </>}
+        {error && <p className="hc-model-error" role="alert">{error}</p>}
+      </section>
+    </div>
+  ) : null
+
   return <>
-    <TldrawUiButton
-      aria-label="设置"
-      className="hc-settings-button"
-      data-testid="hicanvas.settings-button"
-      onClick={() => setOpen(true)}
-      title="设置"
-      type="icon"
-    >
+    <TldrawUiButton aria-label="设置" className="hc-settings-button" data-testid="hicanvas.settings-button" onClick={() => setOpen(true)} title="设置" type="icon">
       <Settings2 aria-hidden="true" className="hc-settings-icon" />
     </TldrawUiButton>
-    <dialog ref={dialog} className="hc-model-dialog" aria-labelledby="hc-model-title" onCancel={event => { event.preventDefault(); if (!busy) setOpen(false) }}
-      onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-      <div className="hc-model-heading"><h2 id="hc-model-title">设置</h2><button type="button" aria-label="关闭设置" disabled={busy} onClick={() => setOpen(false)}>关闭</button></div>
-      <p className="hc-model-help">自行添加服务和模型。密钥只保存在本机；保存设置不会调用生图接口。</p>
-      {loading ? <p role="status">加载中…</p> : loadError ? <div role="alert"><p>{loadError}</p><button onClick={reload}>重新加载</button></div> : editing ?
-        <ModelForm key={editing.id || 'new'} model={editing.id ? editing : null} onSaved={() => setEditing(null)} onCancel={() => setEditing(null)} /> : <>
-          <h3>生图模型</h3>
-          <ModelPicker disabled={busy} />
-          {!models.length && <p>尚未添加模型。添加后即可在 AI 图片框中生成或使用参考图改图。</p>}
-          <ul className="hc-model-list">{models.map(model => <li key={model.id}>
-            <div><strong>{model.name}</strong><span>{model.model}</span><small>{model.baseUrl}</small></div>
-            <div className="hc-model-actions"><button disabled={busy} aria-label={`编辑模型 ${model.name}`} onClick={() => setEditing(model)}>编辑</button><button disabled={busy} aria-label={`删除模型 ${model.name}`} onClick={() => remove(model)}>删除</button></div>
-          </li>)}</ul>
-          <button className="hc-primary" disabled={busy} onClick={() => setEditing({})}>添加模型</button>
-        </>}
-      {error && <p className="hc-model-error" role="alert">{error}</p>}
-      {!editing && results.length > 0 && <section className="hc-model-results"><h3>最近生成</h3><p>结果已保存在本机。未放入画板的图片可以从这里找回。</p><ul>{results.map(image => <li key={image.src}><a href={image.src} target="_blank" rel="noreferrer"><img src={image.src} alt="已生成的图片" /></a><button disabled={busy} onClick={() => insert(image)}>放入当前页</button><a href={image.src} download>下载</a></li>)}</ul></section>}
-    </dialog>
+    {typeof document !== 'undefined' && createPortal(content, document.body)}
   </>
 }
