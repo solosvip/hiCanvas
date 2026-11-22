@@ -8,7 +8,8 @@
 .hc-model-dialog h3 { font-size: var(--text-body-md); }
 .hc-model-dialog p, .hc-model-help { color: var(--color-secondary); }
 .hc-model-heading, .hc-model-section-heading, .hc-model-row, .hc-model-actions { display: flex; align-items: center; gap: var(--spacing-sm); }
-.hc-model-heading { justify-content: space-between; margin-bottom: var(--spacing-md); cursor: grab; user-select: none; }
+.hc-model-heading { align-items: flex-start; justify-content: space-between; margin-bottom: var(--spacing-md); cursor: grab; user-select: none; }
+.hc-model-heading .hc-model-eyebrow { display: flex; align-items: center; min-height: calc(var(--spacing-md) + var(--spacing-sm)); }
 .hc-model-heading:active { cursor: grabbing; }
 .hc-model-eyebrow { display: block; color: var(--color-secondary); font-size: var(--text-label-md); font-weight: var(--font-weight-label-md); text-transform: uppercase; }
 .hc-model-section-heading { justify-content: space-between; margin-top: var(--spacing-xl); }
