@@ -1,4 +1,5 @@
 import { canvasApiUrl, currentConversationId } from './conversations/client.js'
+import { canvasRequestError } from './conversations/canvasLifecycle.js'
 import { reportCowartStartup } from './widgetStartup.js'
 
 const CANVAS_ENDPOINT = '/api/canvas'
@@ -142,11 +143,7 @@ async function callCowartServerTool(name, args = {}, options = {}) {
 async function fetchJson(url, options = {}) {
   const response = await window.fetch(canvasApiUrl(url), { ...options, headers: { 'x-hicanvas-client': '1', ...options.headers } })
   const result = await response.json()
-  if (!response.ok) {
-    const error = new Error(result.error || `本机请求失败：${response.status}`)
-    error.storage = result.storage
-    throw error
-  }
+  if (!response.ok) throw canvasRequestError(result, response.status)
   return result
 }
 

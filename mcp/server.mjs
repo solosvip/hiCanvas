@@ -50,6 +50,7 @@ export function createHiCanvasMcp({ baseUrl = 'http://127.0.0.1:43218', bindingK
     return pending
   })
   tool('list_conversations', '列出已保存的画板；不会创建画板或改变当前绑定。', {}, () => api('/api/conversations'), { readOnlyHint: true })
+  tool('delete_conversation', '仅在用户明确要求删除画板时调用。先读取最新 revision 并确认目标；删除后旧 ID 与绑定会报已删除，不会自动创建替代画板。本机资料保留，未发出生图停止，已发出请求不重试。', { conversationId, expectedRevision: revision }, ({ conversationId: id, ...body }) => api(`/api/conversations/${encodeURIComponent(id)}`, 'DELETE', body), { destructiveHint: true })
   tool('get_canvas', '读取指定画板的完整 tldraw 快照、版本、内容、选择项和视角。生成修改前先读，记录 ID 可用于精确修改。', { conversationId }, async ({ conversationId: id }) => {
     const [canvas, selection, view] = await Promise.all([api(canvasPath(id)), api(`/api/selection?conversation=${encodeURIComponent(id)}`), api(`/api/view-state?conversation=${encodeURIComponent(id)}`)])
     return { ...canvas, ...selection, ...view }

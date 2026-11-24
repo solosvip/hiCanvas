@@ -48,6 +48,11 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       }
       const rename = path.match(/^\/api\/conversations\/([^/]+)$/)
       if (rename && req.method === 'PUT') return sendJson(res, 200, { conversation: await workspace.rename(rename[1], (await jsonBody(req)).title) })
+      if (rename && req.method === 'DELETE') {
+        const result = await workspace.remove(rename[1], (await jsonBody(req)).expectedRevision)
+        events.deleted(result)
+        return sendJson(res, 200, result)
+      }
       const id = url.searchParams.get('conversation')
       await workspace.requireConversation(id)
       if (path === '/api/exports/file' && req.method === 'POST') return sendJson(res, 200, await saveExport(join(workspace.root, 'conversations', id), await jsonBody(req)))

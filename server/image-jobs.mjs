@@ -43,14 +43,17 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
   async function execute(job, item) {
     try {
       await mark(job, item, 'running')
+      const assetsDir = await workspace.assetsDir(job.conversationId)
       const references = []
       for (const src of item.references || []) {
         if (src.startsWith('data:')) { decodeReference(src); references.push(src) }
         else { const asset = await media.readAsset(job.conversationId, src); references.push(`data:${asset.mimeType};base64,${asset.bytes.toString('base64')}`) }
       }
       // 只调用一次供应商。文件和状态先落盘，再尝试写回目标框。
-      const output = await generate(await models.get(job.modelId), { prompt: item.prompt + (item.aspectRatio ? `\n输出画面比例：${item.aspectRatio}。每次只生成一张独立图片。` : ''), references, size: item.size, aspectRatio: item.aspectRatio })
-      const results = createImageResults(await workspace.assetsDir(job.conversationId), `/c/${job.conversationId}/assets/`)
+      const model = await models.get(job.modelId)
+      await workspace.requireConversation(job.conversationId)
+      const output = await generate(model, { prompt: item.prompt + (item.aspectRatio ? `\n输出画面比例：${item.aspectRatio}。每次只生成一张独立图片。` : ''), references, size: item.size, aspectRatio: item.aspectRatio })
+      const results = createImageResults(assetsDir, `/c/${job.conversationId}/assets/`)
       item.images = await results.save(output)
       await persist(job)
       let inserted = true
@@ -70,7 +73,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
       item.inserted = inserted
       await mark(job, item, inserted ? 'succeeded' : 'saved', inserted ? undefined : '原目标框已删除或替换；图片已保存在本画板的图片结果中。')
     } catch (error) {
-      await mark(job, item, item.images?.length ? 'saved' : 'failed', error.status ? error.message : '生成或写回失败；未自动重新调用生图，请先检查结果与服务商记录。')
+      await mark(job, item, item.images?.length ? 'saved' : error.status === 410 ? 'cancelled' : 'failed', error.status ? error.message : '生成或写回失败；未自动重新调用生图，请先检查结果与服务商记录。')
     }
   }
   function pump() {

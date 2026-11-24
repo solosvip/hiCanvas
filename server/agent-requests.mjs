@@ -32,14 +32,13 @@ export function createAgentRequests(workspace, { prepare = prepareRexReceiver, d
     })
   }
   async function update(id, fn, readOnly = false) {
-    await workspace.requireConversation(id)
-    return withFileLock(`${file(id)}.lock`, async () => {
+    return workspace.withActiveConversation(id, () => withFileLock(`${file(id)}.lock`, async () => {
       let state
       try { state = await readJsonFile(file(id)) } catch (e) { if (e.code !== 'ENOENT') throw e; state = { receiver: null, requests: [] } }
       const result = await fn(state)
       if (!readOnly) await writeJsonAtomic(file(id), state)
       return result
-    })
+    }))
   }
   async function notify(id, request, force = false) {
     const attemptId = randomUUID()

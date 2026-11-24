@@ -50,7 +50,7 @@ async function api(path, method = 'GET', body) {
 }
 try {
   await connect() // 服务必须从签名 .app 内的 app.asar 冷启动，不能借用源码或全局 Node。
-  assert.equal((await client.listTools()).tools.length, 16)
+  assert.equal((await client.listTools()).tools.length, 17)
   assert.equal((await api('/api/health')).workspace, workspaceIdentity(canvasDir))
   const page = await fetch(baseUrl)
   const html = await page.text()
@@ -91,7 +91,10 @@ try {
   assert.ok(Object.values(canvas.snapshot.store).some(r => r.meta?.cowartHtmlDraft))
   const saved = JSON.parse(await readFile(join(canvasDir, 'conversations', id, 'state.json'), 'utf8'))
   assert.ok(JSON.stringify(saved).includes('shape:desktop'))
-  console.log('通过：应用内运行环境冷启服务、16 个 MCP 工具、资源加载、对话保存与重连、4 张占位/2×2 排版、AI 离线继续生成、HTML 写回；真实模型调用 0 次。')
+  await call('delete_conversation', { conversationId: id, expectedRevision: canvas.revision })
+  assert.ok(!(await call('list_conversations', {})).conversations.some(c => c.id === id))
+  assert.deepEqual(JSON.parse(await readFile(join(canvasDir, 'conversations', id, 'state.json'), 'utf8')), saved)
+  console.log('通过：应用内运行环境冷启服务、17 个 MCP 工具、资源加载、画板保存与重连、4 张占位/2×2 排版、AI 离线继续生成、HTML 写回、删除画板并保留原文件；真实模型调用 0 次。')
 } finally {
   release()
   await client?.close()

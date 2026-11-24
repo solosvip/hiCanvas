@@ -31,6 +31,7 @@ export function createConversations(root = defaultRoot) {
     validId(id)
     const conversation = (await index()).conversations.find(c => c.id === id)
     if (!conversation) throw httpError('找不到这个画板，请检查画板 ID；未创建替代画板。', 404)
+    if (conversation.deletedAt) throw httpError('这个画板已删除，请选择其他画板或明确新建。', 410, { storage: 'conversation-deleted' })
     return conversation
   }
   function title(value) {
@@ -52,6 +53,7 @@ export function createConversations(root = defaultRoot) {
         validId(id)
         conversation = data.conversations.find(c => c.id === id)
         if (!conversation) throw httpError('找不到指定画板，未创建替代画板。', 404)
+        if (conversation.deletedAt) throw httpError('这个画板已删除，请选择其他画板或明确新建。', 410, { storage: 'conversation-deleted' })
       } else {
         conversation = { id: randomUUID(), title: title(name), createdAt: now() }
         data.conversations.push(conversation)
@@ -131,12 +133,13 @@ export function createConversations(root = defaultRoot) {
     return { ...state, conversationId: id, storage: 'conversation' }
   }
   async function read(id) {
-    await requireConversation(id)
-    return lock(id, () => readState(id))
+    validId(id)
+    return lock(id, async () => { await requireConversation(id); return readState(id) })
   }
   async function mutate(id, expectedRevision, transform) {
-    await requireConversation(id)
+    validId(id)
     return lock(id, async () => {
+      await requireConversation(id)
       const current = await readState(id)
       if (typeof expectedRevision !== 'string' || !expectedRevision) throw httpError('写入前必须读取画板并提供版本。', 428)
       if (expectedRevision !== current.revision) throw httpError('画板已被其他操作更新。请读取最新版本后合并修改。', 409, { storage: 'revision-conflict', revision: current.revision })
@@ -154,7 +157,7 @@ export function createConversations(root = defaultRoot) {
     const normalize = async data => type === 'view' ? restoreSingleCanvasView(data, (await read(id)).singleCanvasMigration) : data
     if (value !== undefined) {
       const normalized = await normalize(value)
-      return lock(id, async () => { await writeJsonAtomic(path, normalized); return normalized })
+      return lock(id, async () => { await requireConversation(id); await writeJsonAtomic(path, normalized); return normalized })
     }
     try { return await normalize(await readJsonFile(path)) } catch (error) { if (error.code !== 'ENOENT') throw error }
     if (id === 'legacy') {
@@ -165,14 +168,37 @@ export function createConversations(root = defaultRoot) {
   }
   return {
     root, open, requireConversation, read, mutate, sidecar,
+    withActiveConversation(id, operation) {
+      validId(id)
+      return lock(`lifecycle-${id}`, async () => { await requireConversation(id); return operation() })
+    },
     storageFor: async id => { await requireConversation(id); return storageFor(id) },
     assetsDir: async id => { const s = await requireConversation(id); return join(s.id === 'legacy' ? root : join(directory, id), 'assets') },
-    async list() { return (await index()).conversations.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)) },
+    async list() { return (await index()).conversations.filter(c => !c.deletedAt).toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)) },
+    async remove(id, expectedRevision) {
+      validId(id)
+      if (!expectedRevision) throw httpError('删除前必须读取画板并提供版本。', 428)
+      // 与保存共用画板锁；索引仅追加删除标记，原文件与旧绑定保留，避免迟到写入或重连复活。
+      return lock(`lifecycle-${id}`, () => lock(id, () => lock('index', async () => {
+        const data = await index()
+        const conversation = data.conversations.find(c => c.id === id)
+        if (!conversation) throw httpError('找不到这个画板。', 404)
+        if (!conversation.deletedAt) {
+          const current = await readState(id)
+          if (expectedRevision !== current.revision) throw httpError('画板已更新，请检查最新内容后再删除。', 409, { storage: 'revision-conflict', revision: current.revision })
+          conversation.deletedAt = now()
+          await writeJsonAtomic(indexFile, data)
+        }
+        const next = data.conversations.filter(c => !c.deletedAt).toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+        return { ok: true, conversationId: id, nextConversationId: next?.id || null }
+      })))
+    },
     async rename(id, name) {
       return lock('index', async () => {
         const data = await index()
         const conversation = data.conversations.find(c => c.id === validId(id))
         if (!conversation) throw httpError('找不到这个画板。', 404)
+        if (conversation.deletedAt) throw httpError('这个画板已删除。', 410, { storage: 'conversation-deleted' })
         conversation.title = title(name)
         await writeJsonAtomic(indexFile, data)
         return conversation
