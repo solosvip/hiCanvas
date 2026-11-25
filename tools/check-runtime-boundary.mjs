@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url))
 const dataPackages = /^@tldraw\/(?:store|tlschema|state|utils|validate)(?:\/|$)/
+// 编辑层只能经纯几何入口进入渲染层；入口带进来的渲染层文件不许是画面入口或组件文件，
+// React 与 DOM 另由下面的依赖和宿主检查拦住。新增纯几何小文件不用改这里。
+const geometryEntry = 'renderer/geometry.js'
+const drawingInput = path => /^renderer\/(?:index|mount|shapes)\.js$/.test(path) || /^renderer\/.*\.[jt]sx$/.test(path)
+export const pureGeometryInput = path => /^renderer\/[^/]+\.js$/.test(path) && !drawingInput(path)
+export const allowedEngineInput = path => /^(?:engine|model|node_modules)\//.test(path) || pureGeometryInput(path)
 const hostNames = new Set(['window', 'document', 'navigator', 'self', 'location', 'history', 'screen', 'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'localStorage', 'sessionStorage', 'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'Element', 'Node', 'Text', 'Image', 'Audio', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver', 'customElements'])
 const forbiddenName = name => hostNames.has(name) || /^(?:DOM|HTML|SVG|CanvasRenderingContext|CanvasGradient|CanvasPattern|WebGL|CSS)/.test(name || '')
 
@@ -36,16 +42,20 @@ export async function checkRuntimeBoundary({ root = projectRoot } = {}) {
         const specifier = args.path
         if (specifier.startsWith('node:') || builtinModules.includes(specifier)) throw new Error(`运行时不能引用 Node：${specifier}`)
         if (/^(?:react|react-dom|tldraw|@tldraw\/)/.test(specifier) && !dataPackages.test(specifier)) throw new Error(`运行时不允许的依赖：${specifier}`)
-        if (args.kind === 'entry-point' || !/^(?:engine|model)\//.test(relative(root, args.importer))) return
+        const importer = relative(root, args.importer)
+        if (args.kind === 'entry-point' || !/^(?:engine|model)\//.test(importer) && !pureGeometryInput(importer)) return
         if (specifier.startsWith('.') || specifier.startsWith('/')) {
           const target = relative(root, resolve(dirname(args.importer), specifier))
-          if (!target.startsWith('engine/') && target !== 'model/index.js' && !target.startsWith('model/')) throw new Error(`运行时越界引用：${target}`)
+          const inside = /^(?:engine|model)\//.test(target)
+          const allowed = /^(?:engine|model)\//.test(importer) ? inside || importer.startsWith('engine/') && target === geometryEntry : pureGeometryInput(target) || target.startsWith('model/')
+          if (!allowed) throw new Error(`运行时越界引用：${target}`)
         } else if (!dataPackages.test(specifier)) throw new Error(`运行时不允许的依赖：${specifier}`)
       })
       // 在加载前拒绝，避免检查本身读取受限包的源码。
       builder.onLoad({ filter: /[/\\]node_modules[/\\](?:tldraw|@tldraw[/\\](?:editor|assets))[/\\]/ }, () => { throw new Error('拒绝加载受限包源码。') })
       builder.onLoad({ filter: /\.[cm]?jsx?$/ }, async args => {
-        if (!/^(?:engine|model)\//.test(relative(root, args.path))) return
+        const path = relative(root, args.path)
+        if (!/^(?:engine|model)\//.test(path) && !pureGeometryInput(path)) return
         const contents = await readFile(args.path, 'utf8')
         checkHostAccess(contents, relative(root, args.path))
         return { contents, loader: args.path.endsWith('.jsx') ? 'jsx' : 'js' }
@@ -53,7 +63,7 @@ export async function checkRuntimeBoundary({ root = projectRoot } = {}) {
     } }],
   })
   const inputs = Object.keys(result.metafile.inputs)
-  if (inputs.some(path => !/^(?:engine|model|node_modules)\//.test(path))) throw new Error('运行时依赖图越界。')
+  if (inputs.some(path => !allowedEngineInput(path))) throw new Error('运行时依赖图越界。')
   if (Object.values(result.metafile.outputs).some(output => output.imports.some(item => item.external))) throw new Error('运行时不能用 external 绕过边界。')
   return inputs
 }

@@ -4,17 +4,32 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
+import { allowedEngineInput } from '../tools/check-runtime-boundary.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 
-test('编辑层可独立在浏览器打包，只依赖模型与 MIT 数据层，无 Node 或界面依赖', async () => {
+function assertEngineBoundary(inputs) {
+  assert.deepEqual(inputs.filter(path => !allowedEngineInput(path)), [])
+  assert.deepEqual(inputs.filter(path => /(?:^|\/)node_modules\/(?:tldraw|@tldraw\/(?!store\/|tlschema\/|utils\/|state\/|validate\/)[^/]+|react|react-dom)\//.test(path) || /^renderer\/(?:index|mount|shapes)\.js$/.test(path)), [])
+}
+
+test('编辑层可独立在浏览器打包，只依赖模型、纯几何与 MIT 数据层，无 Node 或界面依赖', async () => {
   // browser 目标且不声明 external：引入 Node 内置模块会直接打包失败。
   const result = await build({ absWorkingDir: root, entryPoints: ['engine/index.js'], bundle: true, write: false, metafile: true, platform: 'browser', format: 'esm', logLevel: 'silent' })
   const inputs = Object.keys(result.metafile.inputs)
   assert.ok(inputs.includes('model/index.js'))
-  assert.deepEqual(inputs.filter(path => !/^(?:engine|model|node_modules)\//.test(path)), [])
-  assert.deepEqual(inputs.filter(path => /(?:^|\/)node_modules\/(?:tldraw|@tldraw\/(?!store\/|tlschema\/|utils\/|state\/|validate\/)[^/]+|react|react-dom)\//.test(path)), [])
+  assert.ok(inputs.includes('renderer/geometry.js'))
+  assertEngineBoundary(inputs)
   assert.deepEqual(Object.values(result.metafile.outputs).flatMap(output => output.imports).filter(item => item.external), [])
+})
+
+test('编辑层边界放行纯几何，但引入挂载入口、渲染组件或 React 会报红', async () => {
+  for (const entry of ['renderer/geometry.js', 'renderer/index.js', 'renderer/mount.js', 'renderer/shapes.js', 'react']) {
+    const result = await build({ absWorkingDir: root, stdin: { contents: `export * from ${JSON.stringify(entry === 'react' ? entry : './' + entry)}`, resolveDir: root }, bundle: true, write: false, metafile: true, platform: 'browser', format: 'esm', logLevel: 'silent' })
+    const check = () => assertEngineBoundary(Object.keys(result.metafile.inputs).filter(path => path !== '<stdin>'))
+    if (entry === 'renderer/geometry.js') assert.doesNotThrow(check)
+    else assert.throws(check, assert.AssertionError, entry)
+  }
 })
 
 test('共享数据模型可独立打包，不依赖界面、渲染或服务端', async () => {
