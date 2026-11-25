@@ -7,7 +7,8 @@ import { createConversations, conversations } from './conversations.mjs'
 import { getCanvasEvents } from './events.mjs'
 import { httpError } from './file-lock.mjs'
 import { requireLocalRequest, requireLocalRead, jsonBody } from './local-request.mjs'
-import { applyCanvasOperations } from './canvas-operations.mjs'
+import { executeCanvasCommands, CanvasEditError } from '../engine/index.js'
+import { isEqual } from '@tldraw/utils'
 import { createCanvasMedia } from './canvas-media.mjs'
 import { createAgentRequests } from './agent-requests.mjs'
 import { saveExport } from './exports.mjs'
@@ -75,7 +76,20 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       if (path === '/api/canvas' && req.method === 'GET') return sendJson(res, 200, await workspace.read(id))
       if ((path === '/api/canvas' && req.method === 'PUT') || (path === '/api/canvas/operations' && req.method === 'POST')) {
         const body = await jsonBody(req)
-        const result = await workspace.mutate(id, body.expectedRevision, snapshot => path === '/api/canvas' ? body.snapshot : applyCanvasOperations(snapshot, body.operations))
+        let edit
+        const result = await workspace.mutate(id, body.expectedRevision, snapshot => {
+          if (path === '/api/canvas') return body.snapshot
+          edit = executeCanvasCommands(snapshot, body.operations)
+          return edit.snapshot
+        })
+        if (edit) {
+          // 宿主会把本机资源地址限定到画板；回执中的新值必须与实际保存值一致。
+          result.changes = {
+            added: Object.fromEntries(Object.keys(edit.changes.added).map(key => [key, result.snapshot.store[key]])),
+            updated: Object.fromEntries(Object.entries(edit.changes.updated).filter(([key, [before]]) => !isEqual(before, result.snapshot.store[key])).map(([key, [before]]) => [key, [before, result.snapshot.store[key]]])),
+            removed: edit.changes.removed
+          }
+        }
         events.broadcast(result)
         return sendJson(res, 200, result)
       }
@@ -97,7 +111,8 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       }
       throw httpError('接口或方法不存在。', 405)
     } catch (error) {
-      sendJson(res, error.status || 500, { error: error.status ? error.message : '本机资料无法完整读取或保存；已保留原文件，请检查资料目录。', storage: error.storage, revision: error.revision })
+      const status = error instanceof CanvasEditError ? (error.code === 'conflict' ? 409 : 400) : error.status
+      sendJson(res, status || 500, { error: status ? error.message : '本机资料无法完整读取或保存；已保留原文件，请检查资料目录。', storage: error.storage, revision: error.revision })
     }
   }
 }
