@@ -1,5 +1,4 @@
-import { sanitizeCanvasSnapshot } from './canvas-snapshot.mjs'
-import { isCanvasSnapshot } from './protocol.mjs'
+import { isCanvasSnapshot, sanitizeCanvasSnapshot } from '../model/index.js'
 // Cowart 38bdafef 的本地存储实现；MIT，© 2026 Twox。
 import { randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'

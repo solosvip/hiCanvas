@@ -1,7 +1,7 @@
 import { Store } from '@tldraw/store'
 import { createTLSchema } from '@tldraw/tlschema'
 
-// 服务端仅依赖 MIT 数据层；默认 schema、迁移和完整性检查与旧快照一致。
+// 界面与服务端共用的快照入口；只依赖 MIT 数据层，保留旧格式和校验行为。
 export function createCanvasStore() {
   return new Store({ schema: createTLSchema(), props: { defaultName: '' } })
 }
@@ -13,7 +13,7 @@ export function createCanvasSnapshot(snapshot) {
   return store.getStoreSnapshot()
 }
 
-function isCanvasSnapshot(value) {
+export function isCanvasSnapshot(value) {
   return value && typeof value === 'object' && value.store && value.schema
 }
 
@@ -21,7 +21,7 @@ function firstErrorLine(error) {
   return error instanceof Error ? error.message.split('\n')[0] : String(error).split('\n')[0]
 }
 
-function describeSkippedRecord(record, reason) {
+export function describeSkippedRecord(record, reason) {
   return {
     id: typeof record?.id === 'string' ? record.id : '(missing id)',
     typeName: typeof record?.typeName === 'string' ? record.typeName : '(missing typeName)',

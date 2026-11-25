@@ -6,6 +6,13 @@ import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 
+test('共享数据模型可独立打包，不依赖界面、渲染或服务端', async () => {
+  const result = await build({ absWorkingDir: root, entryPoints: ['model/index.js'], bundle: true, write: false, metafile: true, platform: 'browser', format: 'esm', logLevel: 'silent' })
+  const inputs = Object.keys(result.metafile.inputs)
+  assert.ok(inputs.some(path => path.includes('node_modules/@tldraw/tlschema/')))
+  assert.deepEqual(inputs.filter(path => /^(?:src|server)\//.test(path) || /(?:^|\/)node_modules\/(?:tldraw|@tldraw\/(?:editor|assets|driver)|react|react-dom)\//.test(path)), [])
+})
+
 test('服务端、MCP 与桌面实际打包的依赖图不含受限包或界面模块', async () => {
   for (const entry of ['bin/hicanvas-service.mjs', 'bin/hicanvas-mcp.mjs', 'desktop/main.mjs']) {
     const result = await build({ absWorkingDir: root, entryPoints: [entry], bundle: true, write: false, metafile: true, platform: 'node', format: 'esm', target: 'node24', external: ['electron'], logLevel: 'silent' })

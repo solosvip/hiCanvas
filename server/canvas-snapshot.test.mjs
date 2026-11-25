@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './test-helpers.mjs'
 import { createConversations } from './conversations.mjs'
-import { createCanvasSnapshot, sanitizeCanvasSnapshot } from './canvas-snapshot.mjs'
+import { createCanvasSnapshot, sanitizeCanvasSnapshot } from '../model/index.js'
 
 // 由改动前锁定的编辑器生成并校验；内容全为合成数据，不读取真实画板。
 const legacy = JSON.parse(await readFile(new URL('./fixtures/legacy-canvas.json', import.meta.url), 'utf8'))

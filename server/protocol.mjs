@@ -20,10 +20,6 @@ function readRequestBody(req) {
   })
 }
 
-function isCanvasSnapshot(value) {
-  return value && typeof value === 'object' && value.store && value.schema
-}
-
 function isSelectionState(value) {
   return value && typeof value === 'object' && Array.isArray(value.selectedShapes)
 }
@@ -45,4 +41,4 @@ function isViewState(value) {
     isFiniteNumber(value.camera.z)
   )
 }
-export { sendJson, readRequestBody, isCanvasSnapshot, isSelectionState, isViewState }
+export { sendJson, readRequestBody, isSelectionState, isViewState }

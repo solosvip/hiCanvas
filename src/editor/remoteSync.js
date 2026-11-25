@@ -1,5 +1,5 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
-import { describeSkippedRecord, isCanvasSnapshot, sanitizeCanvasSnapshotForTldraw } from "../canvasSnapshot.js"
+import { describeSkippedRecord, isCanvasSnapshot, sanitizeCanvasSnapshot } from "../../model/index.js"
 function recordsAreEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right)
 }
@@ -22,7 +22,7 @@ function storeChangedSinceSnapshot(editor, baselineStore) {
 }
 function applyRemoteCanvasSnapshot(editor, snapshot, { preserveLocalChanges = false } = {}) {
   if (!isCanvasSnapshot(snapshot)) return { changedRecords: 0, skippedRecords: [] }
-  const sanitized = sanitizeCanvasSnapshotForTldraw(snapshot)
+  const sanitized = sanitizeCanvasSnapshot(snapshot)
   if (!sanitized.snapshot || sanitized.skippedRecords.length) return { changedRecords: 0, skippedRecords: sanitized.skippedRecords }
   const recordsToPut = Object.values(sanitized.snapshot.store).filter((record) => {
     if (preserveLocalChanges) return false

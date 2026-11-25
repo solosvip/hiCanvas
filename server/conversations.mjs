@@ -1,4 +1,4 @@
-import { createCanvasSnapshot } from './canvas-snapshot.mjs'
+import { createCanvasSnapshot } from '../model/index.js'
 import { documentRecordTypes } from './canvas-documents.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
