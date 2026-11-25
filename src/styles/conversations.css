@@ -1,12 +1,16 @@
 .hc-conversation-trigger { display: flex; align-items: center; gap: var(--spacing-sm); max-width: calc(var(--spacing-xl) * 9); pointer-events: auto; }
 .hc-conversation-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hc-conversation-trigger svg { flex: none; }
-.hc-conversation-dialog { position: fixed; inset: var(--spacing-none); margin: auto; width: min(calc(var(--spacing-xl) * 20), calc(100% - var(--spacing-xl) * 2)); max-height: calc(100% - var(--spacing-xl) * 2); }
-.hc-conversation-dialog::backdrop { background: var(--color-scrim); }
-.hc-conversation-dialog .hc-model-heading { cursor: default; }
-.hc-conversation-list { list-style: none; padding: var(--spacing-none); margin: var(--spacing-xl) var(--spacing-none); max-height: calc(var(--spacing-xl) * 12); overflow: auto; }
+.hc-model-dialog.hc-board-popover { position: fixed; inset: auto; margin: var(--spacing-none); width: min(calc(var(--spacing-xl) * 14), calc(100% - var(--spacing-sm) * 2)); max-height: calc(100dvh - var(--spacing-lg)); padding: var(--spacing-sm); overflow: auto; border-radius: var(--radius-lg); }
+.hc-board-popover::backdrop { background: transparent; }
+.hc-board-popover .hc-model-heading { cursor: default; margin: var(--spacing-sm); }
+.hc-board-popover h2 { font-size: var(--text-body-md); }
+.hc-board-popover > p, .hc-board-popover > form { margin: var(--spacing-md); }
+.hc-board-popover > .hc-model-actions { margin: var(--spacing-sm); }
+.hc-board-popover .hc-conversation-add { width: 100%; justify-content: flex-start; background: transparent; color: var(--color-on-surface); border-color: transparent; border-top-color: var(--color-outline); border-radius: var(--radius-xs); }
+.hc-conversation-list { list-style: none; padding: var(--spacing-none); margin: var(--spacing-none); max-height: calc(var(--spacing-xl) * 12); overflow: auto; }
 .hc-conversation-list li { display: flex; align-items: center; margin-bottom: var(--spacing-xs); border-radius: var(--radius-md); }
-.hc-conversation-list .hc-board-open { display: flex; flex: auto; min-width: var(--spacing-none); justify-content: space-between; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md); border-color: transparent; text-align: left; background: transparent; }
+.hc-conversation-list .hc-board-open { display: flex; flex: auto; min-width: var(--spacing-none); justify-content: space-between; align-items: center; gap: var(--spacing-md); padding: var(--spacing-sm); border-color: transparent; text-align: left; background: transparent; }
 .hc-board-current { background: var(--color-neutral); }
 .hc-model-dialog .hc-board-more { display: grid; flex: none; place-items: center; width: calc(var(--spacing-lg) * 2); height: calc(var(--spacing-lg) * 2); margin-right: var(--spacing-sm); padding: var(--spacing-none); border-color: transparent; background: transparent; }
 .hc-board-menu { position: fixed; inset: auto; margin: var(--spacing-none); padding: var(--spacing-xs); border: thin solid var(--color-outline); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--spacing-none) var(--spacing-sm) var(--spacing-lg) var(--color-scrim); min-width: calc(var(--spacing-xl) * 5); }
@@ -22,8 +26,8 @@
 .hc-board-welcome h1 { font-size: calc(var(--text-body-md) + var(--spacing-md)); margin-block: var(--spacing-lg) var(--spacing-sm); }
 .hc-board-welcome .hc-model-actions { margin-top: var(--spacing-xl); }
 .hc-board-home-icon { width: calc(var(--spacing-xl) * 2); height: calc(var(--spacing-xl) * 2); color: var(--color-secondary); }
-.hc-conversation-list strong, .hc-conversation-list small { display: block; overflow-wrap: anywhere; }
-.hc-conversation-list small { margin-top: var(--spacing-xs); color: var(--color-secondary); font-size: var(--text-label-md); }
+.hc-conversation-list .hc-board-open span { min-width: var(--spacing-none); }
+.hc-conversation-list strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-weight-label-md); }
 .hc-conversation-add { display: inline-flex; align-items: center; gap: var(--spacing-xs); }
 .hc-conversation-form { display: grid; gap: var(--spacing-md); }
 .hc-conversation-form input { width: 100%; }
