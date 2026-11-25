@@ -70,6 +70,15 @@ function checkSource(path, content) {
   }
 }
 
+function checkLicenseWatermark(path, content) {
+  if (path === 'tools/check.mjs' || /\.test\.[cm]?[jt]sx?$/.test(path)
+    || !/\.(?:[cm]?[jt]sx?|css|html)$/.test(path)) return
+  // 提示由 SDK 管理；应用不应再选择、替换或重新命名它。
+  if (/tl[-_]watermark/i.test(content) || /\b(?:Watermark\s*[:=]|TldrawLogo\b)/.test(content)) {
+    errors.push(`${path}：不得改写、隐藏或遮挡 tldraw 许可提示；保留 SDK 原始组件与样式。`)
+  }
+}
+
 const rootDocs = new Set(['README.md', 'AGENTS.md', 'CONTEXT.md', 'DESIGN.md', '版本管理.md', 'todolist.md', '架构说明.md'])
 function checkDocument(path) {
   if (!/\.md$/i.test(path)) return
@@ -127,10 +136,11 @@ try {
   for (const path of files) {
     checkDocument(path)
     checkPrivateFile(path)
-    if (/\.(?:[cm]?js|jsx|tsx?|py|sh|swift|rs|css|md|json|ya?ml)$/.test(path)) {
+    if (/\.(?:[cm]?js|jsx|tsx?|py|sh|swift|rs|css|html|md|json|ya?ml)$/.test(path)) {
       const content = read(path)
       contents.set(path, content)
       checkSource(path, content)
+      checkLicenseWatermark(path, content)
     }
   }
   checkRules(files, contents)

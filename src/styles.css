@@ -8,7 +8,3 @@
 
 @import './styles/conversations.css';
 @import './styles/generation-state.css';
-
-.cowart-canvas [data-testid='tl-watermark-unlicensed'] {
-  display: none !important;
-}
