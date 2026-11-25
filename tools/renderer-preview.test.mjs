@@ -3,7 +3,20 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createFixture } from './perf/fixture.mjs'
 import { createRendererFixture, startRendererPreview } from './renderer-preview.mjs'
+import { createGallery } from './renderer-preview/gallery.js'
 import { attachPreviewInput } from './renderer-preview/input.js'
+
+test('测量图鉴保留四档四线型、长边以及双色 lined-fill 和曲线对照样本', () => {
+  for (const mode of ['metrics', 'metrics-long', 'metrics-curves']) {
+    const fixture = createGallery(mode)
+    const shapes = Object.values(fixture.snapshot.store).filter(record => record.typeName === 'shape')
+    assert.equal(shapes.length, mode === 'metrics-curves' ? 10 : 22)
+    for (const size of ['s', 'm', 'l', 'xl']) for (const dash of mode === 'metrics-curves' ? ['dashed', 'dotted'] : ['solid', 'dashed', 'dotted', 'draw']) {
+      assert.equal(shapes.filter(record => record.props.size === size && record.props.dash === dash && record.props.fill === 'none').length >= 1, true)
+    }
+    if (mode === 'metrics-curves') assert.deepEqual(shapes.filter(record => record.props.fill === 'lined-fill').map(record => record.props.color), ['black', 'blue'])
+  }
+})
 
 test('中键拖动按缩放换算视角位移，松开停止；重置视角验证参数且不暴露可变引用', () => {
   const host = new EventTarget()

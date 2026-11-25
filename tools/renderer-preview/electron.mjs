@@ -54,11 +54,12 @@ async function run() {
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }
-    for (const gallery of ['shapes', 'styles']) {
+    const galleryCounts = { shapes: 20, styles: 82, metrics: 22, 'metrics-long': 22, 'metrics-curves': 10 }
+    for (const [gallery, count] of Object.entries(galleryCounts)) {
       window = createWindow(gallery)
       await window.loadURL(`${manifest.url}/?gallery=${gallery}`)
       const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
-      check(initial.renderedShapes === initial.count && initial.counts.geo === (gallery === 'shapes' ? 20 : 82), '图鉴元素未完整绘制')
+      check(initial.renderedShapes === initial.count && initial.counts.geo === count, '图鉴元素未完整绘制')
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
       const geometry = gallery === 'shapes' ? await evaluate("import('/tools/renderer-preview/geo-probe.js').then(module => module.runGeoProbe())") : undefined
       samples.push({ gallery, initial, geometry })

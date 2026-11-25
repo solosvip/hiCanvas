@@ -75,3 +75,14 @@ test('无填充粗描边的外缘参与查询，scale 同时影响线宽', () =>
   assert.equal(pointInShape(shape('rectangle', { fill: 'none', size: 'xl' }), { x: -2, y: 60 }), true)
   assert.equal(pointInShape(shape('rectangle', { fill: 'none', size: 'xl', scale: 2 }), { x: -5, y: 60 }), true)
 })
+
+test('四档描边外缘按运行中旧版的像素量测值命中，缩放后仍一致', () => {
+  // 2026-11-25: 402% screenshot, DPR 2; observed widths 2 / 3.5 / 5 / 10.
+  for (const [size, width] of [['s', 2], ['m', 3.5], ['l', 5], ['xl', 10]]) {
+    for (const scale of [1, 2]) {
+      const record = shape('rectangle', { fill: 'none', size, scale })
+      assert.equal(pointInShape(record, { x: -width * scale / 2 + 0.05, y: 60 }), true, `${size} × ${scale}: 描边内缘`)
+      assert.equal(pointInShape(record, { x: -width * scale / 2 - 0.05, y: 60 }), false, `${size} × ${scale}: 描边外缘`)
+    }
+  }
+})
