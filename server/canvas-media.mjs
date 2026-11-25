@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, basename } from 'node:path'
 import { decodeReference } from './image-provider.mjs'
 import { imageDimensions } from './image-dimensions.mjs'
-import { placeMedia, targetFor } from './media-placement.mjs'
+import { executeCanvasCommands, getMediaTarget } from '../engine/index.js'
 import { httpError } from './file-lock.mjs'
 
 export function createCanvasMedia(workspace) {
@@ -38,39 +38,39 @@ export function createCanvasMedia(workspace) {
   }
   async function insertHtml(id, args) {
     if (typeof args.htmlContent !== 'string' || !args.htmlContent.trim() || Buffer.byteLength(args.htmlContent) > 5 * 1024 * 1024) throw httpError('需要非空且小于 5 MB 的 HTML。')
-    let inserted, saved
-    const transform = async snapshot => {
-      const { anchor } = targetFor(snapshot, args)
-      saved = args.dryRun ? { assetUrl: '' } : await saveAsset(id, Buffer.from(args.htmlContent), (args.fileName || 'draft.html').replace(/(?:\.html?)?$/, '.html'))
-      const film = anchor?.meta?.cowartAiFilmHolder || anchor?.meta?.cowartFilm || args.shapeMeta?.cowartFilm
-      const meta = { cowartHtmlDraft: true, cowartHtmlDraftAssetUrl: saved.assetUrl, cowartHtmlDraftContentHash: createHash('sha256').update(args.htmlContent).digest('hex'), ...args.shapeMeta }
-      if (film) Object.assign(meta, { cowartFilm: true, cowartFilmDuration: anchor?.meta?.cowartFilmDuration ?? args.shapeMeta?.cowartFilmDuration ?? 15, cowartFilmStyle: anchor?.meta?.cowartFilmStyle ?? args.shapeMeta?.cowartFilmStyle ?? 'product-launch', cowartFilmMuted: anchor?.meta?.cowartFilmMuted ?? false })
-      inserted = placeMedia(snapshot, args, { type: 'embed', props: { w: 1024, h: 576, url: `data:text/html;base64,${Buffer.from(args.htmlContent).toString('base64')}` }, meta })
-      return snapshot
-    }
-    if (args.dryRun) {
-      const state = await workspace.read(id)
-      if (args.expectedRevision !== state.revision) throw httpError('画板版本已变化。', 409, { storage: 'revision-conflict', revision: state.revision })
-      await transform(structuredClone(state.snapshot))
-      return { ...inserted, dryRun: true, revision: state.revision }
-    }
-    const result = await workspace.mutate(id, args.expectedRevision, transform)
-    return { ...result, ...inserted, ...saved, contentHash: inserted.shapeRecord.meta.cowartHtmlDraftContentHash, snapshot: undefined }
+    const result = await commitMedia(id, args, async () => {
+      const saved = args.dryRun ? { assetUrl: '' } : await saveAsset(id, Buffer.from(args.htmlContent), (args.fileName || 'draft.html').replace(/(?:\.html?)?$/, '.html'))
+      const html = { assetUrl: saved.assetUrl, contentHash: createHash('sha256').update(args.htmlContent).digest('hex'), url: `data:text/html;base64,${Buffer.from(args.htmlContent).toString('base64')}` }
+      return { saved, command: { type: 'insert_html', args, html } }
+    })
+    return result.dryRun ? result : { ...result, contentHash: result.shapeRecord.meta.cowartHtmlDraftContentHash }
   }
   async function insertImage(id, args) {
     const image = args.dataUrl ? decodeReference(args.dataUrl) : await readAsset(id, args.assetUrl)
     if (!image.mimeType.startsWith('image/')) throw httpError('需要图片资源。')
     const { w, h } = imageDimensions(image.bytes)
-    let inserted, saved
-    const result = await workspace.mutate(id, args.expectedRevision, async snapshot => {
-      targetFor(snapshot, args)
-      saved = args.assetUrl ? { assetUrl: args.assetUrl } : await saveAsset(id, image.bytes, args.fileName || `image.${image.extension}`)
-      const assetId = `asset:${randomUUID()}`
-      snapshot.store[assetId] = { id: assetId, typeName: 'asset', type: 'image', props: { name: saved.assetUrl.split('/').at(-1), src: saved.assetUrl, w, h, mimeType: image.mimeType, isAnimated: false }, meta: {} }
-      const width = Math.min(w, 512)
-      inserted = placeMedia(snapshot, args, { type: 'image', props: { assetId, w: width, h: h / w * width }, meta: args.shapeMeta })
-      return snapshot
+    return commitMedia(id, args, async () => {
+      const saved = args.assetUrl ? { assetUrl: args.assetUrl } : args.dryRun ? { assetUrl: '' } : await saveAsset(id, image.bytes, args.fileName || `image.${image.extension}`)
+      return { saved, command: { type: 'insert_image', args, image: { src: saved.assetUrl, name: saved.assetUrl.split('/').at(-1), w, h, mimeType: image.mimeType } } }
     })
+  }
+  async function commitMedia(id, args, prepare) {
+    let inserted, saved
+    const transform = async snapshot => {
+      getMediaTarget(snapshot, args)
+      const prepared = await prepare()
+      saved = prepared.saved
+      const edit = executeCanvasCommands(snapshot, [prepared.command])
+      inserted = edit.results[0]
+      return edit.snapshot
+    }
+    if (args.dryRun) {
+      const state = await workspace.read(id)
+      if (args.expectedRevision !== state.revision) throw httpError('画板版本已变化。', 409, { storage: 'revision-conflict', revision: state.revision })
+      await transform(state.snapshot)
+      return { ...inserted, dryRun: true, revision: state.revision }
+    }
+    const result = await workspace.mutate(id, args.expectedRevision, transform)
     return { ...result, ...inserted, ...saved, snapshot: undefined }
   }
   return { saveAsset, readAsset, reference, insertHtml, insertImage }

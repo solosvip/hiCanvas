@@ -1,6 +1,6 @@
 import '../tools/test-sandbox.mjs'
 import test from 'node:test'
-import { placeMedia } from './media-placement.mjs'
+import { executeCanvasCommands } from '../engine/index.js'
 import { applyCanvasOperations } from './canvas-operations.mjs'
 import assert from 'node:assert/strict'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -99,7 +99,28 @@ test('占位框内大小写索引的背景和文字迁移后保持原先层次',
   ])
   snapshot.store['shape:background'].index = 'a1A'
   snapshot.store['shape:label'].index = 'a1a'
-  const result = placeMedia(snapshot, { draftShapeId: 'shape:holder' }, { type: 'embed', props: { w: 320, h: 180, url: 'data:text/html,<h1>合成</h1>' } })
-  assert.ok(snapshot.store[result.shapeId].index < snapshot.store['shape:background'].index)
-  assert.ok(snapshot.store['shape:background'].index < snapshot.store['shape:label'].index, '文字必须继续位于背景上方')
+  const edited = executeCanvasCommands(snapshot, [{ type: 'insert_html', args: { draftShapeId: 'shape:holder' }, html: { url: 'data:text/html,<h1>合成</h1>', assetUrl: '', contentHash: 'synthetic' } }])
+  const result = edited.results[0], records = edited.snapshot.store
+  assert.ok(records[result.shapeId].index < records['shape:background'].index)
+  assert.ok(records['shape:background'].index < records['shape:label'].index, '文字必须继续位于背景上方')
+})
+
+test('MCP 放图继续返回原字段，并可复用当前画板的已保存图片', async t => {
+  const { base } = await fixture(t)
+  const { call, id, revision } = await agent(t, base)
+  const first = await call('insert_cowart_image', { conversationId: id, expectedRevision: revision, dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', displayWidth: 200, displayHeight: 100 })
+  assert.equal(first.shapeRecord.id, first.shapeId)
+  assert.equal(first.shapeRecord.type, 'image')
+  assert.equal(first.pageId, first.shapeRecord.parentId)
+  assert.deepEqual(first.bounds, { x: 0, y: 0, w: 200, h: 100 })
+  assert.equal(first.replacedAiImageHolder, false)
+  assert.equal(first.replacedAiDraftHolder, false)
+  assert.equal(first.updatedExistingHtmlDraft, false)
+  assert.ok(first.assetUrl.startsWith(`/c/${id}/assets/`))
+  const second = await call('insert_cowart_image', { conversationId: id, expectedRevision: first.revision, assetUrl: first.assetUrl, anchorShapeId: first.shapeId })
+  assert.equal(second.assetUrl, first.assetUrl)
+  assert.deepEqual(second.bounds, { x: 240, y: 0, w: 200, h: 100 })
+  const canvas = await call('get_canvas', { conversationId: id })
+  assert.deepEqual(canvas.snapshot.store[second.shapeId], second.shapeRecord)
+  assert.equal(canvas.snapshot.store[second.shapeRecord.props.assetId].props.src, first.assetUrl)
 })

@@ -8,6 +8,7 @@ import { validateRelationships } from './relationships.js'
  * 在独立存储内执行一批普通数据命令；失败时丢弃存储，输入始终保持不变。
  * changes 按记录 ID 索引：added 为新记录，updated 为 [修改前, 修改后]，removed 为旧记录。
  * 快照和变化分别拷贝，调用者修改快照不会污染后续撤销所需的变化记录。
+ * results 与命令逐项对应；没有回执的命令返回 null。
  */
 export function executeCanvasCommands(snapshot, commands) {
   if (!Array.isArray(commands) || !commands.length || commands.length > 500) throw new CanvasEditError('每批需要 1 至 500 个操作。')
