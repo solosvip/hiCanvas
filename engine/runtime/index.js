@@ -11,11 +11,13 @@ import { MAX_REPLAYS, emptyChanges, changedIds, changesToCommands, netChanges, a
 /**
  * transport: read() → {snapshot, revision}; commit({expectedRevision,commands,actor})
  * → {revision, changes, results, snapshot?}; subscribe(onChange) → unsubscribe。
+ * 可选 undo / redo({expectedRevision,actor}) 与 commit 返回相同格式；调用时才检查支持。
+ * 会话应使用随机生成的标识。撤销历史由宿主保管，不在窗口中另存。
  * 广播只需通知有变化，运行时再读服务端；冲突抛 code='conflict'。
  * store 供渲染层只读挂载，所有本地写入都通过手势方法。
  */
 export async function createEditorSession({ transport, actor }) {
-  if (typeof actor !== 'string' || !transport || ['read', 'commit', 'subscribe'].some(key => typeof transport[key] !== 'function')) throw new CanvasEditError('运行时需要操作者和读取、提交、订阅接口。')
+  if (typeof actor !== 'string' || !actor.trim() || !transport || ['read', 'commit', 'subscribe'].some(key => typeof transport[key] !== 'function')) throw new CanvasEditError('运行时需要非空操作者和读取、提交、订阅接口。')
   const store = createCanvasStore()
   const state = atom('hiCanvas editor session', Object.freeze({ revision: null, isGestureActive: false, isSubmitting: false, lastError: null }))
   let confirmed
@@ -29,7 +31,7 @@ export async function createEditorSession({ transport, actor }) {
   function open() { if (closed) throw new CanvasEditError('编辑器运行时已关闭。', 'disposed') }
   function idle() {
     open()
-    if (state.get().isSubmitting) throw new CanvasEditError('手势正在提交。', 'busy')
+    if (state.get().isSubmitting) throw new CanvasEditError('编辑操作正在提交。', 'busy')
   }
   function schedule(fn) {
     const next = queue.then(() => { open(); return fn() })
@@ -144,6 +146,33 @@ export async function createEditorSession({ transport, actor }) {
     status({ isSubmitting: true })
     return schedule(submit)
   }
+  async function moveHistory(direction) {
+    idle()
+    if (gesture) throw new CanvasEditError('请先结束当前手势，再撤销或重做。', 'busy')
+    if (typeof transport[direction] !== 'function') {
+      const error = new CanvasEditError(`宿主不支持${direction === 'undo' ? '撤销' : '重做'}。`, 'unsupported')
+      status({ lastError: errorData(error) })
+      throw error
+    }
+    status({ isSubmitting: true })
+    return schedule(async () => {
+      try {
+        const reply = await transport[direction]({ expectedRevision: confirmed.revision, actor })
+        open()
+        const snapshot = reply.snapshot || executeCanvasTransaction(confirmed.snapshot, changesToCommands(reply.changes)).snapshot
+        receive({ snapshot, revision: reply.revision })
+        status({ lastError: null })
+        return structuredClone(reply)
+      } catch (error) {
+        if (!closed) {
+          // 回复可能丢在保存之后，版本冲突也须先刷新；均不自动重试，避免多撤一次。
+          try { await refreshNow() } catch { /* 保留最后确认内容，报告原错误。 */ }
+          if (!closed) status({ lastError: errorData(error) })
+        }
+        throw error
+      } finally { if (!closed) status({ isSubmitting: false }) }
+    })
+  }
   function dispose() {
     if (closed) return
     closed = true
@@ -155,5 +184,5 @@ export async function createEditorSession({ transport, actor }) {
     unsubscribe = transport.subscribe(() => { void refresh().catch(() => {}) })
     await refresh()
   } catch (error) { dispose(); throw error }
-  return { store, state, beginGesture, preview, cancelGesture, commitGesture, refresh, dispose }
+  return { store, state, beginGesture, preview, cancelGesture, commitGesture, undo: () => moveHistory('undo'), redo: () => moveHistory('redo'), refresh, dispose }
 }

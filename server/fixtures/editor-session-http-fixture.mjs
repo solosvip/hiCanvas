@@ -20,6 +20,8 @@ export function httpSessionTransport(base, conversationId) {
       commits.push({ expectedRevision, commands: structuredClone(commands), actor })
       return request('/api/canvas/operations', 'POST', { expectedRevision, operations: commands }, actor)
     },
+    undo: ({ expectedRevision, actor }) => request('/api/canvas/undo', 'POST', { expectedRevision, actor }),
+    redo: ({ expectedRevision, actor }) => request('/api/canvas/redo', 'POST', { expectedRevision, actor }),
     subscribe(onChange) {
       const controller = new AbortController()
       void (async () => {
