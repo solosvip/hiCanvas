@@ -1,6 +1,8 @@
 /* 从 DESIGN.md 经官方 CLI 导出；运行 npm run design:tokens 更新。 */
 :root {
   --color-primary: #2f80ed;
+  --color-overlay-brush-stroke: #0000001a;
+  --color-overlay-brush-fill: #0000000a;
   --color-secondary: #596170;
   --color-tertiary: #0ea5e9;
   --color-neutral: #f7f5ef;
@@ -22,6 +24,8 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
+  --spacing-overlay-selection-stroke: 2px;
+  --spacing-overlay-brush-stroke: 1px;
   --spacing-none: 0px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;

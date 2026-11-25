@@ -3,6 +3,8 @@ name: hiCanvas — Cowart baseline
 description: 沿用用户选定的 Cowart 画板；本次导入保持原有视觉与组件，不做风格合并或重新设计。
 colors:
   primary: "#2f80ed"
+  overlay-brush-stroke: "#0000001a"
+  overlay-brush-fill: "#0000000a"
   secondary: "#596170"
   tertiary: "#0ea5e9"
   neutral: "#f7f5ef"
@@ -23,6 +25,8 @@ typography:
     fontWeight: 500
     lineHeight: 1
 spacing:
+  overlay-selection-stroke: 2px
+  overlay-brush-stroke: 1px
   none: 0px
   xs: 4px
   sm: 8px
@@ -79,6 +83,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 保留 Cowart/tldraw 的圆角、图标与标注箭头。标注箭头的默认曲率、文本位置与连续标注交互保持不变。
 
 ## Components
+
+2026-11-25 对照运行中的旧版测量，沿用既有观感，不是新设计：选择框使用主色、屏幕线宽约 2px；框选矩形使用约 10% 黑色描边、约 4% 黑色填充，屏幕线宽约 1px；覆盖层线宽不随画布缩放变化。规范没有线宽分组，画布覆盖层的线宽作为尺寸放在 spacing 里，名字以 overlay- 开头；只用于覆盖层，不用于间距。
 
 基础画板、拖动手柄、标注工具、颜色与样式面板、图片工具栏、AI 框及生成面板、HTML 编辑工具栏、Slides 工具栏与演示层均复用上游组件。默认、悬停、焦点、选中、禁用、加载、错误状态沿用已有实现。
 

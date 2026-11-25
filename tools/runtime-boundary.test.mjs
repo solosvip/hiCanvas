@@ -9,6 +9,7 @@ import { checkRuntimeBoundary } from './check-runtime-boundary.mjs'
 test('运行时完整打包，只依赖编辑层、模型、纯几何与 MIT 数据包', async () => {
   const inputs = await checkRuntimeBoundary()
   assert.ok(inputs.includes('engine/commands/index.js'))
+  assert.ok(inputs.includes('engine/interaction/select.js'))
   assert.ok(inputs.includes('model/index.js'))
   assert.ok(inputs.includes('renderer/geometry.js'))
   assert.ok(inputs.some(path => path.includes('@tldraw/state/')))
@@ -18,6 +19,8 @@ test('纯几何的间接依赖也受运行时守卫约束，渲染入口和 Reac
   const root = await mkdtemp(join(tmpdir(), 'runtime-geometry-boundary-'))
   try {
     await mkdir(join(root, 'engine/runtime'), { recursive: true })
+    await mkdir(join(root, 'engine/interaction'), { recursive: true })
+    await writeFile(join(root, 'engine/interaction/index.js'), 'export const interaction = 1')
     await mkdir(join(root, 'renderer'), { recursive: true })
     await writeFile(join(root, 'engine/runtime/index.js'), "export * from '../../renderer/geometry.js'")
     await writeFile(join(root, 'renderer/geometry.js'), "export * from './bounds.js'")
@@ -47,12 +50,31 @@ test('边界守卫拦截直接和间接的宿主依赖，不读取受限包源�
   const root = await mkdtemp(join(tmpdir(), 'runtime-boundary-'))
   try {
     await mkdir(join(root, 'engine/runtime'), { recursive: true })
+    await mkdir(join(root, 'engine/interaction'), { recursive: true })
+    await writeFile(join(root, 'engine/interaction/index.js'), 'export const interaction = 1')
     await writeFile(join(root, 'engine/runtime/index.js'), "export * from './probe.js'\n")
     for (const source of ["import '../../server/routes.mjs'", "import '../../renderer/index.js'", "import '../../src/App.jsx'", "import 'tldraw'", "import '@tldraw/editor'", "import '@tldraw/assets'", "import 'node:fs'", "import 'http'", "import 'react'", "import '@tldraw/state-react'", 'export const x = document.body', "export const x = globalThis['document']", "export const x = fetch('/api/canvas')", "export const x = globalThis?.['fetch']", "const { fetch: request } = globalThis; export const x = request('/api/canvas')", "const { document: doc } = globalThis; export const x = doc.body", "const { 'fetch': request } = globalThis; export const x = request('/api/canvas')", "const { 'document': doc } = globalThis; export const x = doc.body", 'export const x = new DOMRect()', 'export const x = <div />']) {
       await writeFile(join(root, 'engine/runtime/probe.js'), source)
       await assert.rejects(checkRuntimeBoundary({ root }), undefined, source)
     }
     await writeFile(join(root, 'engine/runtime/probe.js'), 'export const clean = 1')
+    await checkRuntimeBoundary({ root })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+
+test('交互入口直接或间接引用窗口／React／渲染组件时同样被拦截', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'interaction-boundary-'))
+  try {
+    await mkdir(join(root, 'engine/runtime'), { recursive: true })
+    await mkdir(join(root, 'engine/interaction'), { recursive: true })
+    await writeFile(join(root, 'engine/runtime/index.js'), 'export const runtime = 1')
+    await writeFile(join(root, 'engine/interaction/index.js'), "export * from './select.js'")
+    for (const source of ["import 'react'", "import '../../renderer/mount.js'", "export const value = window.innerWidth", "export const value = globalThis['document']"]) {
+      await writeFile(join(root, 'engine/interaction/select.js'), source)
+      await assert.rejects(checkRuntimeBoundary({ root }), undefined, source)
+    }
+    await writeFile(join(root, 'engine/interaction/select.js'), 'export const value = 1')
     await checkRuntimeBoundary({ root })
   } finally { await rm(root, { recursive: true, force: true }) }
 })

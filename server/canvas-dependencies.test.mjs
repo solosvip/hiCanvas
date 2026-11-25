@@ -19,6 +19,7 @@ test('编辑层可独立在浏览器打包，只依赖模型、纯几何与 MIT 
   const inputs = Object.keys(result.metafile.inputs)
   assert.ok(inputs.includes('model/index.js'))
   assert.ok(inputs.includes('renderer/geometry.js'))
+  assert.ok(inputs.includes('engine/interaction/index.js'))
   assertEngineBoundary(inputs)
   assert.deepEqual(Object.values(result.metafile.outputs).flatMap(output => output.imports).filter(item => item.external), [])
 })

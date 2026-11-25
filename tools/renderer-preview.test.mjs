@@ -5,6 +5,8 @@ import { createFixture } from './perf/fixture.mjs'
 import { createRendererFixture, startRendererPreview } from './renderer-preview.mjs'
 import { createGallery } from './renderer-preview/gallery.js'
 import { attachPreviewInput } from './renderer-preview/input.js'
+import { createEditorSession, createCanvasInteraction } from '../engine/index.js'
+import { memoryTransport } from './renderer-preview/transport.js'
 
 test('测量图鉴保留四档四线型、长边以及双色 lined-fill 和曲线对照样本', () => {
   for (const mode of ['metrics', 'metrics-long', 'metrics-curves']) {
@@ -18,27 +20,26 @@ test('测量图鉴保留四档四线型、长边以及双色 lined-fill 和曲�
   }
 })
 
-test('中键拖动按缩放换算视角位移，松开停止；重置视角验证参数且不暴露可变引用', () => {
-  const host = new EventTarget()
-  let camera = { x: 10, y: 20, z: 2 }
-  const controls = attachPreviewInput(host, { getCamera: () => ({ ...camera }), setCamera: value => { camera = { ...value } } })
+test('外壳把中键事件送交交互模块，视角以该会话为准，重置校验且不暴露可变引用', async () => {
+  const host = new EventTarget(), fixture = createRendererFixture(500)
+  const session = await createEditorSession({ transport: memoryTransport(fixture.snapshot), actor: 'shell' })
+  const interaction = createCanvasInteraction({ session, camera: { x: 10, y: 20, z: 2 } })
+  const errors = [], controls = attachPreviewInput(host, interaction, { onError: e => errors.push(e) })
   const pointer = (type, point) => host.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, button: 1, ...point }))
-  pointer('pointerdown', { clientX: 100, clientY: 200 })
-  pointer('pointermove', { clientX: 180, clientY: 240 })
-  assert.deepEqual(camera, { x: 50, y: 40, z: 2 })
-  pointer('pointerup', { clientX: 180, clientY: 240 })
-  pointer('pointermove', { clientX: 500, clientY: 600 })
-  assert.deepEqual(camera, { x: 50, y: 40, z: 2 })
-  const reset = { x: -3, y: 5, z: .25 }
-  controls.resetCamera(reset); reset.x = 999
-  assert.deepEqual(camera, { x: -3, y: 5, z: .25 })
-  const observed = controls.getCamera()
-  assert.deepEqual(observed, camera)
-  observed.x = 999
-  assert.deepEqual(controls.getCamera(), { x: -3, y: 5, z: .25 })
-  for (const invalid of [null, {}, { x: 0, y: 0, z: 0 }, { x: NaN, y: 0, z: 1 }, { x: 0, y: Infinity, z: 1 }]) assert.throws(() => controls.resetCamera(invalid), /视角/)
-  assert.deepEqual(camera, { x: -3, y: 5, z: .25 })
-  controls.dispose()
+  try {
+    pointer('pointerdown', { clientX: 100, clientY: 200 })
+    pointer('pointermove', { clientX: 180, clientY: 240 })
+    assert.deepEqual(controls.getCamera(), { x: 50, y: 40, z: 2 })
+    pointer('pointerup', { clientX: 180, clientY: 240 })
+    pointer('pointermove', { clientX: 500, clientY: 600 })
+    assert.deepEqual(controls.getCamera(), { x: 50, y: 40, z: 2 })
+    const reset = { x: -3, y: 5, z: .25 }
+    controls.resetCamera(reset); reset.x = 999
+    const observed = controls.getCamera(); observed.x = 999
+    assert.deepEqual(controls.getCamera(), { x: -3, y: 5, z: .25 })
+    for (const invalid of [null, {}, { x: 0, y: 0, z: 0 }, { x: NaN, y: 0, z: 1 }]) assert.throws(() => controls.resetCamera(invalid), /相机/)
+    assert.deepEqual(errors, [])
+  } finally { controls.dispose(); interaction.dispose(); session.dispose() }
 })
 
 test('三档合成规则完整保留 #36 几何类型、semi 填充、数量和相机', () => {

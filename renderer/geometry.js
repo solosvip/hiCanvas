@@ -139,3 +139,5 @@ export function getShapePageBounds(snapshot, shapeId) {
   const x = Math.min(...corners.map(p => p.x)), y = Math.min(...corners.map(p => p.y))
   return { x, y, w: Math.max(...corners.map(p => p.x)) - x, h: Math.max(...corners.map(p => p.y)) - y }
 }
+
+export { createSpatialIndex } from './spatial-index.js'
