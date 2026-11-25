@@ -16,6 +16,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
   const events = getCanvasEvents(workspace)
   const jobs = new Map(), queue = []
   const canvasWrites = new Map()
+  const running = new Set()
   let active = 0
   let writing = Promise.resolve()
   const persist = job => {
@@ -91,7 +92,8 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     while (active < concurrency && queue.length) {
       const { job, item } = queue.shift()
       active++
-      execute(job, item).finally(() => { active--; pump() }).catch(() => {})
+      const pending = execute(job, item).finally(() => { running.delete(pending); active--; pump() }).catch(() => {})
+      running.add(pending)
     }
   }
   const ready = (async () => {
@@ -164,5 +166,16 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     if (!job || job.conversationId !== id) throw httpError('找不到这个画板的生成任务。', 404)
     return { ...job, items: job.items.map(({ references: _refs, ...item }) => item), finished: job.items.every(item => !['queued', 'running'].includes(item.status)) }
   }
-  return { submit, get }
+  async function waitForIdle() {
+    await ready
+    // 完成状态可能先于落盘可见；执行中的任务还会继续追加持久化和画板写入。
+    // concurrency 为 0 时只等已经开始的工作，不启动刻意暂停的队列。
+    while (true) {
+      pump()
+      const persisted = writing
+      await Promise.all([persisted, ...canvasWrites.values(), ...running])
+      if (!running.size && !canvasWrites.size && writing === persisted) return
+    }
+  }
+  return { submit, get, waitForIdle }
 }
