@@ -1,0 +1,390 @@
+# tldraw 5.1.1 用户可见功能清单
+
+对应工单：[#20](https://github.com/solosvip/hiCanvas/issues/20)。这是替换编辑器时逐项对照的验收基线；条目存在不表示新编辑器已实现或已验收。
+
+盘点对象是本分支锁文件安装的 `tldraw@5.1.1` 默认编辑器和随包源码；hiCanvas 露出状态以提交 `761faa5`（标签 `v0.0.16`）为基线。包版本由 `node_modules/tldraw/package.json` 核对。只查源码，不调用真实画板、模型、第三方嵌入或系统剪贴板。置信度：源码入口与静态露出判断为高；实际交互、辅助技术读出、浏览器权限和第三方在线效果未核实。
+
+## 阅读与验收方法
+
+- 每行是一项验收能力；同一项列出的选项、快捷键变体都要覆盖，不把颜色、语言或端点组合展开为重复功能。编号固定，后续新增接续编号。
+- 「是」表示 hiCanvas 源码保留了该入口和处理路径；「部分」表示入口或行为被改写、受环境条件限制；「否」表示没有提供。它们不是实机通过标记。
+- 操作默认先让画布获得焦点，并满足行内的选中数量、未锁定和编辑状态条件。`Mod` 指 Mac 的 Cmd、其他系统的 Ctrl；`Alt` 在 Mac 是 Option。富文本快捷键以本包实际注册的 `Mod` 为准。
+- 下文源码路径前缀：`T/` = `node_modules/tldraw/src/lib/`；`U/` = `T/ui/`；`E/` = `node_modules/@tldraw/editor/src/lib/`；`S/` = `node_modules/@tldraw/tlschema/src/`。`#` 后为可搜索的符号名，括号内是动作 ID、属性或分支关键词；不是行号。
+- 每行最后一栏的 `H` 编号对应下一表，给出 hiCanvas 露出判断的文件和符号。新实现的人工验收可按「操作 → 预期」逐行记录到对应版本验收记录，不修改这里的源码事实。
+
+## hiCanvas 露出依据
+
+| 代号 | 文件与符号 | 判断依据 |
+| --- | --- | --- |
+| H1 | `src/editor/App.jsx#App`；`T/Tldraw.tsx#Tldraw` | 使用 Tldraw 默认工具、形状、动作与外部内容处理；额外传入自定义工具/形状，不整体移除默认集合；未传协作 store 或只读模式。 |
+| H2 | `src/editor/Toolbar.jsx#CowartToolbar`；`src/CowartDraggableToolbar.jsx#CowartDraggableToolbar` | 保留默认工具栏中的所有工具；更多工具由溢出区承载。 |
+| H3 | `src/editor/StylePanel.jsx#CowartStylePanel` | `select` 工具时直接返回空；其他工具使用 `DefaultStylePanelContent`。因此默认样式选项可设置新对象，但选择模式下的整套已有对象样式修改入口缺失。 |
+| H4 | `src/editor/overrides.jsx#cowartUiOverrides` | 保留默认动作；删除上一页/下一页/移到新页动作；箭头的 `A` 快捷键清空并给 AI 图片；PNG 复制及原文件下载在宿主桥环境有替换分支。 |
+| H5 | `src/editor/shapes.jsx#CowartConfiguredEmbedShapeUtil`、`CowartEmbedShapeUtil` | 自定义 HTML 嵌入后追加完整 `DEFAULT_EMBED_DEFINITIONS`；普通嵌入仍调用父类组件。 |
+| H6 | `src/editor/components.jsx#cowartComponents`、`CowartMainMenu` | 主菜单继续使用 `DefaultMainMenu`；未替换右键、排列、缩放、帮助、富文本与视频工具栏；`SharePanel` 置空；图片工具栏被替换。 |
+| H7 | `src/editor/imageToolbar.jsx#CowartImageToolbarContent`、`CowartAltTextEditor` | 保留 `DefaultImageToolbarContent` 和裁剪状态，外加自定义图片操作与替代文本编辑。 |
+| H8 | `src/editor/userPreferences.js#createHiCanvasUser`、`useHiCanvasLocale`；`App` | 首次默认简体中文；语言和偏好回写共享 tldraw 用户偏好，使用 inferDarkMode。 |
+| H9 | `src/editor/slidesLayout.jsx#cowartTldrawOptions`；`docs/adr/0003-single-canvas.md`；H4 | `maxPages: 1`；不提供页管理，不等于删除 hiCanvas 的画板切换功能。 |
+| H10 | `src/editor/assets.jsx#cowartTldrawAssetStore` | 文件上传读为 data URL，解析时支持本机资源；不替换默认媒体 MIME 类型筛选。 |
+| H11 | `src/styles.css`（`tl-watermark-unlicensed`）；`src/editor/watermarkLocalization.js#startWatermarkLocalization` | 此基线用 CSS 隐藏未许可入口；仍含本地化逻辑和 SDK 许可检查。这里只描述基线，不作为授权结论。 |
+| H12 | `src/editor/App.jsx#App(handleCowartCopy)`；`src/editor/slidesLayout.jsx#copySelectedCowartContent` | 捕获原生 copy 事件，写可再编辑 HTML 载荷但将 text/plain 设为空格并停止后续监听；菜单复制仍走默认剪贴板 API；文字编辑态不拦截。`cowartTldrawOptions(onClipboardPasteRaw)` 在已有本机复制缓存且选中 AI Slides 时改粘缓存内容，绕过实际剪贴板；其他场景继续默认路径。 |
+
+## A. 工具、形状与创建
+
+几何形状以 `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle` 的 20 个值和 `T/shapes/geo/getGeoShapePath.ts#defaultGeoTypeDefinitions` 为准；默认工具栏只直接摆出其中 16 种，余下从几何样式选择器进入。
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| A01 | 选择工具 | 工具栏选择或 V | 切换到选择状态；再次选该工具结束文字工具的粘滞状态 | `U/hooks/useTools.tsx#ToolsProvider(select)` | 是（H1、H2） |
+| A02 | 手形工具 | 工具栏手形或 H，拖动画布 | 平移视口，不移动作品 | `U/hooks/useTools.tsx#ToolsProvider(hand)`；`T/tools/HandTool/HandTool.ts#HandTool` | 是（H1、H2） |
+| A03 | 画笔 | 工具栏画笔或 D/B/X，拖动 | 产生自由笔迹；支持笔压数据 | `U/hooks/useTools.tsx#ToolsProvider(draw)`；`T/shapes/draw/toolStates/Drawing.ts#Drawing` | 是（H1、H2）；笔压硬件未核实 |
+| A04 | 橡皮 | 工具栏橡皮或 E，点按/扫过；Mod 点按 | 普通点按收集命中的多层可擦对象，Mod 点按只擦最上层；拖动出现擦除轨迹 | `T/tools/EraserTool/EraserTool.ts#EraserTool`；`T/tools/EraserTool/childStates/Pointing.ts#Pointing`；`U/hooks/useTools.tsx#ToolsProvider(eraser)` | 是（H1、H2） |
+| A05 | 文本 | 工具栏文字或 T；点击/拖出文字框 | 点击创建自动宽度文本，拖动创建限定宽度文本并编辑 | `T/shapes/text/TextShapeTool.ts#TextShapeTool`；`T/shapes/text/toolStates/Pointing.ts#Pointing` | 是（H1、H2） |
+| A06 | 便签 | 工具栏便签或 N；点击/拖动 | 创建可编辑文字的便签 | `T/shapes/note/NoteShapeTool.ts#NoteShapeTool`；`U/hooks/useTools.tsx#ToolsProvider(note)` | 是（H1、H2） |
+| A07 | 连接箭头 | 工具栏箭头或默认 A；拖动两端 | 创建可绑定的连接箭头 | `T/shapes/arrow/ArrowShapeTool.ts#ArrowShapeTool`；`U/hooks/useTools.tsx#ToolsProvider(arrow)` | 部分（H2、H4）：工具保留，A 被 AI 图片占用 |
+| A08 | 线条 | 工具栏线条或 L；拖动 | 创建可编辑顶点的线条 | `T/shapes/line/LineShapeTool.ts#LineShapeTool` | 是（H1、H2） |
+| A09 | 画框 | 工具栏画框或 F；拖动 | 创建有标题的容器，框内内容按容器裁切/组织 | `T/shapes/frame/FrameShapeTool.ts#FrameShapeTool`；`T/shapes/frame/FrameShapeUtil.tsx#FrameShapeUtil` | 是（H1、H2、H5） |
+| A10 | 荧光笔 | 工具栏荧光笔或 Shift+D | 创建高亮笔迹，保留与普通画笔不同的渲染 | `T/shapes/highlight/HighlightShapeTool.ts#HighlightShapeTool`；`U/hooks/useTools.tsx#ToolsProvider(highlight)` | 是（H1、H2） |
+| A11 | 激光笔 | 工具栏激光或 K，拖动 | 产生短暂指示轨迹，不成为永久作品 | `T/tools/LaserTool/LaserTool.ts#LaserTool` | 是（H1、H2） |
+| A12 | 媒体工具 | 工具栏媒体或 Mod+U | 打开系统文件选择，按支持格式插入图片/视频 | `U/hooks/useTools.tsx#ToolsProvider(asset)`；`U/context/actions.tsx#ActionsProvider(insert-media)` | 是（H1、H2、H10）；系统选择器未核实 |
+| A13 | 矩形 | 工具栏矩形或 R，点击/拖动 | 创建 rectangle 几何对象 | `U/hooks/useTools.tsx#ToolsProvider`；`S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(rectangle)` | 是（H2） |
+| A14 | 椭圆 | 工具栏椭圆或 O | 创建 ellipse 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(ellipse)`；`U/hooks/useTools.tsx#ToolsProvider` | 是（H2） |
+| A15 | 三角形 | 工具栏三角形 | 创建 triangle 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(triangle)` | 是（H2） |
+| A16 | 菱形 | 工具栏菱形 | 创建 diamond 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(diamond)` | 是（H2） |
+| A17 | 六边形 | 工具栏六边形 | 创建 hexagon 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(hexagon)` | 是（H2） |
+| A18 | 胶囊形 | 工具栏 oval | 创建 oval 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(oval)` | 是（H2） |
+| A19 | 斜四边形 | 工具栏 rhombus | 创建 rhombus 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(rhombus)` | 是（H2） |
+| A20 | 星形 | 工具栏星形 | 创建 star 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(star)` | 是（H2） |
+| A21 | 云形 | 工具栏云形 | 创建 cloud 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(cloud)` | 是（H2） |
+| A22 | 心形 | 工具栏心形 | 创建 heart 对象 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(heart)` | 是（H2） |
+| A23 | 叉号框 | 工具栏 x-box | 创建含叉号的框 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(x-box)` | 是（H2） |
+| A24 | 勾号框 | 工具栏 check-box | 创建含勾号的框 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(check-box)` | 是（H2） |
+| A25 | 左向块箭头 | 工具栏 arrow-left | 创建左向几何箭头，区别于连接箭头 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(arrow-left)` | 是（H2） |
+| A26 | 右向块箭头 | 工具栏 arrow-right | 创建右向几何箭头 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(arrow-right)` | 是（H2） |
+| A27 | 上向块箭头 | 工具栏 arrow-up | 创建上向几何箭头 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(arrow-up)` | 是（H2） |
+| A28 | 下向块箭头 | 工具栏 arrow-down | 创建下向几何箭头 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(arrow-down)` | 是（H2） |
+| A29 | 五边形 | 几何工具 → 样式面板形状列表 | 创建/改为 pentagon | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(pentagon)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelGeoShapePicker` | 部分（H3）：无工具栏直达；几何工具下可选 |
+| A30 | 八边形 | 几何工具 → 样式面板形状列表 | 创建/改为 octagon | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(octagon)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelGeoShapePicker` | 部分（H3） |
+| A31 | 第二种斜四边形 | 几何工具 → 样式面板形状列表 | 创建/改为 rhombus-2 | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(rhombus-2)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelGeoShapePicker` | 部分（H3） |
+| A32 | 梯形 | 几何工具 → 样式面板形状列表 | 创建/改为 trapezoid | `S/shapes/TLGeoShape.ts#GeoShapeGeoStyle(trapezoid)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelGeoShapePicker` | 部分（H3） |
+| A33 | 重用最近几何形状 | G | 进入最近选用的几何工具 | `U/context/actions.tsx#ActionsProvider(select-geo-tool)` | 是（H1、H4） |
+| A34 | 从工具栏拖出对象 | 将几何、箭头、线、框、文本或便签工具拖到画布 | 创建默认尺寸对象并跟随指针落下；文本/便签进入编辑 | `U/hooks/useTools.tsx#onDragFromToolbarToCreateShape`、`ToolsProvider(onDragStart)` | 是（H2） |
+| A35 | 连续使用工具 | Q、偏好 → 工具锁定，或工具栏锁定控件 | 完成一次创建后保留当前工具；取消锁定恢复默认回选择 | `U/context/actions.tsx#ActionsProvider(toggle-tool-lock)`；`U/components/Toolbar/DefaultToolbar.tsx#DefaultToolbar` | 是（H2、H4）：自定义工具栏仍包裹 DefaultToolbar，保留锁定控件 |
+| A36 | 笔迹直线与闭合 | 画笔按 Shift 延续直线；笔迹回到起点 | 直线段/自由段可组合；闭合轮廓按填充样式渲染 | `T/shapes/draw/toolStates/Drawing.ts#Drawing(getIsClosed)` | 是（H1） |
+| A37 | 数字切换可见工具 | 画布聚焦且非输入状态，按 1–9、0 | 依次点击当前主工具栏前十个可编号按钮；随窗口宽度与溢出项改变，不固定映射为某种形状 | `U/components/Toolbar/OverflowingToolbar.tsx#OverflowingToolbar`、`NUMBERED_SHORTCUT_KEYS`；`E/options.ts#defaultTldrawOptions(enableToolbarKeyboardShortcuts)` | 是（H2）：拖动手柄不参与编号 |
+| A38 | 矩形/勾号框快速互换 | Alt 双击矩形或 check-box | rectangle 与 check-box 互换，保留同一形状 | `T/shapes/geo/GeoShapeUtil.tsx#GeoShapeUtil(onDoubleClick)` | 是（H1） |
+| A39 | 双击空白直接写字 | 选择工具下双击未命中对象的空白处 | 创建文本形状并进入文字编辑，无需先切文字工具 | `T/tools/SelectTool/childStates/Idle.ts#Idle(handleDoubleClickOnCanvas)` | 是（H1） |
+
+## B. 选择、直接变换与容器
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| B01 | 点选及取消选择 | V 后点对象/空白处；Esc | 选中对象；点击空白或取消清除选择/退出当前组 | `T/tools/SelectTool/childStates/PointingShape.ts#PointingShape`；`PointingCanvas.ts#PointingCanvas`；`Idle.ts#Idle(onCancel)`（同目录） | 是（H1） |
+| B02 | 加选/减选 | Shift 点击或 Shift 框选 | 保留原选择，并增减命中的对象 | `T/tools/SelectTool/childStates/PointingShape.ts#PointingShape`；`Brushing.ts#Brushing`（同目录） | 是（H1） |
+| B03 | 矩形框选 | 在空白处拖框 | 选中与框相交的对象，或按环绕选择偏好要求完全包含 | `T/tools/SelectTool/childStates/Brushing.ts#Brushing(hitTestShapes)` | 是（H1） |
+| B04 | 临时反转环绕选择 | 框选时按 Ctrl | 临时反转「相交/完全包含」判据 | `T/tools/SelectTool/childStates/Brushing.ts#Brushing(isWrapping)` | 是（H1） |
+| B05 | 自由轨迹选择 | 空白处 Alt 拖动 | 以涂抹轨迹命中对象并选择 | `T/tools/SelectTool/childStates/Brushing.ts#Brushing`；`ScribbleBrushing.ts#ScribbleBrushing`（同目录） | 是（H1） |
+| B06 | 全选 | 编辑/右键 → 全选；Mod+A | 选中当前页允许选择的对象 | `U/context/actions.tsx#ActionsProvider(select-all)`；`U/components/menu-items.tsx#SelectAllMenuItem` | 是（H1、H6） |
+| B07 | 拖动位置 | 拖动已选对象/选择框 | 所选对象一起移动，保留内部相对位置 | `T/tools/SelectTool/childStates/Translating.ts#Translating` | 是（H1） |
+| B08 | 限定移动方向 | 拖动时按 Shift | 锁定水平或垂直方向 | `T/tools/SelectTool/childStates/Translating.ts#moveShapesToPoint` | 是（H1） |
+| B09 | 拖动复制 | 按 Alt 拖动已有对象 | 保留原件并移动副本；可在拖动中切换 Alt | `T/tools/SelectTool/childStates/Translating.ts#Translating(startCloning/stopCloning)` | 是（H1） |
+| B10 | 连续复制 | 编辑/右键 → 复制副本；Mod+D | 按默认间距复制；连续复制沿用上次偏移 | `U/context/actions.tsx#ActionsProvider(duplicate)` | 是（H4、H6） |
+| B11 | 边角缩放 | 拖动选择边框的边/角 | 改变可调整对象尺寸；多选整体变换 | `T/tools/SelectTool/childStates/Resizing.ts#Resizing` | 是（H1） |
+| B12 | 等比缩放 | 缩放时 Shift | 锁定比例；本来锁比例的媒体按其规则处理 | `T/tools/SelectTool/childStates/Resizing.ts#Resizing(isAspectRatioLocked)` | 是（H1）；自定义 AI 框另有规则 |
+| B13 | 从中心缩放 | 缩放时 Alt | 围绕选择中心改变尺寸 | `T/tools/SelectTool/childStates/Resizing.ts#Resizing(isResizingFromCenter)` | 是（H1） |
+| B14 | 鼠标旋转 | 拖动角外旋转柄 | 绕选择中心旋转；Shift 按 15° 吸附 | `T/tools/SelectTool/childStates/Rotating.ts#Rotating` | 是（H1） |
+| B15 | 键盘移动 | 方向键；Shift+方向键 | 小步/大步移动；网格模式使用相应网格步长 | `T/tools/SelectTool/childStates/Idle.ts#Idle(nudgeSelectedShapes)` | 是（H1） |
+| B16 | 键盘旋转 | Shift+. / Shift+,；加 Alt 微调 | 顺/逆时针转到 15° 刻度；Alt 为更细刻度 | `U/context/actions.tsx#ActionsProvider(rotate-cw/rotate-ccw)` | 是（H4、H6） |
+| B17 | 键盘放大 | Mod+Alt+Shift+= | 围绕选择中心按 1.1 倍调整对象 | `U/context/actions.tsx#ActionsProvider(enlarge-shapes/scaleShapes)` | 是（H4） |
+| B18 | 键盘缩小 | Mod+Alt+Shift+- | 按放大的倒数比例缩小 | `U/context/actions.tsx#ActionsProvider(shrink-shapes/scaleShapes)` | 是（H4） |
+| B19 | 组合 | 编辑/右键 → 组合；Mod+G | 将多个对象组合；仅选一个组时该快捷动作可解组 | `U/context/actions.tsx#ActionsProvider(group)`；`U/components/menu-items.tsx#GroupMenuItem` | 是（H4、H6） |
+| B20 | 解组 | 编辑/右键 → 解组；Mod+Shift+G | 拆开组并保留子对象 | `U/context/actions.tsx#ActionsProvider(ungroup)` | 是（H4、H6） |
+| B21 | 进入/退出组 | 双击组；选组 Enter；Esc | 可选取组内对象；Esc 退出组级选择 | `T/tools/SelectTool/childStates/Idle.ts#Idle(onDoubleClick/onKeyUp/onCancel)` | 是（H1） |
+| B22 | 锁定/解锁对象 | 编辑/右键 → 锁定；Shift+L | 锁定对象免于普通编辑；再次操作可解锁符合条件的选择 | `U/context/actions.tsx#ActionsProvider(toggle-lock)`；`U/components/menu-items.tsx#ToggleLockMenuItem` | 是（H4、H6） |
+| B23 | 全部解锁 | 编辑 → 全部解锁 | 解锁当前页所有带锁对象 | `U/context/actions.tsx#ActionsProvider(unlock-all)` | 是（H4、H6） |
+| B24 | 删除 | Delete/Backspace；右键编辑 → 删除 | 删除所选可编辑对象 | `U/context/actions.tsx#ActionsProvider(delete)` | 是（H4、H6） |
+| B25 | 撤销 | 编辑 → 撤销；Mod+Z | 撤销最近可撤销操作；不可用时入口禁用 | `U/context/actions.tsx#ActionsProvider(undo)`；`U/components/MainMenu/DefaultMainMenuContent.tsx#UndoRedoGroup` | 是（H4、H6） |
+| B26 | 重做 | 编辑 → 重做；Mod+Shift+Z | 恢复撤销过的操作；不可用时入口禁用 | `U/context/actions.tsx#ActionsProvider(redo)`；`U/components/MainMenu/DefaultMainMenuContent.tsx#UndoRedoGroup` | 是（H4、H6） |
+| B27 | 中止/完成当前操作 | 拖动中 Esc；适用状态下 Enter/松开指针 | 中止恢复起始状态，完成确认变换 | `T/tools/SelectTool/childStates/Resizing.ts#Resizing(onCancel/onComplete)`；`Translating.ts#Translating`（同目录） | 是（H1） |
+| B28 | 拖入/拖出画框 | 将普通对象拖进/拖出框 | 改变容器归属，随框移动且在框外部分被裁切 | `T/tools/SelectTool/childStates/Translating.ts#Translating`；`T/shapes/frame/FrameShapeUtil.tsx#FrameShapeUtil` | 是（H1、H5） |
+| B29 | 画框标题 | 双击画框标题/按其编辑入口 | 编辑容器名称 | `T/shapes/frame/FrameShapeUtil.tsx#FrameShapeUtil(canEdit)` | 是（H1、H5） |
+| B30 | 调整画框边界/内容 | 拖画框边角；按住 Mod 调整 | 普通调整框边界不缩放内容；按 Mod 调边界时保持子对象在画布上的位置，类似裁框 | `T/tools/SelectTool/childStates/Resizing.ts#Resizing`；`T/shapes/frame/FrameShapeUtil.tsx#FrameShapeUtil(canResizeChildren)` | 是（H1、H5）；组合手感未核实 |
+| B31 | 画框适配内容 | 编辑/右键编辑 → 适配框内容 | 框边界包住内部内容 | `U/context/actions.tsx#ActionsProvider(fit-frame-to-content)`；`T/utils/frames/frames.ts#fitFrameToContent` | 是（H4、H6） |
+| B32 | 移除画框 | 编辑/右键编辑 → 移除画框；Mod+Shift+F | 取消容器，保留内部作品 | `U/context/actions.tsx#ActionsProvider(remove-frame)`；`T/utils/frames/frames.ts#removeFrame` | 是（H4、H6） |
+| B33 | 相邻便签创建/吸附 | 便签周围的创建柄；移动便签到另一便签附近 | 可在邻位续建，并按相邻便签的布局位置吸附 | `T/shapes/note/NoteShapeUtil.tsx#NoteShapeUtil(getHandles)`；`T/tools/SelectTool/childStates/PointingHandle.ts#PointingHandle`；`T/tools/SelectTool/childStates/Translating.ts#moveShapesToPoint` | 是（H1） |
+| B34 | 便签键盘续建 | 编辑便签时 Tab/Shift+Tab；Mod+Enter/Mod+Shift+Enter | 横向/纵向转到相邻便签，不存在则创建并编辑；横向次序考虑 RTL | `T/shapes/note/NoteShapeUtil.tsx#useNoteKeydownHandler` | 是（H1）；输入法/RTL 手感未核实 |
+| B35 | 便签署名 | 已有显示名的用户首次填写非空便签；悬停署名 | 记录首位文字编辑者；显示首名，提示完整名，SVG 导出保留署名；空便签清除署名 | `T/shapes/note/NoteShapeUtil.tsx#NoteShapeUtil(component/onBeforeUpdate/toSvg)`；`E/editor/Editor.ts#Editor(getAttributionDisplayName/getAttributionUserId)`；`E/config/createTLStore.ts#defaultUserStore` | 部分（H8）：保留共享姓名偏好；无个人姓名编辑面板（H6）；署名效果未核实 |
+| B36 | 双击画框边界适配 | 选画框后双击左/右边、上/下边或角 | 左右边适配内容宽度，上下边适配高度，并调整对应子对象偏移；双击角执行完整适配 | `T/shapes/frame/FrameShapeUtil.tsx#FrameShapeUtil(onDoubleClickEdge/onDoubleClickCorner)` | 是（H1、H5） |
+
+## C. 排列、层级与吸附
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| C01 | 左对齐 | 至少选 2 个未锁对象 → 排列/右键排列；Alt+A | 左边界对齐 | `U/context/actions.tsx#ActionsProvider(align-left)`；`U/components/ActionsMenu/DefaultActionsMenuContent.tsx#AlignMenuItems` | 是（H4、H6） |
+| C02 | 水平居中 | 同上；Alt+H | 水平方向中心对齐 | `U/context/actions.tsx#ActionsProvider(align-center-horizontal)` | 是（H4、H6） |
+| C03 | 右对齐 | 同上；Alt+D | 右边界对齐 | `U/context/actions.tsx#ActionsProvider(align-right)` | 是（H4、H6） |
+| C04 | 顶对齐 | 同上；Alt+W | 顶边界对齐 | `U/context/actions.tsx#ActionsProvider(align-top)` | 是（H4、H6） |
+| C05 | 垂直居中 | 同上；Alt+V | 垂直方向中心对齐 | `U/context/actions.tsx#ActionsProvider(align-center-vertical)` | 是（H4、H6） |
+| C06 | 底对齐 | 同上；Alt+S | 底边界对齐 | `U/context/actions.tsx#ActionsProvider(align-bottom)` | 是（H4、H6） |
+| C07 | 水平拉伸 | 至少选 2 个 → 排列/右键排列 | 调整宽度，使对象铺满选择范围 | `U/context/actions.tsx#ActionsProvider(stretch-horizontal)` | 是（H4、H6） |
+| C08 | 垂直拉伸 | 同上 | 调整高度，使对象铺满选择范围 | `U/context/actions.tsx#ActionsProvider(stretch-vertical)` | 是（H4、H6） |
+| C09 | 水平分布 | 至少选 3 个 → 排列/右键；Alt+Shift+H | 在两端范围间均匀分布 | `U/context/actions.tsx#ActionsProvider(distribute-horizontal)` | 是（H4、H6） |
+| C10 | 垂直分布 | 同上；Alt+Shift+V | 垂直方向均匀分布 | `U/context/actions.tsx#ActionsProvider(distribute-vertical)` | 是（H4、H6） |
+| C11 | 水平堆排 | 符合条件的至少 3 个 → 排列/右键顺序 | 按固定相邻间距排成一行 | `U/context/actions.tsx#ActionsProvider(stack-horizontal)`；`U/components/menu-items.tsx#OrderMenuGroup` | 是（H4、H6） |
+| C12 | 垂直堆排 | 同上 | 按固定间距排成一列 | `U/context/actions.tsx#ActionsProvider(stack-vertical)` | 是（H4、H6） |
+| C13 | 紧凑排布 | 多选 → 右键排列 → 打包/紧凑排列 | 在保留间隔下紧凑摆放作品 | `U/context/actions.tsx#ActionsProvider(pack)`；`U/components/menu-items.tsx#OrderMenuGroup` | 是（H4、H6） |
+| C14 | 水平镜像 | 右键排列 → 水平翻转；Shift+H | 水平方向翻转所选形状 | `U/context/actions.tsx#ActionsProvider(flip-horizontal)` | 是（H4、H6） |
+| C15 | 垂直镜像 | 同上垂直翻转；Shift+V | 垂直方向翻转 | `U/context/actions.tsx#ActionsProvider(flip-vertical)` | 是（H4、H6） |
+| C16 | 置于最前 | 排列/右键层级；] | 选择移到所在层级最前 | `U/context/actions.tsx#ActionsProvider(bring-to-front)` | 是（H4、H6） |
+| C17 | 前移一层 | 同上；Alt+] | 向前调整层序 | `U/context/actions.tsx#ActionsProvider(bring-forward)` | 是（H4、H6） |
+| C18 | 后移一层 | 同上；Alt+[ | 向后调整层序 | `U/context/actions.tsx#ActionsProvider(send-backward)` | 是（H4、H6） |
+| C19 | 置于最后 | 同上；[ | 选择移到所在层级最后 | `U/context/actions.tsx#ActionsProvider(send-to-back)` | 是（H4、H6） |
+| C20 | 对象边缘/中心及间距吸附 | 开启吸附偏好后移动/缩放，靠近其他对象 | 位置被修正并显示对齐或间距指示线 | `T/tools/SelectTool/childStates/Translating.ts#moveShapesToPoint`；`Resizing.ts#Resizing`（同目录）；`E/editor/managers/SnapManager/BoundsSnaps.ts#BoundsSnaps` | 是（H1） |
+| C21 | 临时反转吸附 | 移动/缩放时按 Mod；拖控制点时按 Ctrl | 反转当前吸附开关；松开恢复偏好 | `T/tools/SelectTool/childStates/DraggingHandle.tsx#DraggingHandle(update)`；`Translating.ts#moveShapesToPoint`（同目录） | 是（H1） |
+| C22 | 网格吸附 | 开网格后移动/创建/缩放 | 根据网格位置对齐；修饰键和其他吸附有优先级 | `T/tools/SelectTool/childStates/Translating.ts#moveShapesToPoint`；`Resizing.ts#Resizing`（同目录） | 是（H1） |
+| C23 | 控制点吸附 | 拖动可吸附的线/箭头控制点 | 对自身/其他几何控制点、轮廓吸附并给指示 | `T/tools/SelectTool/childStates/DraggingHandle.tsx#DraggingHandle(update)`；`T/shapes/line/LineShapeUtil.tsx#LineShapeUtil(getHandleSnapGeometry)` | 是（H1） |
+
+## D. 样式选项
+
+以下都是默认样式面板的真实选项，不把 schema 中存在但未出现在 UI 的属性推断成能力。新建前选样式与修改已有选择均属于默认编辑器的验收；hiCanvas 的 H3 差异应一并记录。选中多个对象时，混合值和只支持部分样式的形状也要检查。
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| D01 | 调色板 | 样式 → 颜色；逐色选择 | black、grey、light-violet、violet、blue、light-blue、yellow、orange、green、light-green、light-red、red 共 12 色；白色不出现在面板 | `T/styles.tsx#getColorStyleItems`；`S/styles/TLColorStyle.ts#DefaultColorStyle` | 部分（H3） |
+| D02 | 隐藏白色快捷操作 | Alt+T | 给适用选择及下一对象设 white | `U/context/actions.tsx#ActionsProvider(select-white-color)` | 是（H4）；不依赖 H3 面板 |
+| D03 | 不透明度 | 样式 → 不透明度滑块 | 10%、25%、50%、75%、100%；混合选择有对应状态 | `U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelOpacityPicker` | 部分（H3） |
+| D04 | 填充 | 样式 → 填充及附加下拉 | none、semi、solid、pattern、lined-fill、fill 六种均可选 | `T/styles.tsx#STYLES(fill/fillExtra)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelFillPicker` | 部分（H3） |
+| D05 | 填充快捷操作 | Alt+F；Alt+Shift+F | 分别设 fill 和 lined-fill，作用于适用选择及后续对象 | `U/context/actions.tsx#ActionsProvider(select-fill-fill/select-fill-lined-fill)` | 是（H4） |
+| D06 | 线型 | 样式 → 线型 | draw、dashed、dotted、solid 四种 | `T/styles.tsx#STYLES(dash)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelDashPicker` | 部分（H3） |
+| D07 | 尺寸档位 | 样式 → 小/中/大/特大 | s/m/l/xl 改笔画粗细或文本字号等适用尺寸 | `T/styles.tsx#STYLES(size)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelSizePicker` | 部分（H3） |
+| D08 | 字体 | 样式 → 字体 | draw、sans、serif、mono 四种默认字体 | `T/styles.tsx#getFontStyleItems`、`STYLES(font)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelFontPicker` | 部分（H3） |
+| D09 | 文本水平对齐 | 文本样式 → 对齐 | start/middle/end 三种；垂直对齐按钮在此面板禁用，不算可用选项 | `U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelTextAlignPicker`；`T/styles.tsx#STYLES(textAlign)` | 部分（H3） |
+| D10 | 标签水平对齐 | 带标签形状样式 → 对齐 | 标签 start/middle/end | `U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelLabelAlignPicker`；`T/styles.tsx#STYLES(horizontalAlign)` | 部分（H3） |
+| D11 | 标签垂直对齐 | 带垂直标签样式的形状 → 垂直对齐下拉 | start/middle/end；不支持的形状禁用按钮 | `U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelLabelAlignPicker`；`T/styles.tsx#STYLES(verticalAlign)` | 部分（H3） |
+| D12 | 几何形状切换 | 几何对象/工具的形状下拉 | 切换 A13–A32 的全部 20 种形状 | `U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelGeoShapePicker` | 部分（H3） |
+| D13 | 箭头路径类型 | 箭头样式 → 类型 | arc 弧线、elbow 折肘线两类 | `T/styles.tsx#STYLES(arrowKind)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelArrowKindPicker` | 部分（H3） |
+| D14 | 箭头起点端帽 | 箭头样式 → 起点 | none、arrow、triangle、square、dot、diamond、inverted、bar 八种 | `T/styles.tsx#STYLES(arrowheadStart)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelArrowheadPicker` | 部分（H3） |
+| D15 | 箭头终点端帽 | 箭头样式 → 终点 | 同上八种，起终点可独立配置 | `T/styles.tsx#STYLES(arrowheadEnd)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelArrowheadPicker` | 部分（H3） |
+| D16 | 线条插值 | 线条样式 → 线形 | line 折线、cubic 曲线两种 | `T/styles.tsx#STYLES(spline)`；`U/components/StylePanel/DefaultStylePanelContent.tsx#StylePanelSplinePicker` | 部分（H3） |
+| D17 | 样式作用域与混合状态 | 无选择切样式后创建；多选不同样式对象 | 记录下一形状样式；适用选择更新；不支持的选项不显示；混合值不会假装成统一值 | `U/components/StylePanel/StylePanelContext.tsx#StylePanelContextProvider`；`U/components/StylePanel/StylePanelButtonPicker.tsx#StylePanelButtonPicker` | 部分（H3） |
+
+## E. 连接线、标签与文字编辑
+
+富文本来自实际 `tipTapDefaultExtensions`，并继续核对本机 `@tiptap/starter-kit/src/starter-kit.ts` 及对应扩展的键盘/输入规则；不把快捷键帮助面板中「仅展示」的项目当作实现证据。默认关闭 blockquote、codeBlock、horizontalRule，不列为可用能力。
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| E01 | 箭头绑定对象 | 从对象开始/将箭头端点拖到对象上 | 端点绑定到对象；对象移动/缩放后连接跟随 | `T/shapes/arrow/ArrowShapeUtil.tsx#ArrowShapeUtil(onHandleDrag)`；`T/bindings/arrow/ArrowBindingUtil.ts#ArrowBindingUtil` | 是（H1） |
+| E02 | 精确绑定/取消绑定 | 拖箭头端点，停留或按 Alt 精确；按 Ctrl 忽略绑定目标 | 区分中心附近/指定位置，离开目标可解除绑定 | `T/tools/SelectTool/childStates/DraggingHandle.tsx#DraggingHandle(update)`；`T/shapes/arrow/arrowTargetState.ts#getArrowTargetState` | 是（H1）；组合修饰键手感未核实 |
+| E03 | 调整弧度/折肘 | 拖动箭头中间手柄 | 修改弧度或折肘路径，不等同普通整体缩放 | `T/shapes/arrow/ArrowShapeUtil.tsx#ArrowShapeUtil(getHandles/onHandleDrag)` | 是（H1） |
+| E04 | 箭头文字及标签位置 | 双击箭头；拖动箭头标签 | 编辑标签并调整其沿连接路径的位置 | `T/tools/SelectTool/childStates/PointingArrowLabel.ts#PointingArrowLabel`；`T/shapes/arrow/ArrowShapeUtil.tsx#ArrowShapeUtil` | 是（H1） |
+| E05 | 线条加点/移点 | 拖线条端点和段间创建柄 | 移动顶点；拖创建柄新增顶点，曲线/折线按样式渲染 | `T/shapes/line/LineShapeUtil.tsx#LineShapeUtil(getHandles/onHandleDragStart/onHandleDrag)` | 是（H1） |
+| E06 | 进入/退出文字编辑 | 双击文本/便签/几何标签，或选中后 Enter；Esc/点击外部结束 | 将焦点放到富文本；写回当前形状标签 | `T/tools/SelectTool/childStates/Idle.ts#Idle`；`T/shapes/shared/useEditableRichText.ts#useEditableRichText` | 是（H1） |
+| E07 | 自动宽度/固定宽度 | 创建文本时点击或拖动；拖文本横边；编辑 → 自动大小 | 固定宽度时换行；自动大小动作恢复随内容增长 | `T/shapes/text/toolStates/Pointing.ts#Pointing`；`T/shapes/text/TextShapeUtil.tsx#TextShapeUtil(onResize)`；`U/context/actions.tsx#ActionsProvider(toggle-auto-size)` | 是（H1、H4、H6） |
+| E08 | 粗体 | 选中文字 → 浮动栏 B；Mod+B | 对选择或后续输入切换粗体 | `U/components/Toolbar/DefaultRichTextToolbarContent.tsx#DefaultRichTextToolbarContent(bold)`；`T/utils/text/richText.ts#tipTapDefaultExtensions` | 是（H1、H6） |
+| E09 | 斜体 | 选中文字 → 浮动栏斜体；Mod+I | 切换斜体 | `U/components/Toolbar/DefaultRichTextToolbarContent.tsx#DefaultRichTextToolbarContent(italic)`；`T/utils/text/richText.ts#tipTapDefaultExtensions` | 是（H1、H6） |
+| E10 | 行内代码 | 浮动栏 code；Mod+E | 切换行内代码；默认 Code 扩展排斥其他文字标记，不以粗体/高亮叠加作为验收预期 | `U/components/Toolbar/DefaultRichTextToolbarContent.tsx#DefaultRichTextToolbarContent(code)`；`T/utils/text/richText.ts#tipTapDefaultExtensions`；`node_modules/@tiptap/extension-code/src/code.ts#Code(excludes)` | 是（H1、H6） |
+| E11 | 文字高亮 | 浮动栏高亮；Mod+Shift+H | 切换文字背景高亮 | `U/components/Toolbar/DefaultRichTextToolbarContent.tsx#DefaultRichTextToolbarContent(highlight)`；`T/utils/text/richText.ts#tipTapDefaultExtensions` | 是（H1、H6） |
+| E12 | 删除线 | Mod+Shift+S | 切换删除线；默认浮动栏没有删除线按钮 | `T/utils/text/richText.ts#tipTapDefaultExtensions`；`node_modules/@tiptap/extension-strike/src/strike.ts#Strike` | 是（H1） |
+| E13 | 下划线 | Mod+U（文字编辑时） | 切换下划线；不是默认浮动栏按钮，画布非编辑态的 Mod+U 是插入媒体 | `T/utils/text/richText.ts#tipTapDefaultExtensions`；`node_modules/@tiptap/starter-kit/src/starter-kit.ts#StarterKit`；`node_modules/@tiptap/extension-underline/src/underline.ts#Underline` | 是（H1） |
+| E14 | 标题与普通段落 | 文字编辑时 Mod+Alt+1…6；Mod+Alt+0 | 切换 1–6 级标题或普通段落 | `T/utils/text/richText.ts#tipTapDefaultExtensions`；`node_modules/@tiptap/extension-heading/src/heading.ts#Heading`；`node_modules/@tiptap/extension-paragraph/src/paragraph.ts#Paragraph` | 是（H1） |
+| E15 | 无序列表 | 浮动栏列表；Mod+Shift+8；输入规则 | 切换项目符号列表 | `U/components/Toolbar/DefaultRichTextToolbarContent.tsx#DefaultRichTextToolbarContent(bulletList)`；`node_modules/@tiptap/extension-list/src/bullet-list/bullet-list.ts#BulletList` | 是（H1、H6） |
+| E16 | 有序列表 | Mod+Shift+7；输入规则 | 切换编号列表 | `T/utils/text/richText.ts#tipTapDefaultExtensions`；`node_modules/@tiptap/extension-list/src/ordered-list/ordered-list.ts#OrderedList` | 是（H1） |
+| E17 | 列表缩进/退格及换行 | 列表中 Tab/Shift+Tab、Enter/Backspace | 按当前项层级缩进/提升、续建或退出列表；Shift+Enter 使用段落 Enter | `T/shapes/text/RichTextArea.tsx#handleTab`；`T/utils/text/richText.ts#KeyboardShiftEnterTweakExtension`；`node_modules/@tiptap/extension-list/src/item/list-item.ts#ListItem` | 是（H1） |
+| E18 | 富文本链接 | 浮动栏链接或 Mod+Shift+K，输入/修改/移除 URL | 为选中文字设置链接，弹出编辑面板；URL 可自动识别 | `U/components/Toolbar/DefaultRichTextToolbar.tsx#DefaultRichTextToolbar`；`DefaultRichTextToolbarContent.tsx#DefaultRichTextToolbarContent`（同目录）；`T/utils/text/richText.ts#tipTapDefaultExtensions` | 是（H1、H6） |
+| E19 | 富文本粘贴与文本方向 | 在文字中粘贴格式化内容/输入 RTL 文字 | 解析支持的富文本；根据内容自动判断文字方向 | `T/shapes/text/RichTextArea.tsx#RichTextArea`；`T/utils/text/richText.ts#tipTapDefaultExtensions` | 是（H1）；输入法/RTL 视觉未核实 |
+| E20 | 形状超链接 | 支持 url 的对象 → 编辑链接；点击链接按钮 | 添加/编辑形状 URL，并通过链接按钮打开 | `U/context/actions.tsx#ActionsProvider(edit-link)`；`U/components/EditLinkDialog.tsx#EditLinkDialog`；`T/shapes/shared/HyperlinkButton.tsx#HyperlinkButton` | 是（H4、H6） |
+| E21 | 键盘完成文字编辑 | 普通文本/标签编辑中 Mod+Enter | 完成当前文字编辑；便签按 B34 的自定义续建规则处理；不把 Tiptap 底层同名快捷键当成独立软换行入口 | `T/shapes/shared/useEditableRichText.ts#useEditableRichText(handleKeyDown)`；`T/shapes/note/NoteShapeUtil.tsx#useNoteKeydownHandler` | 是（H1） |
+| E22 | 双击箭头端点切端帽 | 选箭头后双击起点/终点控制点 | 当前端为 none 时变 arrow，否则变 none；两端独立 | `T/shapes/arrow/ArrowShapeUtil.tsx#ArrowShapeUtil(onDoubleClickHandle)` | 是（H1）；不依赖 H3 面板 |
+| E23 | 连续点选延伸线条 | 用线条工具创建后继续 Shift 点击 | 延伸上一条线并增加顶点；过近时调整末点，保留同一线条 | `T/shapes/line/toolStates/Pointing.ts#Pointing`；`T/shapes/line/toolStates/Idle.ts#Idle` | 是（H1） |
+
+## F. 剪贴板、导入、媒体与导出
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| F01 | 复制对象 | 编辑/右键 → 复制；Mod+C | 复制选择，保存可再编辑的 tldraw 内容及可用的文本/HTML 表示 | `U/context/actions.tsx#ActionsProvider(copy)`；`U/hooks/useClipboardEvents.ts#useNativeClipboardEvents`；`T/utils/clipboard.ts#clipboardWrite` | 部分（H4、H6、H12）：原生 Mod+C 保留可编辑载荷，但纯文本变空格；菜单复制另走默认路径；系统权限未核实 |
+| F02 | 剪切对象 | 编辑/右键 → 剪切；Mod+X | 写入剪贴板并移除可剪切的选择 | `U/context/actions.tsx#ActionsProvider(cut)`；`U/hooks/useClipboardEvents.ts#useNativeClipboardEvents` | 是（H4、H6）；系统权限未核实 |
+| F03 | 粘贴内部对象 | 编辑/右键 → 粘贴；Mod+V | 恢复形状、资源及内部关系；粘贴根对象解锁；新对象选中 | `U/hooks/clipboard/putPastedContent.ts#putPastedExternalContent`；`T/defaultExternalContentHandlers.ts#defaultHandleExternalTldrawContent` | 部分（H1、H4、H6、H12）：普通对象保留；已选 AI Slides 的本机缓存粘贴另有路径；系统权限未核实 |
+| F04 | 切换粘贴位置 | Mod+Alt+V | 临时反转鼠标位置/视口中间的粘贴偏好 | `U/context/actions.tsx#ActionsProvider(paste-at-cursor)` | 是（H4）；系统权限未核实 |
+| F05 | 纯文本粘贴 | Mod+Shift+V；Mod+Alt+Shift+V | 去除富文本格式；后一组合再反转粘贴位置偏好 | `U/hooks/useClipboardEvents.ts#useNativeClipboardEvents`；`U/context/actions.tsx#ActionsProvider(paste-plain-text-at-cursor)` | 是（H1、H4）；系统权限未核实 |
+| F06 | 文本/HTML 贴到画布 | 复制普通文本或非嵌入片段的富文本 → 粘贴 | 创建文本形状，保留受支持格式；长内容按视口换行 | `T/defaultExternalContentHandlers.ts#defaultHandleExternalTextContent` | 是（H1） |
+| F07 | 拖入/粘贴多媒体 | 拖文件到画布或粘贴图片/视频；媒体选择器 | 图片支持 JPEG/PNG/WebP/SVG/GIF/APNG/AVIF，视频支持 MP4/WebM/QuickTime；可批量放入，非法格式/数量过多/上传失败有提示 | `T/defaultExternalContentHandlers.ts#defaultHandleExternalFileContent`、`notifyIfFileNotAllowed`；`U/hooks/clipboard/pasteFiles.ts#pasteFiles`；`node_modules/@tldraw/utils/src/lib/media/media.ts#DEFAULT_SUPPORTED_MEDIA_TYPES` | 是（H1、H10）；权限/编码支持未核实 |
+| F08 | SVG 导入 | 粘贴 SVG 文本或插入 SVG 文件 | 清理 SVG 后作为图像资产创建，保留尺寸 | `T/defaultExternalContentHandlers.ts#defaultHandleExternalSvgTextContent`、`maybeSanitizeSvgFile` | 是（H1、H10） |
+| F09 | Excalidraw 剪贴板导入 | 粘贴 Excalidraw 格式内容 | 转成支持的 tldraw 形状；不是完整 .excalidraw 文件管理器 | `T/defaultExternalContentHandlers.ts#defaultHandleExternalExcalidrawContent`；`U/hooks/clipboard/putPastedContent.ts#putPastedExternalContent` | 是（H1） |
+| F10 | URL 粘贴 | 将 URL 粘到空白画布 | 匹配服务时生成嵌入；其他 URL 生成书签卡片 | `T/defaultExternalContentHandlers.ts#defaultHandleExternalUrlContent` | 是（H1、H5）；外部抓取未核实 |
+| F11 | 书签卡片 | 粘贴不自动嵌入的 URL | 显示可得到的标题、描述、图片等；失败给提示/回退 | `T/defaultExternalContentHandlers.ts#defaultHandleExternalUrlAsset`；`T/shapes/bookmark/BookmarkShapeUtil.tsx#BookmarkShapeUtil` | 是（H1）；跨域抓取未核实 |
+| F12 | 图片替换 | 选一张图片 → 图片工具栏替换 | 用新文件替换媒体，保持形状身份，按替换逻辑处理尺寸/裁剪 | `U/context/actions.tsx#ActionsProvider(image-replace)`；`T/defaultExternalContentHandlers.ts#defaultHandleExternalFileReplaceContent` | 是（H7、H10）；系统选择器未核实 |
+| F13 | 自由裁剪与移图 | 图片工具栏裁剪；双击/Enter 或 Ctrl 拖边的适用路径 | 进入 crop 状态；拖边改裁剪框、拖内容改变取景 | `U/components/Toolbar/DefaultImageToolbarContent.tsx#DefaultImageToolbarContent`；`T/tools/SelectTool/childStates/Crop/Crop.ts#Crop` | 是（H7） |
+| F14 | 裁剪缩放滑块 | 进入裁剪 → 图像缩放 | 以滑块改变取景缩放，保持合法裁剪范围 | `U/components/Toolbar/DefaultImageToolbarContent.tsx#DefaultImageToolbarContent(handleZoomChange)` | 是（H7） |
+| F15 | 裁剪比例 | 裁剪 → 比例菜单 | original、square、circle、landscape(4:3)、portrait(3:4)、wide(16:9) 六种 | `T/shapes/shared/crop.ts#ASPECT_RATIO_OPTIONS`；`U/components/Toolbar/DefaultImageToolbarContent.tsx#DefaultImageToolbarContent(handleAspectRatioChange)` | 是（H7） |
+| F16 | 裁剪确认/取消 | 裁剪工具栏确认、Enter/Esc | 完成当前裁剪或退出/取消当前操作，焦点可回到画布 | `U/components/Toolbar/DefaultImageToolbarContent.tsx#DefaultImageToolbarContent(handleKeyDown)`；`T/tools/SelectTool/childStates/Crop/Crop.ts#Crop` | 是（H7） |
+| F17 | 图片替代文本 | 图片工具栏 alt/文 → 输入文字 | 保存图片 altText，供屏幕阅读器及描述使用 | `U/components/Toolbar/DefaultImageToolbar.tsx#DefaultImageToolbar`；`U/components/Toolbar/DefaultImageToolbarContent.tsx#DefaultImageToolbarContent` | 是（H7）：自定义编辑器 |
+| F18 | 动图播放 | 插入支持的动画图片；系统切换减少动态效果偏好 | 正常显示动画；减少动态效果时显示静态首帧；默认图像没有独立播放按钮 | `T/shapes/image/ImageShapeUtil.tsx#ImageShapeUtil` | 是（H1）；浏览器效果未核实 |
+| F19 | 视频播放 | 插入视频，双击进入互动并使用视频控件 | 播放/暂停、时间进度等原生视频操作 | `T/shapes/video/VideoShapeUtil.tsx#VideoShapeUtil`、`VideoShape` | 是（H1）；编解码器未核实 |
+| F20 | 视频替换 | 视频工具栏替换 | 重新选视频并替换对应资产 | `U/components/Toolbar/DefaultVideoToolbarContent.tsx#DefaultVideoToolbarContent`；`U/context/actions.tsx#ActionsProvider(video-replace)` | 是（H6、H10）；系统选择器未核实 |
+| F21 | 视频替代文本 | 视频工具栏 alt | 编辑保存视频的 altText | `U/components/Toolbar/DefaultVideoToolbar.tsx#DefaultVideoToolbar`；`DefaultVideoToolbarContent.tsx#DefaultVideoToolbarContent`（同目录） | 是（H6） |
+| F22 | 下载原媒体 | 图片/视频工具栏下载或右键转换组 → 下载原文件 | 下载原始资产；抓取失败可在新窗口打开 | `U/context/actions.tsx#ActionsProvider(download-original)`；`U/components/menu-items.tsx#DownloadOriginalMenuItem` | 部分（H4、H7）：普通路径保留，宿主桥下载分支只筛图片 |
+| F23 | 复制为 SVG | 右键/编辑 → 复制为 → SVG | 将选择（无选择则本页）渲染为 SVG 写入剪贴板 | `U/context/actions.tsx#ActionsProvider(copy-as-svg)`；`U/components/menu-items.tsx#CopyAsMenuGroup` | 是（H4、H6）；系统权限未核实 |
+| F24 | 复制为 PNG | 右键/编辑 → 复制为 → PNG；Mod+Shift+C | 将选择（无选择则本页）渲染为 PNG | `U/context/actions.tsx#ActionsProvider(copy-as-png)` | 部分（H4）：宿主桥改用本机写入；权限未核实 |
+| F25 | 导出选择 SVG | 右键 → 导出为 SVG | 下载选择的 SVG，无选择时动作回退到本页内容 | `U/context/actions.tsx#ActionsProvider(export-as-svg)`；`U/components/menu-items.tsx#ConversionsMenuGroup` | 是（H4、H6）；下载效果未核实 |
+| F26 | 导出选择 PNG | 同上 PNG | 下载所选内容的 PNG | `U/context/actions.tsx#ActionsProvider(export-as-png)` | 是（H4、H6）；下载效果未核实 |
+| F27 | 导出整页 SVG | 主菜单 → 全部导出为 → SVG | 导出当前页全部形状，不限当前选择，不跨其他页 | `U/context/actions.tsx#ActionsProvider(export-all-as-svg)`；`U/components/MainMenu/DefaultMainMenuContent.tsx#ExportFileContentSubMenu` | 是（H4、H6、H9） |
+| F28 | 导出整页 PNG | 同上 PNG | 导出当前页全部形状 | `U/context/actions.tsx#ActionsProvider(export-all-as-png)` | 是（H4、H6、H9） |
+| F29 | 透明背景 | 导出子菜单 → 背景勾选项 | 切换 exportBackground；导出/复制遵循背景设置 | `U/context/actions.tsx#ActionsProvider(toggle-transparent)`；`U/components/menu-items.tsx#ToggleTransparentBgMenuItem` | 是（H4、H6） |
+| F30 | 扁平化成图片 | 编辑/右键编辑 → 扁平化；Shift+F | 将选择转换为图像形状，新图被选中；替换前保留撤销点 | `U/context/actions.tsx#ActionsProvider(flatten-to-image)`；`U/hooks/useFlatten.ts#flattenShapesToImages` | 是（H4、H6） |
+| F31 | 打印 | Mod+P | 按选择或页面内容生成打印结果；由浏览器打印流程承接 | `U/context/actions.tsx#ActionsProvider(print)`；`U/hooks/usePrint.ts#usePrint` | 是（H4）；系统打印未核实；主菜单未默认放打印项 |
+| F32 | 裁剪复位 | 正在裁剪图片时双击边界 | 恢复完整图像范围与未裁尺寸，并相应调整形状位置 | `T/shapes/image/ImageShapeUtil.tsx#ImageShapeUtil(onDoubleClickEdge)` | 是（H1、H7） |
+
+## G. 嵌入
+
+G05–G22 各自是一种服务。触发均为「主菜单 → 插入嵌入（Mod+I）→ 选择该服务 → 填匹配的 URL → 创建」。除 tldraw 的 `embedOnPaste: false` 外，各默认定义开启了 URL 自动嵌入。来源统一为 `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS` 中该行的 `type`；每行列出类型避免混淆。在线服务状态、登录、第三方页面策略及播放效果均未核实，不能据此宣称服务当前可访问。
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| G01 | 嵌入选择与 URL 校验 | 主菜单插入嵌入；Mod+I | 展示服务列表；无效 URL 不允许创建，可返回/取消 | `U/components/EmbedDialog.tsx#EmbedDialog`；`U/context/actions.tsx#ActionsProvider(insert-embed)` | 是（H4、H5、H6） |
+| G02 | 互动和尺寸限制 | 双击嵌入后互动，拖动允许的边框 | iframe 获得互动；每种定义决定可缩放、比例、最小尺寸及权限 | `T/shapes/embed/EmbedShapeUtil.tsx#EmbedShapeUtil(canEdit/canResize/onResize/component)` | 是（H5）；外部页面未核实 |
+| G03 | 嵌入转书签 | 选嵌入 → 编辑/右键编辑 → 转书签 | 以原 URL 创建书签；异步失败回退该操作 | `U/context/actions.tsx#ActionsProvider(convert-to-bookmark)`；`U/components/menu-items.tsx#ConvertToBookmarkMenuItem` | 是（H4、H5）；外部抓取未核实 |
+| G04 | 书签转嵌入 | 选可识别服务的书签 → 转嵌入 | 以该服务尺寸创建嵌入，保留原位置/旋转关系 | `U/context/actions.tsx#ActionsProvider(convert-to-embed)`；`U/components/menu-items.tsx#ConvertToEmbedMenuItem` | 是（H4、H5） |
+| G05 | tldraw | 嵌入对话框选 tldraw | 匹配网址转成 tldraw iframe；不靠普通粘贴自动嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(tldraw)` | 是（H5）；在线效果未核实 |
+| G06 | Figma | 嵌入对话框选 Figma/粘贴匹配 URL | 创建 Figma 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(figma)` | 是（H5）；在线效果未核实 |
+| G07 | Canva | 同上选 Canva | 创建 Canva 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(canva)` | 是（H5）；在线效果未核实 |
+| G08 | Google Maps | 同上选 Google Maps | 创建地图嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(google_maps)` | 是（H5）；在线效果未核实 |
+| G09 | Val Town | 同上选 Val Town | 创建 Val Town 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(val_town)` | 是（H5）；在线效果未核实 |
+| G10 | CodeSandbox | 同上选 CodeSandbox | 创建沙盒嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(codesandbox)` | 是（H5）；在线效果未核实 |
+| G11 | Codepen | 同上选 Codepen | 创建 Codepen 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(codepen)` | 是（H5）；在线效果未核实 |
+| G12 | Scratch | 同上选 Scratch | 创建 Scratch 嵌入；定义不允许普通调整尺寸 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(scratch)` | 是（H5）；在线效果未核实 |
+| G13 | YouTube | 同上选 YouTube | 创建锁定比例的视频嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(youtube)` | 是（H5）；在线效果未核实 |
+| G14 | Google Calendar | 同上选 Google Calendar | 创建日历嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(google_calendar)` | 是（H5）；在线效果未核实 |
+| G15 | Google Slides | 同上选 Google Slides | 创建演示文稿嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(google_slides)` | 是（H5）；在线效果未核实 |
+| G16 | GitHub Gist | 同上选 GitHub Gist | 创建 Gist 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(github_gist)` | 是（H5）；在线效果未核实 |
+| G17 | Replit | 同上选 Replit | 创建 Replit 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(replit)` | 是（H5）；在线效果未核实 |
+| G18 | Felt | 同上选 Felt | 创建 Felt 地图嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(felt)` | 是（H5）；在线效果未核实 |
+| G19 | Spotify | 同上选 Spotify | 创建 Spotify 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(spotify)` | 是（H5）；在线效果未核实 |
+| G20 | Vimeo | 同上选 Vimeo | 创建锁定比例的视频嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(vimeo)` | 是（H5）；在线效果未核实 |
+| G21 | Observable | 同上选 Observable | 创建 Observable 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(observable)` | 是（H5）；在线效果未核实 |
+| G22 | Desmos | 同上选 Desmos | 创建 Desmos 嵌入 | `T/defaultEmbedDefinitions.ts#DEFAULT_EMBED_DEFINITIONS(desmos)` | 是（H5）；在线效果未核实 |
+| G23 | 粘贴 iframe 嵌入代码 | 将含 HTTP(S) iframe 的 HTML 或纯文本代码粘到画布 | 取 src 和宽高创建嵌入；非服务列表 URL 使用原 URL 和未知嵌入的 sandbox 默认值，不等于任意 HTML 原样执行 | `U/hooks/useClipboardEvents.ts#extractIframeFromHtml`、`handleClipboardThings`；`T/defaultExternalContentHandlers.ts#defaultHandleExternalEmbedContent`；`T/shapes/embed/EmbedShapeUtil.tsx#EmbedShapeUtil(component)` | 是（H1、H5）；外站策略/权限效果未核实 |
+
+## H. 视口、导航、偏好与多语言
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| H01 | 临时平移与惯性 | 空格拖动/中键拖动；手形拖动后松开 | 不换作品位置地浏览画布；支持对应输入的惯性路径 | `E/hooks/useCanvasEvents.ts#useCanvasEvents`；`E/editor/Editor.ts#Editor`；`T/tools/HandTool/childStates/Dragging.ts#Dragging` | 是（H1）；触控硬件手感未核实 |
+| H02 | 滚轮/触控板手势 | 滚轮、双指滚动、捏合 | 按设备模式平移或以指针为中心缩放 | `E/hooks/useGestureEvents.ts#useGestureEvents`；`E/editor/Editor.ts#Editor` | 是（H1、H8）；硬件未核实 |
+| H03 | 放大 | 缩放菜单/视图菜单；= 或 Mod+= | 以视口中心放大 | `U/context/actions.tsx#ActionsProvider(zoom-in)` | 是（H4、H6） |
+| H04 | 缩小 | 同上；- 或 Mod+- | 以视口中心缩小 | `U/context/actions.tsx#ActionsProvider(zoom-out)` | 是（H4、H6） |
+| H05 | 指针位置放大/缩小 | 上述放大/缩小组合加 Shift | 以指针屏幕位置缩放 | `U/context/actions.tsx#ActionsProvider(zoom-in-on-cursor/zoom-out-on-cursor)` | 是（H4） |
+| H06 | 恢复 100% | 缩放/视图菜单；Shift+0；双击缩放百分比按钮 | 重置缩放比例 | `U/context/actions.tsx#ActionsProvider(zoom-to-100)`；`U/components/ZoomMenu/DefaultZoomMenu.tsx#ZoomTriggerButton(handleDoubleClick)` | 是（H4、H6） |
+| H07 | 适合全部内容 | 缩放/视图菜单；Shift+1 | 当前页全部内容进入视口 | `U/context/actions.tsx#ActionsProvider(zoom-to-fit)` | 是（H4、H6） |
+| H08 | 适合所选 | 缩放/视图菜单；Shift+2 | 将选择范围放入视口 | `U/context/actions.tsx#ActionsProvider(zoom-to-selection)` | 是（H4、H6） |
+| H09 | 缩放工具 | 按 Z；单击或拖框；Alt 反向 | 点击缩放或缩放到框选区域，结束回原工具 | `U/context/actions.tsx#ActionsProvider(select-zoom-tool)`；`T/tools/ZoomTool/childStates/ZoomBrushing.ts#ZoomBrushing` | 是（H1、H4） |
+| H10 | 快速缩放概览 | Shift+Z/缩放工具中按 Shift，移动指针后释放 | 临时展示全局；释放返回原视口或移到新的区域 | `T/tools/ZoomTool/childStates/ZoomQuick.ts#ZoomQuick` | 是（H1、H4） |
+| H11 | 小地图 | 导航面板展开小地图；点击/拖动/双击、滚轮；Shift 拖动 | 显示内容概览；双击将目标置中，Shift 拖动锁定单轴，滚轮沿用画布导航规则；可折叠 | `U/components/NavigationPanel/DefaultNavigationPanel.tsx#DefaultNavigationPanel`；`U/components/Minimap/DefaultMinimap.tsx#DefaultMinimap`；`U/components/Minimap/MinimapManager.ts#MinimapManager(minimapScreenPointToPagePoint)` | 是（H6）；小窗口按断点隐藏 |
+| H12 | 返回内容 | 平移到作品全在视口外 → 返回内容按钮 | 回到选择或当前页内容，缩放不过度放大 | `U/context/actions.tsx#ActionsProvider(back-to-content)`；`U/components/HelperButtons/DefaultHelperButtons.tsx#DefaultHelperButtons` | 是（H4、H6） |
+| H13 | 吸附偏好 | 主菜单 → 偏好 → 吸附 | 保存 isSnapMode，影响直接变换 | `U/components/MainMenu/DefaultMainMenuContent.tsx#PreferencesGroup`；`U/context/actions.tsx#ActionsProvider(toggle-snap-mode)` | 是（H4、H6、H8） |
+| H14 | 网格模式 | 偏好 → 网格；Mod+' | 显示/隐藏网格并参与网格吸附 | `U/context/actions.tsx#ActionsProvider(toggle-grid)` | 是（H4、H6） |
+| H15 | 环绕选择偏好 | 偏好 → 环绕选择 | 保存 isWrapMode，框选默认采用完全包含 | `U/context/actions.tsx#ActionsProvider(toggle-wrap-mode)`；`T/tools/SelectTool/childStates/Brushing.ts#Brushing` | 是（H4、H6、H8） |
+| H16 | 专注模式 | 偏好 → 专注；Mod+. | 切换 isFocusMode，收起相关界面并清理对话框/提示 | `U/context/actions.tsx#ActionsProvider(toggle-focus-mode)`；`U/TldrawUi.tsx#TldrawUi` | 部分（H6）：默认 UI 路径保留，自定义界面是否全部隐藏未核实 |
+| H17 | 边缘滚动 | 偏好 → 边缘滚动，拖动到视口边缘 | 打开/关闭边缘自动平移 | `U/context/actions.tsx#ActionsProvider(toggle-edge-scrolling)`；`T/tools/SelectTool/childStates/Brushing.ts#Brushing(onTick)` | 是（H4、H6、H8） |
+| H18 | 动态尺寸 | 偏好 → 动态尺寸 | 新建对象尺寸随当前缩放调整，维持屏幕上的可用大小 | `U/context/actions.tsx#ActionsProvider(toggle-dynamic-size-mode)`；`E/editor/Editor.ts#Editor(getResizeScaleFactor)` | 是（H4、H6、H8） |
+| H19 | 默认粘贴位置 | 偏好 → 在鼠标处粘贴 | 切换指针处/视口中心，临时快捷键见 F04/F05 | `U/context/actions.tsx#ActionsProvider(toggle-paste-at-cursor)` | 是（H4、H6、H8） |
+| H20 | 输入设备模式 | 偏好 → 输入设备 → 自动/触控板/鼠标 | null、trackpad、mouse 三档；改变滚轮行为 | `U/components/InputModeMenu.tsx#InputModeMenu` | 是（H6、H8） |
+| H21 | 反转缩放方向 | 偏好 → 输入设备 → 反转缩放 | 反转滚轮缩放方向；不适用的模式禁用入口 | `U/components/InputModeMenu.tsx#InputModeMenu`；`U/components/menu-items.tsx#ToggleInvertZoomItem`；`U/context/actions.tsx#ActionsProvider(toggle-invert-zoom)` | 是（H6、H8） |
+| H22 | 浅色/深色/跟随系统 | 偏好 → 主题；Mod+/ 切换浅深 | 三种配色偏好；画布、形状色板随模式适配 | `U/components/ColorSchemeMenu.tsx#ColorSchemeMenu`；`U/context/actions.tsx#ActionsProvider(toggle-dark-mode)` | 是（H6、H8） |
+| H23 | 减少动画 | 偏好 → 无障碍 → 减少动态效果 | animationSpeed 在 0/1 切换，减弱视口等动画 | `U/context/actions.tsx#ActionsProvider(toggle-reduce-motion)`；`U/components/AccessibilityMenu.tsx#AccessibilityMenu` | 是（H6、H8） |
+| H24 | 开关快捷键 | 偏好 → 无障碍 → 快捷键 | 普通快捷动作停止/恢复；必需无障碍动作仍保留 | `U/context/actions.tsx#ActionsProvider(toggle-keyboard-shortcuts)`；`U/hooks/useKeyboardShortcuts.ts#useKeyboardShortcuts` | 是（H6、H8） |
+| H25 | 增强无障碍模式 | 偏好 → 无障碍 → 增强模式 | 启用 enhancedA11yMode，样式标题等增强说明出现 | `U/context/actions.tsx#ActionsProvider(enhanced-a11y-mode)`；`U/components/StylePanel/DefaultStylePanelContent.tsx` | 部分（H3、H6、H8）：选择态样式面板仍隐藏 |
+| H26 | 快捷键说明 | 主菜单/帮助 → 快捷键；Mod+Alt+/ | 按工具、编辑、视口、变换、文字、无障碍分组展示；工具快捷键按覆盖结果显示 | `U/components/KeyboardShortcutsDialog/DefaultKeyboardShortcutsDialogContent.tsx#DefaultKeyboardShortcutsDialogContent`；`U/context/actions.tsx#ActionsProvider(open-kbd-shortcuts)` | 是（H4、H6） |
+| H27 | 界面语言 | 主菜单/帮助 → 语言列表 | 切换下面列出的 49 个 locale；当前项勾选，用户内容不被翻译 | `U/components/LanguageMenu.tsx#LanguageMenu`；`S/translations/languages.ts#LANGUAGES` | 是（H6、H8）；各翻译及 RTL 外观未核实 |
+| H28 | 退出手写笔模式 | 检测到笔模式后的辅助按钮 | 清除 isPenMode，恢复普通输入方式 | `U/context/actions.tsx#ActionsProvider(exit-pen-mode)`；`U/components/HelperButtons/DefaultHelperButtons.tsx#DefaultHelperButtons` | 是（H1、H6）；笔设备未核实 |
+| H29 | 响应式菜单与溢出 | 缩窄窗口/打开更多工具 | 导航、样式、工具与排列按断点收纳，功能不因窄窗静默丢失 | `U/components/Toolbar/DefaultToolbar.tsx#DefaultToolbar`；`U/components/NavigationPanel/DefaultNavigationPanel.tsx#DefaultNavigationPanel`；`U/components/StylePanel/DefaultStylePanel.tsx#DefaultStylePanel` | 部分（H2、H3、H6）：工具栏和样式面板有改写；窄窗未核实 |
+| H30 | 手形连续点击缩放 | 手形工具下双击/三击/四击 | 双击在指针处放大，三击缩小；四击在 100% 时适合全部，否则重置 100% | `T/tools/HandTool/HandTool.ts#HandTool(onDoubleClick/onTripleClick/onQuadrupleClick)` | 是（H1） |
+
+H27 的全部 locale：`id, ms, ca, cs, da, de, en, es, tl, fr, gl, hr, it, hu, nl, no, pl, pt-br, pt-pt, ro, sl, so, fi, sv, vi, tr, el, ru, uk, he, ur, ar, fa, ne, mr, hi-in, bn, pa, gu-in, ta, te, kn, ml, th, km-kh, ko-kr, ja, zh-cn, zh-tw`。切换语言的能力计 1 条，49 种选项都在覆盖范围。
+
+## I. 无障碍与键盘交互
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| I01 | 跳到画布内容 | Tab 到跳转按钮后 Enter | 选中阅读顺序的第一个对象，必要时将其带入视口 | `U/components/A11y.tsx#SkipToMainContent` | 是（H1、H6）；读屏器未核实 |
+| I02 | 顺序选择对象 | 已选对象后 Tab/Shift+Tab | 按阅读顺序选择下一/上一对象 | `T/tools/SelectTool/childStates/Idle.ts#Idle(onKeyUp/onKeyRepeat)` | 是（H1） |
+| I03 | 按方向选择对象 | Mod+方向键 | 选择对应方向的相邻对象 | `T/tools/SelectTool/childStates/Idle.ts#Idle(onKeyDown)` | 是（H1） |
+| I04 | 选择父/子对象 | Mod+Shift+上/下 | 进入第一个子形状或回到父形状 | `T/tools/SelectTool/childStates/Idle.ts#Idle(onKeyDown)` | 是（H1） |
+| I05 | 键盘进入样式或媒体栏 | 选形状后 Mod+Enter | 焦点移到样式面板首按钮；单图片/视频移到对应上下文工具栏 | `U/context/actions.tsx#ActionsProvider(adjust-shape-styles)` | 部分（H3、H7）：选择态无样式面板，普通形状没有目标按钮 |
+| I06 | 键盘打开右键菜单 | 选形状后 Mod+Shift+Enter | 在选择中心调出右键菜单 | `U/context/actions.tsx#ActionsProvider(a11y-open-context-menu)` | 是（H4、H6） |
+| I07 | 读出选择变化 | 用键盘/指针更换选择 | live region 播报类型、序号、数量及文字/替代文本描述 | `U/components/A11y.tsx#DefaultA11yAnnouncer`、`generateShapeAnnouncementMessage`、`useSelectedShapesAnnouncer` | 是（H1、H6）；真实读屏效果未核实 |
+| I08 | 重复播报 | 已选对象后 Alt+R | 重新宣布当前选择信息 | `U/context/actions.tsx#ActionsProvider(a11y-repeat-shape-announce)` | 是（H4）；真实读屏效果未核实 |
+| I09 | 模拟按下指针 | 按住逗号，再释放 | 在当前指针处派发 pointer_down/up，可配合工具进行操作 | `U/hooks/useKeyboardShortcuts.ts#useKeyboardShortcuts` | 是（H1） |
+| I10 | 键盘平移视口 | 空格+方向键 | 移动画布视口而非移动选择 | `E/editor/Editor.ts#Editor`；`U/components/KeyboardShortcutsDialog/DefaultKeyboardShortcutsDialogContent.tsx#DefaultKeyboardShortcutsDialogContent(a11y-pan-camera)` | 是（H1） |
+| I11 | 菜单与控件键盘可达 | Tab/方向键/Enter/Esc 操作菜单、工具栏和对话框 | 焦点可导航，禁用项不可触发，菜单/对话框有对应标签与角色 | `U/components/primitives/TldrawUiToolbar.tsx#TldrawUiToolbar`；`U/components/primitives/TldrawUiDropdownMenu.tsx`；`U/components/primitives/TldrawUiDialog.tsx` | 部分（H2、H3、H6、H7）：默认控件继承，改写部分需独立实机验收 |
+| I12 | 输入场景不误触画布快捷键 | 正在输入文字、输入法组合、表单编辑或菜单开启时按字母键 | 不应把文本输入当成切换工具；原生复制剪切粘贴另走剪贴板事件 | `U/hooks/useKeyboardShortcuts.ts#shouldSkipEvent`、`areShortcutsDisabled`；`U/hooks/useClipboardEvents.ts#useNativeClipboardEvents` | 是（H1、H4） |
+
+## J. 页面管理（按产品约定不提供）
+
+这是默认编辑器真实存在、但 ADR 0003 明确排除的能力。不得把它们记成新编辑器遗漏，也不得据此重新开放 hiCanvas 页管理。全部露出「否」依据 H9；页面区别于 hiCanvas 画板，后者由另一张功能清单覆盖。
+
+| 编号 | 名称 | 用户怎么触发（默认编辑器） | 预期行为（默认编辑器） | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| J01 | 页面列表与切换 | 点页面名，选另一页 | 切换编辑页并展示当前页标记 | `U/components/PageMenu/DefaultPageMenu.tsx#DefaultPageMenu` | 否（H9）；按产品约定不提供 |
+| J02 | 新建页 | 页面列表 → 新建 | 按数量上限新建页并切换 | `U/components/PageMenu/DefaultPageMenu.tsx#DefaultPageMenu(handleCreatePage)` | 否（H9）；按产品约定不提供 |
+| J03 | 重命名页 | 双击页名或页菜单重命名 | 行内编辑名称，完成/取消有相应处理 | `U/components/PageMenu/DefaultPageMenu.tsx#DefaultPageMenu(startRenamingPage)`；`PageItemInput.tsx#PageItemInput`（同目录） | 否（H9）；按产品约定不提供 |
+| J04 | 复制页 | 页菜单 → 复制 | 复制页与其内容 | `U/components/PageMenu/PageItemSubmenu.tsx#PageItemSubmenu(onDuplicate)` | 否（H9）；按产品约定不提供 |
+| J05 | 删除页 | 页菜单 → 删除 | 删除该页；受最后一页等条件限制 | `U/components/PageMenu/PageItemSubmenu.tsx#PageItemSubmenu(onDelete)` | 否（H9）；按产品约定不提供 |
+| J06 | 页面排序 | 拖动页行手柄或页菜单上/下移 | 调整页面顺序 | `U/components/PageMenu/DefaultPageMenu.tsx#DefaultPageMenu`；`PageItemSubmenu.tsx#PageItemSubmenu`（同目录） | 否（H9）；按产品约定不提供 |
+| J07 | 移动选择到页 | 右键 → 移到页 → 已有页/新页 | 将选择转移到目标页 | `U/components/menu-items.tsx#MoveToPageMenu`；`U/context/actions.tsx#ActionsProvider(move-to-new-page)` | 否（H9、H4）；按产品约定不提供 |
+| J08 | 上/下一页快捷键 | Alt+左/上、Alt+右/下 | 切到前后页；末页有内容时「下一页」可新建页 | `U/context/actions.tsx#ActionsProvider(change-page-prev/change-page-next)` | 否（H9、H4）；按产品约定不提供 |
+| J09 | 页面列表尺寸与滚动 | 拖列表底部尺寸柄、滚动列表 | 列表高度持久化并适配大量页面 | `U/components/PageMenu/DefaultPageMenu.tsx#DefaultPageMenu`、`readSavedPageMenuListHeight` | 否（H9）；按产品约定不提供 |
+
+## K. 需要协作连接或许可条件的可见能力
+
+多人能力仅在接入 collaboration store/presence 时出现；裸的默认本机 Tldraw 不自动带来多人服务。hiCanvas 的 HTTP 版本冲突保护/MCP 更新不等同于 tldraw presence。
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| K01 | 人员头像和名单 | 有协作连接时打开人员面板 | 显示在线人员、姓名/颜色及连接状态 | `U/components/SharePanel/DefaultPeopleMenu.tsx#DefaultPeopleMenu`；`U/hooks/useCollaborationStatus.ts#useShowCollaborationUi` | 否（H1、H6）：无 collaboration store，SharePanel 为空 |
+| K02 | 编辑自己的姓名/颜色 | 人员面板中的个人信息区 | 修改个人显示名与光标颜色 | `U/components/SharePanel/DefaultPeopleMenuContent.tsx#DefaultPeopleMenuContent`；`U/components/SharePanel/DefaultUserPresenceEditor.tsx#DefaultUserPresenceEditor` | 否（H1、H6） |
+| K03 | 查看/跟随他人视角 | 人员名单单击定位；双击/跟随按钮；停止跟随 | 跳到对方视口或持续跟随，可退出 | `U/components/SharePanel/DefaultPeopleMenuItem.tsx#DefaultPeopleMenuItem`；`U/context/actions.tsx#ActionsProvider(stop-following)` | 否（H1、H6） |
+| K04 | 他人光标/选择与光标聊天 | 协作连接后；桌面按 / 或右键光标聊天 | 显示 presence，输入临时聊天；触屏不打开聊天动作 | `U/context/actions.tsx#ActionsProvider(open-cursor-chat)`；`U/components/menu-items.tsx#CursorChatItem`；`T/overlays/CollaboratorCursorOverlayUtil.ts#CollaboratorCursorOverlayUtil` | 否（H1、H6） |
+| K05 | 许可入口/品牌提示 | 满足 SDK 对应许可状态时看画布角落 | SDK 显示对应许可/品牌入口，点击按许可组件行为跳转 | `E/license/Watermark.tsx#Watermark` | 部分（H11）：本基线隐藏未许可入口，SDK 校验保留；许可状态未核实 |
+
+## L. 默认界面能打开的调试功能（条件项）
+
+这些不是仅存在于编程 API：偏好菜单确实能开启 Debug 菜单。它们属于开发诊断，替换编辑器时单列决策，不与普通创作工具混算；本次没有实际执行重置、造错或造数据。
+
+| 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
+| --- | --- | --- | --- | --- | --- |
+| L01 | 调试模式 | 偏好 → Debug mode | 显示/隐藏调试面板 | `U/context/actions.tsx#ActionsProvider(toggle-debug-mode)`；`U/components/DefaultDebugPanel.tsx#DefaultDebugPanel` | 是（H4、H6） |
+| L02 | JSON 复制 | 开调试后 → 复制为 → JSON | 将选择/当前页的 JSON 内容写剪贴板 | `U/components/menu-items.tsx#CopyAsMenuGroup`；`U/context/actions.tsx#ActionsProvider(copy-as-json)` | 是（H4、H6）；系统权限未核实 |
+| L03 | 诊断动作 | Debug → Hard reset / Show toast / Show dialog / Create 100 shapes / Count shapes / Throw error | 分别重置本地编辑器、展示提示/对话框、创建测试形状、统计节点、触发错误；每个按钮独立条件验收 | `U/components/DebugMenu/DefaultDebugMenuContent.tsx#DefaultDebugMenuContent`、`createNShapes` | 是（H6）；未执行破坏性诊断 |
+| L04 | 调试/功能标志 | Debug → Debug flags / Feature flags | 枚举当前标志并切换，不把未启用实验行为当成默认创作能力 | `U/components/DebugMenu/DefaultDebugMenuContent.tsx#DebugFlags`、`FeatureFlags`、`DebugFlagToggle` | 是（H6）；未核实各实验标志效果 |
+
+## 只给程序员的接口（不作为验收项）
+
+`T/defaultShapeUtils.ts#defaultShapeUtils`、`T/defaultShapeTools.ts#defaultShapeTools`、`T/defaultTools.ts#defaultTools` 提供扩展注册；`E/editor/Editor.ts#Editor` 提供形状、相机、历史、导出等调用；store/schema/migrations/persistence 提供数据基础；`T/Tldraw.tsx#Tldraw` 与 `U/overrides.ts#TLUiOverrides` 支持替换组件、主题、资源和动作。服务端同步、资产存储及许可参数由宿主接入。这里仅说明扩展面，不把 API 方法数量当成用户功能数量，也不把 `.tldr` 文件打开/保存、云端共享链接、PDF/PPTX 原生导出推断为默认 UI 已有入口。
+
+## 覆盖说明与验收边界
+
+已读入口：工具与形状注册三表、`useTools`；`ActionsProvider` 全动作表、`useKeyboardShortcuts`、默认快捷键对话框；默认主/右键/排列/缩放/帮助菜单及 `menu-items` 的条件分支；默认样式面板与 `STYLES`、几何枚举；选择/移动/缩放/旋转/框选/自由选择/裁剪/快速缩放状态；箭头绑定、线顶点、画框、便签、媒体形状；富文本默认扩展、文字区、浮动栏及 Tiptap 扩展；默认外部内容处理、剪贴板、嵌入定义与对话框；导航、输入设备、配色、语言、无障碍播报、页面、人员与调试入口。hiCanvas 对照入口见 H1–H12。
+
+覆盖 ActionsProvider 中有默认菜单或键盘入口的动作；`open-embed-link` 仅注册而未被默认菜单/快捷键引用，不单列为可触发功能，`select-none` 的用户结果归 B01。
+
+每类数量和「未核实」条目索引在下方汇总；「未核实」描述的是尚未实测的环境效果，不表示靠记忆填入条目。全部交互均尚未在本轮实际点击；即使行中没有额外标注，也不能报告为实机通过。
+
+| 类别 | 条目数 | 其中额外标注「未核实」的编号 |
+| --- | ---: | --- |
+| A 工具、形状与创建 | 39 | A03、A12 |
+| B 选择、直接变换与容器 | 36 | B30、B34、B35 |
+| C 排列、层级与吸附 | 23 | 无 |
+| D 样式选项 | 17 | 无 |
+| E 连接线、标签与文字 | 23 | E02、E19 |
+| F 剪贴板、导入、媒体与导出 | 32 | F01、F02、F03、F04、F05、F07、F10、F11、F12、F18、F19、F20、F23、F24、F25、F26、F31 |
+| G 嵌入 | 23 | G02、G03、G05、G06、G07、G08、G09、G10、G11、G12、G13、G14、G15、G16、G17、G18、G19、G20、G21、G22、G23 |
+| H 视口、偏好与语言 | 30 | H01、H02、H16、H27、H28、H29 |
+| I 无障碍与键盘 | 12 | I01、I07、I08 |
+| J 页面（产品排除） | 9 | 无 |
+| K 协作/许可条件项 | 5 | K05 |
+| L 调试条件项 | 4 | L02、L04 |
+
+合计 **253 条**；其中 A–I 普通创作/操作能力 235 条，J 产品排除 9 条，K/L 条件项 9 条。静态露出为「是」209 条、「部分」31 条、「否」13 条；57 条额外标注了环境或交互效果「未核实」。这些计数不包含 H1–H12 证据编号和程序员接口段。
+
+后续默认编辑器验收：在隔离合成画板中按 A–I 操作 → 对照每行预期；J 确认按产品约定缺席；K/L 按是否提供协作/诊断能力决定测项；嵌入只在明确允许联网且有测试资源时检查。hiCanvas 现有缺口（H3 样式、A 键、协作面板等）应由主控在重构验收时明确保留或补齐，不能将此盘点当成用户已经批准的改动。
