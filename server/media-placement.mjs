@@ -1,5 +1,5 @@
 // 保留 Cowart 的目标框替换、父容器、旋转与旁置避让语义。
-import { getIndicesBetween, sortByIndex } from 'tldraw'
+import { getIndicesBetween, sortByIndex } from '@tldraw/utils'
 import { randomUUID } from 'node:crypto'
 import { applyCanvasOperations } from './canvas-operations.mjs'
 import { httpError } from './file-lock.mjs'

@@ -11,7 +11,7 @@ import { createServer } from 'node:http'
 import { ensureService } from '../mcp/startup.mjs'
 import { workspaceIdentity } from './workspace-identity.mjs'
 import { validateCanvasLink } from '../desktop/navigation.mjs'
-import { b64Vecs } from 'tldraw'
+import { b64Vecs } from '@tldraw/tlschema'
 import { mergeLegacyPages } from './single-canvas.mjs'
 
 test('旧多页合成一个画布，保留嵌套、旋转、图层和原始快照，重复读取不重复移动', async t => {

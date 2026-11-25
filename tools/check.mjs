@@ -144,6 +144,13 @@ try {
     }
   }
   checkRules(files, contents)
+  if (files.includes('tools/check-restricted-imports.mjs')) {
+    try {
+      execFileSync(process.execPath, ['tools/check-restricted-imports.mjs', ...(staged ? ['--staged'] : []), ...(baseline ? ['--base', baseline] : [])], { cwd: root, stdio: 'pipe' })
+    } catch (error) {
+      errors.push(`受限引用检查未通过：${error.stderr?.toString().trim() || error.message}`)
+    }
+  }
   if (errors.length) {
     process.stderr.write(`${errors.map((error) => `✗ ${error}`).join('\n')}\n`)
     process.exitCode = 1

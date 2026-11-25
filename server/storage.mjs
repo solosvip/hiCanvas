@@ -1,3 +1,4 @@
+import { sanitizeCanvasSnapshot } from './canvas-snapshot.mjs'
 import { isCanvasSnapshot } from './protocol.mjs'
 // Cowart 38bdafef 的本地存储实现；MIT，© 2026 Twox。
 import { randomUUID } from 'node:crypto'
@@ -18,7 +19,6 @@ const canvasFileName = 'cowart-canvas.json'
 const pageIdPrefix = 'page:'
 const globalAssetsRoute = '/assets/'
 const pageAssetsRoute = '/page-assets/'
-let canvasSnapshotSanitizerPromise = null
 const mimeTypes = new Map([
   ['.apng', 'image/apng'],
   ['.avif', 'image/avif'],
@@ -32,9 +32,7 @@ const mimeTypes = new Map([
   ['.html', 'text/html; charset=utf-8']
 ])
 async function sanitizeCanvasSnapshotForServer(snapshot) {
-  canvasSnapshotSanitizerPromise ??= import('../src/canvasSnapshot.js')
-  const { sanitizeCanvasSnapshotForTldraw } = await canvasSnapshotSanitizerPromise
-  return sanitizeCanvasSnapshotForTldraw(snapshot)
+  return sanitizeCanvasSnapshot(snapshot)
 }
 function isSafeChildPath(parent, child) {
   const pathToChild = relative(parent, child)

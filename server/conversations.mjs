@@ -1,3 +1,4 @@
+import { createCanvasSnapshot } from './canvas-snapshot.mjs'
 import { documentRecordTypes } from './canvas-documents.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
@@ -110,8 +111,7 @@ export function createConversations(root = defaultRoot) {
     try { state = await readJsonFile(stateFile(id)) } catch (error) {
       if (error.code !== 'ENOENT') throw error
       const legacy = id === 'legacy' ? (await storageFor(id).loadCanvasSnapshot()).snapshot : null
-      const { createCowartSnapshotWithDefaultPage } = await import('../src/canvasSnapshot.js')
-      const initial = legacy ?? createCowartSnapshotWithDefaultPage()
+      const initial = legacy ?? createCanvasSnapshot()
       if (!legacy) for (const record of Object.values(initial.store)) if (record.typeName === 'page') record.name = '第 1 页'
       state = { revision: randomUUID(), snapshot: await checked(initial) }
       state.snapshot = await qualify(state.snapshot, id)

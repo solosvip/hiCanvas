@@ -1,0 +1,354 @@
+{
+  "store": {
+    "document:document": {
+      "gridSize": 10,
+      "name": "",
+      "meta": {},
+      "id": "document:document",
+      "typeName": "document"
+    },
+    "page:page": {
+      "meta": {},
+      "id": "page:page",
+      "name": "Page 1",
+      "index": "a1",
+      "typeName": "page"
+    },
+    "shape:frame": {
+      "id": "shape:frame",
+      "typeName": "shape",
+      "type": "frame",
+      "x": -450,
+      "y": 80,
+      "rotation": 0.2,
+      "index": "a1fwn7yV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {
+        "w": 1400,
+        "h": 900,
+        "name": "合成旧画板",
+        "color": "black"
+      },
+      "meta": {
+        "cowartAiSlides": true
+      }
+    },
+    "shape:group": {
+      "id": "shape:group",
+      "typeName": "shape",
+      "type": "group",
+      "x": 35,
+      "y": 40,
+      "rotation": -0.1,
+      "index": "a1zPFAZG",
+      "parentId": "shape:frame",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {},
+      "meta": {}
+    },
+    "shape:text": {
+      "id": "shape:text",
+      "typeName": "shape",
+      "type": "text",
+      "x": 12,
+      "y": 20,
+      "rotation": 0,
+      "index": "a1tVFKUl",
+      "parentId": "shape:group",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {
+        "color": "black",
+        "size": "m",
+        "font": "sans",
+        "scale": 1,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "合成标题"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "第二行"
+                }
+              ]
+            }
+          ]
+        },
+        "w": 200,
+        "textAlign": "start",
+        "autoSize": true
+      },
+      "meta": {}
+    },
+    "shape:geo": {
+      "id": "shape:geo",
+      "typeName": "shape",
+      "type": "geo",
+      "x": 180,
+      "y": 120,
+      "rotation": 0,
+      "index": "a2SAnOCV",
+      "parentId": "shape:frame",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {
+        "color": "blue",
+        "size": "m",
+        "font": "sans",
+        "scale": 1,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "矩形"
+                }
+              ]
+            }
+          ]
+        },
+        "w": 260,
+        "h": 140,
+        "geo": "rectangle",
+        "dash": "solid",
+        "growY": 0,
+        "url": "",
+        "labelColor": "black",
+        "fill": "solid",
+        "align": "middle",
+        "verticalAlign": "middle"
+      },
+      "meta": {}
+    },
+    "shape:image": {
+      "id": "shape:image",
+      "typeName": "shape",
+      "type": "image",
+      "x": 520,
+      "y": 70,
+      "rotation": 0,
+      "index": "a3X3Cj2V",
+      "parentId": "shape:frame",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {
+        "w": 320,
+        "h": 180,
+        "assetId": "asset:synthetic",
+        "playing": true,
+        "url": "",
+        "crop": {
+          "topLeft": {
+            "x": 0.1,
+            "y": 0.2
+          },
+          "bottomRight": {
+            "x": 0.9,
+            "y": 0.8
+          }
+        },
+        "flipX": true,
+        "flipY": false,
+        "altText": ""
+      },
+      "meta": {
+        "cowartAiImage": true,
+        "fixture": "synthetic-only"
+      }
+    },
+    "shape:html": {
+      "id": "shape:html",
+      "typeName": "shape",
+      "type": "embed",
+      "x": 180,
+      "y": 400,
+      "rotation": 0,
+      "index": "a44RUnml",
+      "parentId": "shape:frame",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {
+        "w": 700,
+        "h": 350,
+        "url": "https://example.invalid/synthetic.html"
+      },
+      "meta": {
+        "cowartHtmlDraft": true,
+        "cowartAiSlidesParentShapeId": "shape:frame"
+      }
+    },
+    "shape:arrow": {
+      "id": "shape:arrow",
+      "typeName": "shape",
+      "type": "arrow",
+      "x": 120,
+      "y": 160,
+      "rotation": 0,
+      "index": "a2z3Ug5d",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {
+        "color": "black",
+        "size": "m",
+        "font": "sans",
+        "scale": 1,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "关系"
+                }
+              ]
+            }
+          ]
+        },
+        "kind": "arc",
+        "elbowMidPoint": 0.5,
+        "dash": "solid",
+        "fill": "none",
+        "labelColor": "black",
+        "bend": 0,
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 200,
+          "y": 0
+        },
+        "arrowheadStart": "none",
+        "arrowheadEnd": "arrow",
+        "labelPosition": 0.5
+      },
+      "meta": {}
+    },
+    "shape:draw": {
+      "id": "shape:draw",
+      "typeName": "shape",
+      "type": "draw",
+      "x": -100,
+      "y": -60,
+      "rotation": 0,
+      "index": "a3ejAUcG",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "props": {
+        "color": "red",
+        "fill": "none",
+        "dash": "draw",
+        "size": "m",
+        "isComplete": true,
+        "isClosed": false,
+        "isPen": true,
+        "scale": 1,
+        "scaleX": -1,
+        "scaleY": 2,
+        "segments": [
+          {
+            "type": "free",
+            "path": "AAAAAAAAAAAAAAA/AFGAT2Yy"
+          }
+        ]
+      },
+      "meta": {}
+    },
+    "asset:synthetic": {
+      "id": "asset:synthetic",
+      "typeName": "asset",
+      "type": "image",
+      "props": {
+        "src": "https://example.invalid/synthetic.png",
+        "name": "synthetic.png",
+        "w": 640,
+        "h": 360,
+        "mimeType": "image/png",
+        "isAnimated": false
+      },
+      "meta": {
+        "fixture": "synthetic-only"
+      }
+    },
+    "user:synthetic": {
+      "id": "user:synthetic",
+      "typeName": "user",
+      "name": "合成用户",
+      "color": "#123456",
+      "imageUrl": "",
+      "meta": {}
+    },
+    "binding:synthetic": {
+      "id": "binding:synthetic",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:arrow",
+      "toId": "shape:geo",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": true,
+        "snap": "none"
+      },
+      "meta": {}
+    }
+  },
+  "schema": {
+    "schemaVersion": 2,
+    "sequences": {
+      "com.tldraw.store": 5,
+      "com.tldraw.asset": 1,
+      "com.tldraw.camera": 1,
+      "com.tldraw.document": 2,
+      "com.tldraw.instance": 26,
+      "com.tldraw.instance_page_state": 5,
+      "com.tldraw.page": 1,
+      "com.tldraw.instance_presence": 6,
+      "com.tldraw.pointer": 1,
+      "com.tldraw.shape": 4,
+      "com.tldraw.user": 1,
+      "com.tldraw.asset.image": 6,
+      "com.tldraw.asset.video": 5,
+      "com.tldraw.asset.bookmark": 2,
+      "com.tldraw.shape.arrow": 8,
+      "com.tldraw.shape.bookmark": 2,
+      "com.tldraw.shape.draw": 4,
+      "com.tldraw.shape.embed": 4,
+      "com.tldraw.shape.frame": 1,
+      "com.tldraw.shape.geo": 11,
+      "com.tldraw.shape.group": 0,
+      "com.tldraw.shape.highlight": 3,
+      "com.tldraw.shape.image": 5,
+      "com.tldraw.shape.line": 5,
+      "com.tldraw.shape.note": 12,
+      "com.tldraw.shape.text": 4,
+      "com.tldraw.shape.video": 4,
+      "com.tldraw.binding.arrow": 1
+    }
+  }
+}

@@ -1,0 +1,177 @@
+{
+  "src/CowartDraggableToolbar.jsx": [
+    "tldraw#DefaultToolbar",
+    "tldraw#useEditor"
+  ],
+  "src/canvasSnapshot.js": [
+    "tldraw#createTLStore"
+  ],
+  "src/conversations/ConversationMenu.jsx": [
+    "tldraw#TldrawUiButton",
+    "tldraw#useEditor"
+  ],
+  "src/conversations/ImageResults.jsx": [
+    "tldraw#TldrawUiButton",
+    "tldraw#useEditor"
+  ],
+  "src/editor/AgentRequestFeedback.jsx": [
+    "tldraw#useToasts"
+  ],
+  "src/editor/App.jsx": [
+    "tldraw#Tldraw"
+  ],
+  "src/editor/CowartSelectionToolbar.jsx": [
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/DraftGenerationPanel.jsx": [
+    "tldraw#TldrawUiButtonIcon",
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/ImageGenerationPanel.jsx": [
+    "tldraw#TldrawUiButtonIcon",
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/SlidesGenerationPanel.jsx": [
+    "tldraw#TldrawUiButtonIcon",
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/SlidesPresentation.jsx": [
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/StylePanel.jsx": [
+    "tldraw#DefaultStylePanel",
+    "tldraw#DefaultStylePanelContent",
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/Toolbar.jsx": [
+    "tldraw#ArrowDownToolbarItem",
+    "tldraw#ArrowLeftToolbarItem",
+    "tldraw#ArrowRightToolbarItem",
+    "tldraw#ArrowToolbarItem",
+    "tldraw#ArrowUpToolbarItem",
+    "tldraw#AssetToolbarItem",
+    "tldraw#CheckBoxToolbarItem",
+    "tldraw#CloudToolbarItem",
+    "tldraw#DiamondToolbarItem",
+    "tldraw#DrawToolbarItem",
+    "tldraw#EllipseToolbarItem",
+    "tldraw#EraserToolbarItem",
+    "tldraw#FrameToolbarItem",
+    "tldraw#HandToolbarItem",
+    "tldraw#HeartToolbarItem",
+    "tldraw#HexagonToolbarItem",
+    "tldraw#HighlightToolbarItem",
+    "tldraw#LaserToolbarItem",
+    "tldraw#LineToolbarItem",
+    "tldraw#NoteToolbarItem",
+    "tldraw#OvalToolbarItem",
+    "tldraw#RectangleToolbarItem",
+    "tldraw#RhombusToolbarItem",
+    "tldraw#SelectToolbarItem",
+    "tldraw#StarToolbarItem",
+    "tldraw#TextToolbarItem",
+    "tldraw#TldrawUiMenuToolItem",
+    "tldraw#TriangleToolbarItem",
+    "tldraw#XBoxToolbarItem",
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/annotationEditing.jsx": [
+    "tldraw#DefaultColorStyle",
+    "tldraw#startEditingShapeWithRichText"
+  ],
+  "src/editor/annotationRequests.jsx": [
+    "tldraw#Box"
+  ],
+  "src/editor/annotationTools.jsx": [
+    "tldraw#StateNode",
+    "tldraw#createShapeId",
+    "tldraw#toRichText"
+  ],
+  "src/editor/assets.jsx": [
+    "@tldraw/assets/imports.vite#getAssetUrlsByImport"
+  ],
+  "src/editor/components.jsx": [
+    "tldraw#DefaultMainMenu"
+  ],
+  "src/editor/exports.jsx": [
+    "tldraw#Box"
+  ],
+  "src/editor/holderCreation.jsx": [
+    "tldraw#createShapeId"
+  ],
+  "src/editor/htmlAnnotations.jsx": [
+    "tldraw#Box",
+    "tldraw#createShapeId"
+  ],
+  "src/editor/htmlToolbar.jsx": [
+    "tldraw#Box",
+    "tldraw#TldrawUiButtonIcon",
+    "tldraw#TldrawUiContextualToolbar",
+    "tldraw#TldrawUiToolbarButton",
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/imageToolbar.jsx": [
+    "tldraw#DefaultImageToolbar",
+    "tldraw#DefaultImageToolbarContent",
+    "tldraw#TldrawUiButton",
+    "tldraw#TldrawUiButtonIcon",
+    "tldraw#TldrawUiInput",
+    "tldraw#TldrawUiToolbarButton",
+    "tldraw#useEditor",
+    "tldraw#useToasts",
+    "tldraw#useTranslation",
+    "tldraw#useUiEvents",
+    "tldraw#useValue"
+  ],
+  "src/editor/overrides.jsx": [
+    "tldraw#Box",
+    "tldraw#onDragFromToolbarToCreateShape"
+  ],
+  "src/editor/shapes.jsx": [
+    "tldraw#DEFAULT_EMBED_DEFINITIONS",
+    "tldraw#DefaultSpinner",
+    "tldraw#EmbedShapeUtil",
+    "tldraw#FrameShapeUtil",
+    "tldraw#HTMLContainer",
+    "tldraw#toDomPrecision",
+    "tldraw#useEditor",
+    "tldraw#useIsEditing"
+  ],
+  "src/editor/slidesMedia.jsx": [
+    "tldraw#useEditor"
+  ],
+  "src/editor/slidesToolbar.jsx": [
+    "tldraw#Box",
+    "tldraw#TldrawUiButtonIcon",
+    "tldraw#TldrawUiContextualToolbar",
+    "tldraw#TldrawUiToolbarButton",
+    "tldraw#useEditor",
+    "tldraw#useValue"
+  ],
+  "src/editor/userPreferences.js": [
+    "tldraw#atom",
+    "tldraw#createTLCurrentUser",
+    "tldraw#getUserPreferences",
+    "tldraw#react",
+    "tldraw#setUserPreferences"
+  ],
+  "src/image-models/ModelSettings.jsx": [
+    "tldraw#TldrawUiButton",
+    "tldraw#useEditor"
+  ],
+  "src/image-models/canvasImages.js": [
+    "tldraw#AssetRecordType",
+    "tldraw#createShapeId"
+  ],
+  "src/main.jsx": [
+    "tldraw/tldraw.css#*"
+  ]
+}
