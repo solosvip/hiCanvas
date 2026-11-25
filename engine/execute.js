@@ -10,9 +10,14 @@ import { validateRelationships } from './relationships.js'
  * 快照和变化分别拷贝，调用者修改快照不会污染后续撤销所需的变化记录。
  */
 export function executeCanvasCommands(snapshot, commands) {
+  if (!Array.isArray(commands) || !commands.length || commands.length > 500) throw new CanvasEditError('每批需要 1 至 500 个操作。')
+  return executeCanvasTransaction(snapshot, commands)
+}
+
+// 仅供编辑层内部倒放已记录的事务；外部输入的命令数量限制保留在公开入口。
+export function executeCanvasTransaction(snapshot, commands) {
   let store
   try {
-    if (!Array.isArray(commands) || !commands.length || commands.length > 500) throw new CanvasEditError('每批需要 1 至 500 个操作。')
     if (!isCanvasSnapshot(snapshot)) throw new CanvasEditError('无效的画板快照。')
     const pages = Object.values(snapshot.store).filter(record => record?.typeName === 'page')
     if (pages.length !== 1) throw new CanvasEditError('画板必须只有一张内部画布。')
@@ -22,18 +27,19 @@ export function executeCanvasCommands(snapshot, commands) {
     }
     store.loadStoreSnapshot(structuredClone(snapshot))
     const input = structuredClone(commands)
+    const results = []
     const changes = store.extractingChanges(() => store.atomic(() => {
       for (const command of input) {
         const handler = command && Object.hasOwn(commandHandlers, command.type) && commandHandlers[command.type]
         if (!handler) throw new CanvasEditError('未知的画板操作。')
-        handler(store, command)
+        results.push(handler(store, command) ?? null)
       }
       validateRelationships(store, pages[0].id)
     }))
     for (const [id, [before, after]] of Object.entries(changes.updated)) {
       if (isEqual(before, after)) delete changes.updated[id]
     }
-    return { snapshot: structuredClone(store.getStoreSnapshot()), changes: structuredClone(changes) }
+    return { snapshot: structuredClone(store.getStoreSnapshot()), changes: structuredClone(changes), results: structuredClone(results) }
   } catch (error) {
     if (error instanceof CanvasEditError) throw error
     throw new CanvasEditError(String(error?.message || error).split('\n')[0], 'invalid-input', { cause: error })
