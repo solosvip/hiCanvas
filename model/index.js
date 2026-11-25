@@ -10,7 +10,9 @@ export function createCanvasSnapshot(snapshot) {
   const store = createCanvasStore()
   if (snapshot) store.loadStoreSnapshot(snapshot)
   store.ensureStoreIsUsable()
-  return store.getStoreSnapshot()
+  // Store records are frozen in development; consumers receive plain data that
+  // they can edit without mutating the Store or retaining its internal objects.
+  return structuredClone(store.getStoreSnapshot())
 }
 
 export function isCanvasSnapshot(value) {
@@ -123,10 +125,10 @@ export function sanitizeCanvasSnapshot(snapshot) {
   }
 
   return {
-    snapshot: {
+    snapshot: structuredClone({
       schema: migratedSnapshot.schema,
       store: pruneRecordsWithMissingDependencies(validStore, skippedRecords)
-    },
+    }),
     skippedRecords
   }
 }
