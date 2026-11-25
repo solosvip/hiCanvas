@@ -3,9 +3,6 @@
     "tldraw#DefaultToolbar",
     "tldraw#useEditor"
   ],
-  "src/canvasSnapshot.js": [
-    "tldraw#createTLStore"
-  ],
   "src/conversations/ConversationMenu.jsx": [
     "tldraw#TldrawUiButton",
     "tldraw#useEditor"

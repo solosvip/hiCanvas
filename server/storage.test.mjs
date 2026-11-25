@@ -3,7 +3,7 @@ import { after, beforeEach, test } from 'node:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createCanvasStore } from './canvas-snapshot.mjs'
+import { createCanvasStore } from '../model/index.js'
 import { createCanvasStorage } from './storage.mjs'
 
 const project = await mkdtemp(join(tmpdir(), 'hicanvas-storage-'))

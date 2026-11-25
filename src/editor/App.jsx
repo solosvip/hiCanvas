@@ -8,7 +8,7 @@ import { trackCanvasOpened } from "../analytics.js"
 import { IS_COWART_WIDGET_BUILD, acceptCowartCanvasSnapshot, hasCowartWidgetBridge, loadCowartCanvasState, refreshCowartCanvasSnapshot, saveCowartSelectionState, saveCowartViewState } from "../cowartClient.js"
 import { attachCowartCanvasSaveSession } from "../cowartCanvasSave.js"
 import { createPersistenceFeedback } from '../persistenceFeedback.js'
-import { sanitizeCanvasSnapshotForTldraw } from "../canvasSnapshot.js"
+import { sanitizeCanvasSnapshot } from "../../model/index.js"
 import { SELECTION_STATE_ELEMENT_ID, ANNOTATION_TOOL_ID, ANNOTATION_LABEL_POSITION } from './configuration.jsx'
 import { cowartAssetUrls, cowartTldrawAssetStore, revokeCowartAssetObjectUrls, retainCowartEditorAssets, cowartAssetReferencesChanged } from './assets.jsx'
 import { storeChangedSinceSnapshot, applyRemoteCanvasSnapshot } from './remoteSync.js'
@@ -29,7 +29,7 @@ function App() {
     async function loadCanvas() {
       try {
         const canvasState = await loadCowartCanvasState(controller.signal)
-        const sanitized = sanitizeCanvasSnapshotForTldraw(canvasState.snapshot)
+        const sanitized = sanitizeCanvasSnapshot(canvasState.snapshot)
         if (canvasState.snapshot !== null && (!sanitized.snapshot || sanitized.skippedRecords.length)) {
           throw new Error('Cowart could not load the saved canvas snapshot.')
         }
@@ -252,7 +252,7 @@ function App() {
             message.textContent = '画布又有新修改，请再次备份后加载最新画布。'
             return
           }
-          const sanitized = sanitizeCanvasSnapshotForTldraw(nextSnapshot)
+          const sanitized = sanitizeCanvasSnapshot(nextSnapshot)
           if (!sanitized.snapshot || sanitized.skippedRecords.length) throw new Error('最新画布暂时无法完整加载，请稍后重试。')
           editor.store.mergeRemoteChanges(() => {
             editor.store.loadStoreSnapshot(sanitized.snapshot)
