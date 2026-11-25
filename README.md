@@ -48,6 +48,46 @@ HICANVAS_PROJECT_DIR="/你的资料目录" npm start
 
 自动保存有短暂延迟，关闭服务或刷新前稍等片刻。无法读取或保存时会显示错误；部分记录损坏时停止加载并保留原文件；保存失败会持续显示“尚未保存”，恢复服务后自动重试，也可点击“重试保存”。遇到文件损坏请先备份整个资料夹，不要用空画板覆盖。
 
+## Mac 桌面应用
+
+Apple 芯片 Mac 可直接打开 `hiCanvas.app`，画板、模型设置、图片结果、HTML、影片和幻灯片沿用同一套界面。应用自带运行环境，使用者无需另装 Node。关闭窗口后可点击 Dock 图标重开；关闭窗口或退出应用后，已提交的任务仍由本机服务继续处理。菜单与操作默认使用简体中文。
+
+开发者在已安装 Node 24、Xcode 命令行工具及项目签名证书的 Mac 上运行：
+
+```sh
+npm ci
+npm run desktop:pack
+```
+
+产物为 `build/desktop/hiCanvas-darwin-arm64/hiCanvas.app` 与 `build/hiCanvas-版本号-mac-arm64.zip`。签名使用 `Developer ID Application: Feng Shu (5QS2RDW5AK)`；没有该证书时停止打包，不生成未签名交付物。本机试用包未做公证和自动更新。`npm run check` 包含桌面服务/MCP 代码的独立打包检查，实际 `.app` 的签名和启动需在 Mac 上验证；打包命令最后自动运行 `npm run desktop:smoke`，使用隔离资料、本机模拟生图接口和应用自带 MCP 冷启动服务，断言脱离源码运行、占位排版、断开后生成与对话恢复。
+
+桌面版默认资料位置与源码版一致，也可在 `~/Library/Application Support/hiCanvas/connection.json` 保存连接；MCP 启动器读取同一份配置。文件只包含地址和目录，不放模型密钥：
+
+```json
+{
+  "baseUrl": "http://127.0.0.1:43218",
+  "projectDir": "/你的资料目录",
+  "canvasDir": "/你的资料目录/canvas",
+  "settingsDir": "/你的资料目录/settings"
+}
+```
+
+环境变量 `HICANVAS_URL`、`HICANVAS_PORT`、`HICANVAS_PROJECT_DIR`、`HICANVAS_CANVAS_DIR`、`HICANVAS_SETTINGS_DIR` 可覆盖对应配置；自测使用 `HICANVAS_DESKTOP_CONFIG_DIR` 指向隔离配置目录。不要让两个端口同时操作同一资料目录。桌面版连接已运行的同协议服务时直接复用；健康接口返回设置目录标识时，同时核对模型设置目录；未返回该标识时需自行保证 `settingsDir` 与既有服务一致；端口对应其他程序或其他资料目录时停止连接并提示。
+
+安装至「应用程序」后，MCP 客户端可使用应用自带入口，源码目录和 Homebrew Node 均不再是运行依赖：
+
+```json
+{
+  "mcpServers": {
+    "hiCanvas": {
+      "command": "/Applications/hiCanvas.app/Contents/Resources/hicanvas-mcp"
+    }
+  }
+}
+```
+
+`open_conversation` 的 `openWindow: true` 或 `open_canvas` 会在已安装的 hiCanvas 应用中打开目标对话。未安装桌面应用时使用浏览器；多 Agent 操作仍按各自的 `conversationId` 隔离。自定义安装位置可设置 `HICANVAS_DESKTOP_APP`。
+
 ## 添加自己的生图模型
 
 点击画板左上菜单栏的设置图标→“添加模型”，自行填写显示名称、接口格式、API 基础地址、模型名和密钥，可以保存多组并随时切换、修改或删除。没有预设的服务地址、账号或模型名单。保存设置不会发送生图请求。

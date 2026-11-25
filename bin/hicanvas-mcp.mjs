@@ -2,7 +2,10 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createHiCanvasMcp } from '../mcp/server.mjs'
 import { ensureService } from '../mcp/startup.mjs'
-const baseUrl = process.env.HICANVAS_URL || `http://127.0.0.1:${process.env.HICANVAS_PORT || 43218}`
+import { loadConnection, connectionEnv } from '../mcp/connection.mjs'
+const connection = loadConnection()
+Object.assign(process.env, connectionEnv(connection))
+const { baseUrl } = connection
 try {
   await ensureService(baseUrl)
   const server = createHiCanvasMcp({ baseUrl })

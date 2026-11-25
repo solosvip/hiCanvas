@@ -6,11 +6,12 @@ import { requestImages } from './image-provider.mjs'
 import { createImageResults } from './image-results.mjs'
 import { readRequestBody, sendJson } from './protocol.mjs'
 import { createImageJobs } from './image-jobs.mjs'
+import { imageSettingsDirectory } from './image-settings-path.mjs'
 
 export function createImageMiddleware({ settingsDir, assetsDir, workspace = conversations } = {}) {
   if (process.env.NODE_TEST_CONTEXT && workspace === conversations) throw new Error('自动测试必须显式传入隔离 workspace，禁止读取或恢复真实资料目录。')
   const projectDir = process.env.HICANVAS_PROJECT_DIR || join(homedir(), 'Documents', 'hiCanvas')
-  const models = createModelStore(settingsDir || process.env.HICANVAS_SETTINGS_DIR || join(projectDir, 'settings'))
+  const models = createModelStore(settingsDir || imageSettingsDirectory())
   const jobs = createImageJobs(workspace, models)
   const legacyResults = createImageResults(assetsDir || join(process.env.HICANVAS_CANVAS_DIR || join(projectDir, 'canvas'), 'assets'))
   return async (req, res, next) => {

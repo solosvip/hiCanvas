@@ -9,7 +9,7 @@ import { createImageMiddleware } from './image-routes.mjs'
 export async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'hicanvas-conversations-'))
   const workspace = createConversations(root)
-  const canvas = createCanvasMiddleware({ workspace })
+  const canvas = createCanvasMiddleware({ workspace, settingsDir: join(root, 'settings') })
   const images = createImageMiddleware({ workspace, settingsDir: join(root, 'settings') })
   const server = createServer((req, res) => images(req, res, () => canvas(req, res, () => { res.statusCode = 404; res.end('{}') })))
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
