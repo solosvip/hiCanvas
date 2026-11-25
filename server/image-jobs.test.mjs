@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fixture } from './test-helpers.mjs'
 import { createImageJobs } from './image-jobs.mjs'
-import { applyCanvasOperations } from './canvas-operations.mjs'
+import { executeCanvasCommands } from '../engine/index.js'
 import { readJsonFile, writeJsonAtomic } from './storage.mjs'
 import { join } from 'node:path'
 
@@ -41,7 +41,7 @@ test('16 张一次建好 4×4 占位，后台限并发执行；切默认模型�
   while (calls.length !== 3) await delay(5)
   activeModel = 'model-b'
   // 任务尚未结束时用户的编辑必须保留；内部写回发生冲突也不能再调用供应商。
-  await workspace.mutate(id, (await workspace.read(id)).revision, snapshot => applyCanvasOperations(snapshot, [{ type: 'create_shape', id: 'shape:user', shapeType: 'text', parentId: holders[0].id, x: 24, y: 32, text: '生成期间手写的说明' }]))
+  await workspace.mutate(id, (await workspace.read(id)).revision, snapshot => executeCanvasCommands(snapshot, [{ type: 'create_shape', id: 'shape:user', shapeType: 'text', parentId: holders[0].id, x: 24, y: 32, text: '生成期间手写的说明' }]).snapshot)
   const other = await workspace.open()
   release()
   const job = await finished(jobs, id, result.jobId)
@@ -100,7 +100,7 @@ test('删除目标后保留生成结果；某一张失败不妨碍其余图片�
   // 等待已发送，再删除目标。
   while (calls !== 3) await delay(5)
   const current = await workspace.read(id)
-  await workspace.mutate(id, current.revision, snapshot => applyCanvasOperations(snapshot, [{ type: 'delete', ids: [result.items[0].holderId] }]))
+  await workspace.mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{ type: 'delete', ids: [result.items[0].holderId] }]).snapshot)
   release()
   const job = await finished(jobs, id, result.jobId)
   assert.deepEqual(job.items.map(item => item.status), ['saved', 'failed', 'succeeded'])

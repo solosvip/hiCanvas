@@ -1,7 +1,6 @@
 import '../tools/test-sandbox.mjs'
 import test from 'node:test'
 import { executeCanvasCommands } from '../engine/index.js'
-import { applyCanvasOperations } from './canvas-operations.mjs'
 import assert from 'node:assert/strict'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -91,12 +90,12 @@ test('画板按钮创建持久请求，绑定 Agent 经 MCP 获取并完成；�
 test('占位框内大小写索引的背景和文字迁移后保持原先层次', async t => {
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
-  const { snapshot } = await workspace.read(id)
-  applyCanvasOperations(snapshot, [
+  let { snapshot } = await workspace.read(id)
+  snapshot = executeCanvasCommands(snapshot, [
     { type: 'create_shape', id: 'shape:holder', shapeType: 'frame', meta: { cowartAiDraftHolder: true } },
     { type: 'create_shape', id: 'shape:background', shapeType: 'geo', parentId: 'shape:holder' },
     { type: 'create_shape', id: 'shape:label', shapeType: 'text', parentId: 'shape:holder', text: '在背景上方' }
-  ])
+  ]).snapshot
   snapshot.store['shape:background'].index = 'a1A'
   snapshot.store['shape:label'].index = 'a1a'
   const edited = executeCanvasCommands(snapshot, [{ type: 'insert_html', args: { draftShapeId: 'shape:holder' }, html: { url: 'data:text/html,<h1>合成</h1>', assetUrl: '', contentHash: 'synthetic' } }])

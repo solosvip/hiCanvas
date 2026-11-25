@@ -6,7 +6,7 @@ import { rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './test-helpers.mjs'
 import { createImageJobs } from './image-jobs.mjs'
-import { applyCanvasOperations } from './canvas-operations.mjs'
+import { executeCanvasCommands } from '../engine/index.js'
 import { readJsonFile } from './storage.mjs'
 
 const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFhQJ/wR6cvQAAAABJRU5ErkJggg==', 'base64')
@@ -73,7 +73,7 @@ test('外部编辑造成的真实版本冲突仍重读合并，图片不重复�
     if (generated && !edited) {
       edited = true
       const current = await workspace.read(id)
-      await mutate(id, current.revision, snapshot => applyCanvasOperations(snapshot, [{ type: 'create_shape', id: 'shape:external-edit', shapeType: 'text', text: '生成期间用户继续写字' }]))
+      await mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{ type: 'create_shape', id: 'shape:external-edit', shapeType: 'text', text: '生成期间用户继续写字' }]).snapshot)
     }
     try { return await mutate(...args) }
     catch (error) { if (error.storage === 'revision-conflict') conflicts++; throw error }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './test-helpers.mjs'
-import { applyCanvasOperations } from './canvas-operations.mjs'
+import { executeCanvasCommands } from '../engine/index.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { createHiCanvasMcp } from '../mcp/server.mjs'
@@ -19,14 +19,14 @@ test('旧多页合成一个画布，保留嵌套、旋转、图层和原始快�
   const { workspace, root } = await fixture(t)
   const { id } = await workspace.open()
   const original = await workspace.read(id)
-  const snapshot = structuredClone(original.snapshot)
+  let snapshot = structuredClone(original.snapshot)
   const page = Object.values(snapshot.store).find(r => r.typeName === 'page')
-  applyCanvasOperations(snapshot, [
+  snapshot = executeCanvasCommands(snapshot, [
     { type: 'create_shape', id: 'shape:first', shapeType: 'geo', x: 20, y: 30, props: { w: 600, h: 400 } },
     { type: 'create_shape', id: 'shape:slides', shapeType: 'frame', x: -100, y: 200, rotation: 0.3, meta: { cowartAiSlides: true } },
     { type: 'create_shape', id: 'shape:slide', shapeType: 'embed', parentId: 'shape:slides', x: 12, y: 12, props: { url: 'https://example.com/slide' } },
     { type: 'create_shape', id: 'shape:overlay', shapeType: 'geo', x: 100, y: 300 }
-  ])
+  ]).snapshot
   // 直接构造旧版多页存档；新版编辑命令不允许创建这种状态。
   snapshot.store['page:second'] = { ...page, id: 'page:second', name: '第二个旧页面', index: 'a2' }
   snapshot.store['shape:slides'].parentId = 'page:second'
@@ -80,13 +80,14 @@ test('旧页含向左延伸的折线和嵌套旋转，迁移后与前页内容�
   const { workspace, root } = await fixture(t)
   const { id } = await workspace.open()
   const original = await workspace.read(id)
-  const snapshot = structuredClone(original.snapshot), store = snapshot.store
-  const page = Object.values(store).find(r => r.typeName === 'page')
-  applyCanvasOperations(snapshot, [
+  let snapshot = structuredClone(original.snapshot)
+  const page = Object.values(snapshot.store).find(r => r.typeName === 'page')
+  snapshot = executeCanvasCommands(snapshot, [
     { type: 'create_shape', id: 'shape:block', shapeType: 'geo', props: { w: 600, h: 400 } },
     { type: 'create_shape', id: 'shape:group', shapeType: 'group', rotation: 0.2 },
     { type: 'create_shape', id: 'shape:line', shapeType: 'geo', parentId: 'shape:group', rotation: 0.3 }
-  ])
+  ]).snapshot
+  const store = snapshot.store
   store['page:line'] = { ...page, id: 'page:line', name: '旧线条', index: 'a2' }
   store['shape:group'].parentId = 'page:line'
   store['shape:line'].type = 'line'
@@ -114,13 +115,14 @@ test('编码笔迹的镜像缩放与大便签也纳入迁移范围，不把后�
   const { workspace, root } = await fixture(t)
   const { id } = await workspace.open()
   const original = await workspace.read(id)
-  const snapshot = structuredClone(original.snapshot), store = snapshot.store
-  const page = Object.values(store).find(r => r.typeName === 'page')
-  applyCanvasOperations(snapshot, [
+  let snapshot = structuredClone(original.snapshot)
+  const page = Object.values(snapshot.store).find(r => r.typeName === 'page')
+  snapshot = executeCanvasCommands(snapshot, [
     { type: 'create_shape', id: 'shape:draw', shapeType: 'geo' },
     { type: 'create_shape', id: 'shape:note', shapeType: 'geo', x: 6500 },
     { type: 'create_shape', id: 'shape:next', shapeType: 'geo', props: { w: 512, h: 512 } }
-  ])
+  ]).snapshot
+  const store = snapshot.store
   store['page:next'] = { ...page, id: 'page:next', name: '其他作品', index: 'a2' }
   store['shape:next'].parentId = 'page:next'
   store['shape:draw'].type = 'draw'
