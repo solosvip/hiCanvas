@@ -3,6 +3,7 @@ import { isEqual } from '@tldraw/utils'
 import { CanvasEditError } from './errors.js'
 import { commandHandlers } from './commands/index.js'
 import { validateRelationships } from './relationships.js'
+import { reconcileGroups, previousRecords } from './group-consistency.js'
 
 // MCP 在自己的工具参数中限制 500 条；HTTP 请求另有 50 MB 上限，编辑器的大手势允许一次提交。
 export const MAX_TRANSACTION_COMMANDS = 20000
@@ -15,23 +16,27 @@ export const MAX_TRANSACTION_COMMANDS = 20000
  */
 export function executeCanvasCommands(snapshot, commands) {
   if (!Array.isArray(commands) || !commands.length || commands.length > MAX_TRANSACTION_COMMANDS) throw new CanvasEditError(`每批需要 1 至 ${MAX_TRANSACTION_COMMANDS} 个操作。`)
-  return executeCanvasTransaction(snapshot, commands)
+  return executeCanvasTransaction(snapshot, commands, { finalize: true })
 }
 
 // 仅供编辑层内部倒放已记录的事务；外部输入的命令数量限制保留在公开入口。
-export function executeCanvasTransaction(snapshot, commands) {
+export function executeCanvasTransaction(snapshot, commands, { finalize = false } = {}) {
   let store
   try {
     const loaded = loadValidatedCanvasSnapshot(snapshot)
     store = loaded.store
     const input = structuredClone(commands)
     const results = []
+    const journal = []
+    if (finalize) store.addHistoryInterceptor(entry => journal.push(entry.changes))
     const changes = store.extractingChanges(() => store.atomic(() => {
       for (const command of input) {
         const handler = command && Object.hasOwn(commandHandlers, command.type) && commandHandlers[command.type]
         if (!handler) throw new CanvasEditError('未知的画板操作。')
         results.push(handler(store, command) ?? null)
       }
+      // 倒放历史恢复当时的原值，不再次执行组的编辑规则。
+      if (finalize) reconcileGroups(store, journal.flatMap(previousRecords))
       validateRelationships(store, loaded.pageId)
     }))
     for (const [id, [before, after]] of Object.entries(changes.updated)) {

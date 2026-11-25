@@ -10,7 +10,8 @@ const geometryByType = Object.freeze({
   geo: { bounds: shape => getGeoSize(shape.props), contour: shape => getGeoContour(shape.props) },
   text: { bounds: textSize, contour: shape => box(textSize(shape)) },
   image: { bounds: stored, contour: shape => box(stored(shape)) },
-  frame: { bounds: stored, contour: shape => box(stored(shape)) }
+  frame: { bounds: stored, contour: shape => box(stored(shape)) },
+  group: { bounds: () => null, contour: () => null }
 })
 
 export function getShapeBounds(shape) {
