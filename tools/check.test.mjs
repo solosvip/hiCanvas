@@ -101,6 +101,43 @@ test('提交前检查读取暂存区，忽略尚未暂存的修改', () => fixtu
   assert.equal(check().status, 1)
 }))
 
+for (const [name, path, content] of [
+  ['CSS 隐藏', 'src/styles.css', '[data-testid="tl-watermark-unlicensed"] { display: none !important; }'],
+  ['CSS 透明与移出画布', 'src/styles.css', '.tl-watermark { opacity: 0; transform: translateX(100vw); }'],
+  ['父层选择器遮挡', 'src/styles.css', '.canvas:has([data-testid="tl-watermark-licensed"]) { visibility: hidden; }'],
+  ['DOM 改写', 'src/editor/localize.js', 'document.querySelector("[data-testid=tl-watermark-unlicensed]").textContent = "别的提示"'],
+  ['组件替换', 'src/components.jsx', 'export const components = { Watermark: () => null }'],
+  ['桌面注入', 'desktop/preload.cjs', 'document.querySelector(".tl-watermark").remove()'],
+  ['HTML 内联隐藏', 'index.html', '<style>.tl-watermark { display: none }</style>'],
+  ['构建时注入', 'tools/build.mjs', 'const css = ".tl-watermark { display: none }"'],
+]) {
+  test(`许可提示守卫拦住${name}`, () => fixture(({ write, check }) => {
+    write('DESIGN.md', '# Design\n')
+    write(path, content)
+    const result = check()
+    assert.equal(result.status, 1, result.output)
+    assert.ok(result.output.includes('不得改写、隐藏或遮挡 tldraw 许可提示'), result.output)
+  }))
+}
+
+test('许可提示守卫允许普通样式、SDK 导入和检查用例', () => fixture(({ write, check }) => {
+  write('DESIGN.md', '# Design\n')
+  write('src/styles.css', '.canvas { display: block; }')
+  write('src/sdk.js', 'import { Tldraw } from "tldraw"\n')
+  write('src/image.js', 'export const options = { watermark: "用户图片水印" }\n')
+  write('tools/license.test.mjs', 'const fixture = ".tl-watermark { display: none }"\n')
+  assert.equal(check().status, 0)
+}))
+
+test('许可提示守卫检查暂存区，未暂存的修正不能掩盖隐藏规则', () => fixture(({ git, write, check }) => {
+  write('DESIGN.md', '# Design\n')
+  write('src/styles.css', '.tl-watermark { display: none }')
+  git('add', '.')
+  write('src/styles.css', '.canvas { display: block }')
+  assert.equal(check('--staged').status, 1)
+  assert.equal(check().status, 0)
+}))
+
 test('工作区修正不能掩盖暂存区中的违规内容', () => fixture(({ git, write, check }) => {
   write('src/file.js', '// invalid\n'.repeat(901))
   git('add', '.')

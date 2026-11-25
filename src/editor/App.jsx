@@ -18,7 +18,6 @@ import { CowartAnnotationTool } from './annotationTools.jsx'
 import { cowartShapeUtils } from './shapes.jsx'
 import { cowartUiOverrides } from './overrides.jsx'
 import { cowartComponents } from './components.jsx'
-import { startWatermarkLocalization } from './watermarkLocalization.js'
 import { hiCanvasUser, useHiCanvasLocale } from './userPreferences.js'
 import { getCowartSelection, getCowartSelectionSnapshot, getCowartSelectionRecords, cowartSelectionRecordsEqual, getCowartViewState, restoreCowartViewState, writeCowartSelectionState } from './selection.jsx'
 function App() {
@@ -55,7 +54,6 @@ function App() {
     window.__cowartViewState = () => getCowartViewState(editor)
     let isDisposed = false
     const canvasSaveSession = attachCowartCanvasSaveSession(editor)
-    const stopWatermarkLocalization = startWatermarkLocalization(editor.getContainerDocument())
     const feedback = createPersistenceFeedback(editor.getContainer(), () => { saveCanvas(); syncSelectionState(); syncViewState() }, () => hasUnsavedChanges)
     let lastWrittenSelectionState = ''
     let lastSyncedSelectionState = ''
@@ -458,7 +456,6 @@ function App() {
       syncViewState()
       saveCanvas(true)
       canvasSaveSession.dispose()
-      stopWatermarkLocalization()
     }
   }, [viewState])
   if (snapshot === undefined || viewState === undefined) {
