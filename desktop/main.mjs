@@ -1,4 +1,7 @@
-import { app, BrowserWindow, Menu, dialog, shell } from 'electron'
+import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { createSkillSetup } from './skill-setup.mjs'
+import { app, BrowserWindow, Menu, dialog, shell, ipcMain, clipboard } from 'electron'
 import { ensureService } from '../mcp/startup.mjs'
 import { loadConnection, connectionEnv, desktopConfigDir, parseDeepLink } from '../mcp/connection.mjs'
 import { navigateCanvas, saveBeforeLeaving } from './window-navigation.mjs'
@@ -12,6 +15,7 @@ const locked = app.requestSingleInstanceLock()
 if (!locked) app.quit()
 let window
 let connection
+let skillSetup
 let quitting = false
 let pendingLink
 let opening = Promise.resolve()
@@ -29,7 +33,7 @@ app.on('second-instance', (_event, argv) => {
 })
 function installMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'hiCanvas', submenu: [{ label: '关于 hiCanvas', role: 'about' }, { type: 'separator' }, { label: '隐藏 hiCanvas', role: 'hide' }, { label: '隐藏其他应用', role: 'hideOthers' }, { label: '显示全部', role: 'unhide' }, { type: 'separator' }, { label: '退出 hiCanvas', role: 'quit' }] },
+    { label: 'hiCanvas', submenu: [{ label: '关于 hiCanvas', role: 'about' }, { label: 'AI 接入…', click: () => skillSetup.showConnection().catch(report) }, { type: 'separator' }, { label: '隐藏 hiCanvas', role: 'hide' }, { label: '隐藏其他应用', role: 'hideOthers' }, { label: '显示全部', role: 'unhide' }, { type: 'separator' }, { label: '退出 hiCanvas', role: 'quit' }] },
     { label: '编辑', submenu: [{ label: '撤销', role: 'undo' }, { label: '重做', role: 'redo' }, { type: 'separator' }, { label: '剪切', role: 'cut' }, { label: '复制', role: 'copy' }, { label: '粘贴', role: 'paste' }, { label: '全选', role: 'selectAll' }] },
     { label: '视图', submenu: [{ label: '重新加载画板', role: 'reload' }, { label: '实际大小', role: 'resetZoom' }, { label: '放大', role: 'zoomIn' }, { label: '缩小', role: 'zoomOut' }, { type: 'separator' }, { label: '进入全屏', role: 'togglefullscreen' }] },
     { label: '窗口', submenu: [{ label: '最小化', role: 'minimize' }, { label: '缩放', role: 'zoom' }, { label: '关闭窗口', role: 'close' }] }
@@ -40,7 +44,7 @@ async function showCanvas(link) {
   if (link) url = await validateCanvasLink(parseDeepLink(link))
   else await ensureService(connection.baseUrl, { ...connection, appRoot: app.getAppPath() })
   if (!window) {
-    window = new BrowserWindow({ width: 1440, height: 940, minWidth: 640, minHeight: 480, title: 'hiCanvas', show: false, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webviewTag: false } })
+    window = new BrowserWindow({ width: 1440, height: 940, minWidth: 640, minHeight: 480, title: 'hiCanvas', show: false, webPreferences: { preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)), nodeIntegration: false, contextIsolation: true, sandbox: true, webviewTag: false } })
     const contents = window.webContents
     contents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
     contents.session.setPermissionCheckHandler(() => false)
@@ -68,12 +72,20 @@ async function showCanvas(link) {
 if (locked) app.whenReady().then(async () => {
   connection = loadConnection()
   Object.assign(process.env, connectionEnv(connection))
+  skillSetup = createSkillSetup({ configDirectory: app.getPath('userData'), bundleDirectory: join(app.getAppPath(), 'skills/hicanvas'), command: join(process.resourcesPath, 'hicanvas-mcp'), version: app.getVersion(), home: process.env.HICANVAS_SKILL_HOME, env: process.env.HICANVAS_SKILL_HOME ? {} : process.env, dialog, clipboard, parent: () => window })
+  for (const [channel, action] of Object.entries({ 'skill-status': () => skillSetup.status(), 'skill-choose': () => skillSetup.setup(true), 'skill-copy': () => skillSetup.copyPrompt() })) {
+    ipcMain.handle(`hicanvas:${channel}`, event => {
+      if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || new URL(event.senderFrame.url).origin !== new URL(connection.baseUrl).origin) throw new Error('不允许此页面操作 Skill。')
+      return action()
+    })
+  }
   installMenu()
   app.setAsDefaultProtocolClient('hicanvas')
   const initial = pendingLink || process.argv.find(value => value.startsWith('hicanvas:'))
   // 首次深链也只接受已运行、资料标识相符的本机服务，不按链接创建资料目录。
   opening = opening.then(() => showCanvas(initial))
   await opening
+  await skillSetup.setup()
   app.on('activate', () => { if (!window) opening = opening.then(() => showCanvas()).catch(report) })
 }).catch(error => { report(error); app.quit() })
 app.on('before-quit', () => { quitting = true })

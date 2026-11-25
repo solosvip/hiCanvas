@@ -14,6 +14,8 @@ await mkdir(join(stage, 'desktop'), { recursive: true })
 for (const [entry, output] of [['desktop/main.mjs', 'desktop/main.mjs'], ['bin/hicanvas-service.mjs', 'runtime/service.mjs'], ['bin/hicanvas-mcp.mjs', 'runtime/mcp.mjs']]) {
   await build({ entryPoints: [join(root, entry)], outfile: join(stage, output), bundle: true, platform: 'node', format: 'esm', target: 'node24', external: ['electron'], banner: { js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);" } })
 }
+await cp(join(root, 'desktop/preload.cjs'), join(stage, 'desktop/preload.cjs'))
+await cp(join(root, 'skills'), join(stage, 'skills'), { recursive: true })
 await cp(join(root, 'dist'), join(stage, 'dist'), { recursive: true })
 await cp(join(root, 'LICENSE'), join(stage, 'LICENSE'))
 await cp(join(root, 'licenses'), join(stage, 'licenses'), { recursive: true })

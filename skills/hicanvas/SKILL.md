@@ -1,9 +1,11 @@
 ---
 name: hicanvas
-description: 通过 MCP 使用 hiCanvas 画板，创建或恢复画板、批量生图、按标注改图，以及生成和编辑 HTML 原型、幻灯片、动效影片。用于用户要求在 hiCanvas 中创作，或处理来自该画板的请求。
+description: 通过 MCP 使用 hiCanvas 画板，创建或恢复画板、批量生图、按标注改图，以及生成和编辑 HTML 原型、幻灯片、动效影片。用于接入 hiCanvas、在画板中创作，或处理来自该画板的请求。
 ---
 
 # hiCanvas
+
+用户要求安装或连接 MCP，或当前宿主没有 hiCanvas 工具时，先读取 [接入说明](references/connect.md)。
 
 ## 画板
 
