@@ -155,9 +155,6 @@ function parseDataUrl(src) {
   const buffer = isBase64 ? Buffer.from(encoded, 'base64') : Buffer.from(decodeURIComponent(encoded))
   return { buffer, mimeType }
 }
-function htmlDraftDataUrl(htmlContent) {
-  return `data:text/html;base64,${Buffer.from(String(htmlContent || ''), 'utf8').toString('base64')}`
-}
 function localAssetFilePathFromUrl(src) {
   let route = null
   let baseDir = null
@@ -206,85 +203,6 @@ async function localizePageAsset(asset, pageId) {
   localizedAsset.props.name = fileName
   localizedAsset.props.src = pageAssetUrl(pageId, fileName)
   return localizedAsset
-}
-function isHtmlDraftShapeRecord(record) {
-  return record?.typeName === 'shape' && record.type === 'embed' && record.meta?.cowartHtmlDraft === true
-}
-function pageIdForShape(store, shape) {
-  let record = shape
-  const visited = new Set()
-  while (record && !visited.has(record.id)) {
-    visited.add(record.id)
-    if (record.typeName === 'page') return record.id
-    record = store[record.parentId]
-  }
-  return null
-}
-async function uniquePageAssetTarget(pageId, requestedName) {
-  const directory = pageAssetsDir(pageId)
-  const safeName = sanitizeAssetFileName(requestedName, 'html-draft.html', 'text/html')
-  const extension = extname(safeName)
-  const baseName = safeName.slice(0, safeName.length - extension.length)
-  let fileName = safeName
-  let counter = 2
-  while (true) {
-    const filePath = join(directory, fileName)
-    try {
-      await stat(filePath)
-      fileName = `${baseName}-v${counter}${extension}`
-      counter += 1
-    } catch (error) {
-      if (error.code === 'ENOENT') return { fileName, filePath }
-      throw error
-    }
-  }
-}
-async function updateHtmlDraftSnapshot(snapshot, { draftShapeId, htmlContent }) {
-  const shape = snapshot.store[draftShapeId]
-  if (!isHtmlDraftShapeRecord(shape)) throw new Error(`HTML draft shape not found: ${draftShapeId}`)
-  if (typeof htmlContent !== 'string' || !htmlContent.trim()) throw new Error('HTML draft content is empty.')
-  const pageId = pageIdForShape(snapshot.store, shape)
-  if (!pageId) throw new Error(`Could not determine page for HTML draft: ${draftShapeId}`)
-  const existingAssetUrl = shape.meta?.cowartHtmlDraftAssetUrl
-  const expectedPrefix = `${pageAssetsRoute}${pageDirName(pageId)}/`
-  const sharedAsset =
-    typeof existingAssetUrl === 'string' &&
-    Object.values(snapshot.store).some(
-      (record) =>
-        record?.id !== draftShapeId &&
-        isHtmlDraftShapeRecord(record) &&
-        record.meta?.cowartHtmlDraftAssetUrl === existingAssetUrl
-    )
-  let assetUrl = existingAssetUrl
-  let assetPath = typeof existingAssetUrl === 'string' ? localAssetFilePathFromUrl(existingAssetUrl) : null
-  if (!assetPath || !existingAssetUrl.startsWith(expectedPrefix) || sharedAsset) {
-    let requestedName = `${draftShapeId.replace(/[^a-zA-Z0-9_-]+/g, '-')}.html`
-    if (typeof existingAssetUrl === 'string' && existingAssetUrl.startsWith(expectedPrefix)) {
-      try {
-        requestedName = decodeURIComponent(existingAssetUrl.slice(expectedPrefix.length))
-      } catch (_error) {
-        // Fall back to the shape-based file name.
-      }
-    }
-    const target = await uniquePageAssetTarget(pageId, requestedName)
-    assetPath = target.filePath
-    assetUrl = pageAssetUrl(pageId, target.fileName)
-  }
-  await mkdir(dirname(assetPath), { recursive: true })
-  await writeFile(assetPath, htmlContent)
-  snapshot.store[draftShapeId] = {
-    ...shape,
-    meta: {
-      ...shape.meta,
-      cowartHtmlDraft: true,
-      cowartHtmlDraftAssetUrl: assetUrl
-    },
-    props: {
-      ...shape.props,
-      url: htmlDraftDataUrl(htmlContent)
-    }
-  }
-  return { assetPath, assetUrl, forkedSharedHtmlDraftAsset: sharedAsset, pageId, shapeId: draftShapeId }
 }
 async function persistHtmlDraftAsset(record, pageId) {
   if (
@@ -354,10 +272,7 @@ async function loadCanvasSnapshot() {
     const [{ snapshot: firstSnapshot }] = pageSnapshots
     const mergedSnapshot = {
       schema: firstSnapshot.schema,
-      store: {}
-    }
-    for (const { snapshot } of pageSnapshots) {
-      Object.assign(mergedSnapshot.store, snapshot.store)
+      store: Object.fromEntries(pageSnapshots.flatMap(({ snapshot }) => Object.entries(snapshot.store)))
     }
     return {
       snapshot: mergedSnapshot,
@@ -443,7 +358,7 @@ async function serveCanvasAsset(req, res, next) {
     next(error)
   }
 }
-return { canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset, updateHtmlDraftSnapshot }
+return { canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset }
 }
-const { canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset, updateHtmlDraftSnapshot } = createCanvasStorage()
-export { createCanvasStorage, canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset, updateHtmlDraftSnapshot }
+const { canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset } = createCanvasStorage()
+export { createCanvasStorage, canvasDir, selectionFile, viewStateFile, writeJsonAtomic, readJsonFile, loadCanvasSnapshot, saveCanvasSnapshot, sanitizeCanvasSnapshotForServer, serveCanvasAsset }

@@ -53,7 +53,7 @@ test('旧多页合成一个画布，保留嵌套、旋转、图层和原始快�
   const view = await workspace.sidecar(id, 'view')
   assert.equal(view.currentPageId, page.id)
   assert.equal(view.camera.x + store['shape:slides'].x, 5 + snapshot.store['shape:slides'].x)
-  await workspace.mutate(id, migrated.revision, s => s)
+  await workspace.replaceLegacySnapshot(id, migrated.revision, migrated.snapshot)
   assert.deepEqual(await workspace.sidecar(id, 'view'), view, '后续保存后仍可恢复原视角')
 })
 
@@ -132,8 +132,10 @@ test('编码笔迹的镜像缩放与大便签也纳入迁移范围，不把后�
   store['shape:note'].props = { richText, color, size, font, scale: 4 * scale, labelColor, align, verticalAlign, growY: 0, url: '', fontSizeAdjustment: 1, textFirstEditedBy: null }
   const onlyStroke = structuredClone(snapshot)
   delete onlyStroke.store['shape:note']
-  mergeLegacyPages(onlyStroke)
-  assert.ok(onlyStroke.store['shape:next'].x > 6000, '笔迹的编码路径和镜像缩放必须计入范围')
+  const beforeMigration = structuredClone(onlyStroke)
+  const migrated = mergeLegacyPages(onlyStroke)
+  assert.deepEqual(onlyStroke, beforeMigration, '旧格式导入不能就地修改输入快照')
+  assert.ok(migrated.snapshot.store['shape:next'].x > 6000, '笔迹的编码路径和镜像缩放必须计入范围')
   await writeFile(join(root, 'conversations', id, 'state.json'), JSON.stringify({ revision: original.revision, snapshot }))
   const moved = (await workspace.read(id)).snapshot.store
   assert.ok(moved['shape:next'].x > 7300, '后页必须避开 6000 像素笔迹和右侧宽800的便签')

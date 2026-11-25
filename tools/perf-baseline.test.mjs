@@ -7,6 +7,43 @@ import { test } from 'node:test'
 import { createCanvasSnapshot, sanitizeCanvasSnapshot } from '../model/index.js'
 import { directoryVariables, isolatedDirectories, median, parseOptions, repositoryRoot, summarizeFrames } from './perf/config.mjs'
 import { createFixture, syntheticPng } from './perf/fixture.mjs'
+import { createConversations } from '../server/conversations.mjs'
+import { executeCanvasCommands } from '../engine/index.js'
+
+test('性能预置分批提交命令，先写资源与父形状，记录一致且版本按批数前进', async t => {
+  const { prepareFixture, fixtureBatchSize } = await import('./perf/prepare.mjs')
+  await mkdir(join(repositoryRoot, '.scratch'), { recursive: true })
+  const root = await mkdtemp(join(repositoryRoot, '.scratch/perf-prepare-test-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const workspace = createConversations(root), { id } = await workspace.open()
+  const current = await workspace.read(id)
+  const framed = executeCanvasCommands(current.snapshot, [{ type: 'create_shape', id: 'shape:perf-parent', shapeType: 'frame' }]).snapshot
+  const fixture = createFixture(500, framed)
+  // Deliberately put children and images ahead of parents and assets, across a batch boundary.
+  const snapshot = { ...fixture.snapshot, store: Object.fromEntries(Object.entries(fixture.snapshot.store).reverse().map(([key, record]) => [key, key === 'shape:perf-1' ? { ...record, parentId: 'shape:perf-parent' } : record])) }
+  const original = structuredClone(snapshot), batches = []
+  const observed = { submitCommands: (canvasId, revision, actor, factory) => workspace.submitCommands(canvasId, revision, actor, async source => {
+    const commands = await factory(source)
+    batches.push({ revision, actor, count: commands.length })
+    return commands
+  }).then(result => { batches.at(-1).nextRevision = result.revision; return result }) }
+  const saved = await prepareFixture(observed, id, current, snapshot)
+  assert.ok(fixtureBatchSize <= 500)
+  assert.equal(batches.length, Math.ceil(Object.keys(snapshot.store).length / fixtureBatchSize))
+  assert.equal(batches[0].revision, current.revision)
+  for (const [index, batch] of batches.entries()) {
+    assert.equal(batch.actor, 'perf-fixture')
+    assert.ok(batch.count > 0 && batch.count <= fixtureBatchSize)
+    assert.notEqual(batch.revision, batch.nextRevision)
+    if (index) assert.equal(batch.revision, batches[index - 1].nextRevision)
+  }
+  assert.equal(new Set(batches.map(batch => batch.nextRevision)).size, batches.length)
+  assert.equal(saved.revision, batches.at(-1).nextRevision)
+  assert.equal((await workspace.read(id)).revision, saved.revision)
+  assert.deepEqual(saved.snapshot.store, snapshot.store)
+  assert.deepEqual((await workspace.read(id)).snapshot.store, snapshot.store)
+  assert.deepEqual(snapshot, original)
+})
 
 test('launcher refuses every missing isolation variable before creating data', async t => {
   const scratch = join(repositoryRoot, '.scratch')

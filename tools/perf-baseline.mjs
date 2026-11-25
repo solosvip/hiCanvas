@@ -5,6 +5,7 @@ import os from 'node:os'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { benchmarkViewport, isolatedDirectories, parseOptions, repositoryRoot, scratchPath, makeDirectories, median } from './perf/config.mjs'
+import { prepareFixture } from './perf/prepare.mjs'
 
 // No application module may be loaded before this guard: some modules resolve
 // default storage paths at import time, even if a caller later supplies options.
@@ -40,7 +41,7 @@ try {
     const conversation = await workspace.open({ createNew: true, title: `Synthetic ${count} repeat ${repeat}` })
     const current = await workspace.read(conversation.id)
     const fixture = createFixture(count, current.snapshot)
-    await workspace.mutate(conversation.id, current.revision, () => fixture.snapshot)
+    await prepareFixture(workspace, conversation.id, current, fixture.snapshot)
     await workspace.sidecar(conversation.id, 'view', fixture.viewState)
     const { snapshot: _snapshot, viewState: _viewState, ...description } = fixture
     cases.push({ ...description, repeat, url: `${baseUrl}/?conversation=${conversation.id}` })

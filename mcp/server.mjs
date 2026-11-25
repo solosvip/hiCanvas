@@ -57,7 +57,7 @@ export function createHiCanvasMcp({ baseUrl = 'http://127.0.0.1:43218', bindingK
   }, { readOnlyHint: true })
   tool('apply_canvas_operations', '原子批量增改删画板。create_shape 可创建 geo/text/arrow/image/embed/frame/group，省略 parentId 自动放入画板，props 使用 tldraw 5.1.1 格式，text 自动转富文本；put 提供完整记录可操作其他形状和资源；update 合并属性；delete 级联删除子形状和连接。整批有效且版本相同才提交。', { conversationId, expectedRevision: revision, operations: z.array(operation).min(1).max(500) }, async ({ conversationId: id, ...body }) => {
     const result = await api(canvasPath(id, '/operations'), 'POST', body)
-    return { ok: true, conversationId: id, revision: result.revision, recordIds: Object.keys(result.snapshot.store) }
+    return { ok: true, conversationId: id, revision: result.revision, actor: result.actor, recordIds: Object.keys(result.snapshot.store) }
   }, { destructiveHint: true })
   tool('list_image_models', '读取用户已配置的生图模型（不含密钥）。传返回的模型 ID 给 submit_image_batch；没有模型请让用户在设置里添加。', {}, () => api('/api/image-models'), { readOnlyHint: true })
   async function imageBytes(id, src) {

@@ -6,7 +6,6 @@ import { rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture } from './test-helpers.mjs'
 import { createImageJobs } from './image-jobs.mjs'
-import { executeCanvasCommands } from '../engine/index.js'
 import { readJsonFile } from './storage.mjs'
 
 const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFhQJ/wR6cvQAAAABJRU5ErkJggg==', 'base64')
@@ -24,15 +23,15 @@ test('16 张并发生成在慢存储上全部写回，同一画板的后台写�
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const mutate = workspace.mutate.bind(workspace)
+  const submitCommands = workspace.submitCommands.bind(workspace)
   let pendingWrites = 0, maximumWrites = 0, conflicts = 0
-  workspace.mutate = async (...args) => {
+  workspace.submitCommands = async (...args) => {
     pendingWrites++
     maximumWrites = Math.max(maximumWrites, pendingWrites)
     try {
       // 放大磁盘繁忙时读取版本到落盘之间的窗口；仍执行真实存储和版本检查。
       await delay(30)
-      return await mutate(...args)
+      return await submitCommands(...args)
     } catch (error) {
       if (error.storage === 'revision-conflict') conflicts++
       throw error
@@ -67,15 +66,15 @@ test('外部编辑造成的真实版本冲突仍重读合并，图片不重复�
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const mutate = workspace.mutate.bind(workspace)
+  const submitCommands = workspace.submitCommands.bind(workspace)
   let generated = 0, edited = false, conflicts = 0
-  workspace.mutate = async (...args) => {
+  workspace.submitCommands = async (...args) => {
     if (generated && !edited) {
       edited = true
       const current = await workspace.read(id)
-      await mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{ type: 'create_shape', id: 'shape:external-edit', shapeType: 'text', text: '生成期间用户继续写字' }]).snapshot)
+      await submitCommands(id, current.revision, 'test', snapshot => [{ type: 'create_shape', id: 'shape:external-edit', shapeType: 'text', text: '生成期间用户继续写字' }])
     }
-    try { return await mutate(...args) }
+    try { return await submitCommands(...args) }
     catch (error) { if (error.storage === 'revision-conflict') conflicts++; throw error }
   }
   const jobs = createImageJobs(workspace, { get: async () => ({ id: 'model' }) }, { generate: async () => { generated++; return [{ bytes, extension: 'png' }] } })
@@ -93,14 +92,14 @@ test('一次画板写回失败后，保留图片并继续处理同一画板的�
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const mutate = workspace.mutate.bind(workspace)
+  const submitCommands = workspace.submitCommands.bind(workspace)
   let generated = 0, failed = false
-  workspace.mutate = async (...args) => {
+  workspace.submitCommands = async (...args) => {
     if (generated === 1 && !failed) {
       failed = true
       throw Object.assign(new Error('模拟磁盘暂时不可写'), { status: 503 })
     }
-    return mutate(...args)
+    return submitCommands(...args)
   }
   const jobs = createImageJobs(workspace, { get: async () => ({ id: 'model' }) }, { concurrency: 1, generate: async () => { generated++; return [{ bytes, extension: 'png' }] } })
   const { jobId } = await jobs.submit(id, { expectedRevision: initial.revision, requests: [{ prompt: '写回会失败' }, { prompt: '后续继续写回' }] })
@@ -117,22 +116,22 @@ test('完成状态先可见时，收尾仍等待最后一次慢写入落定再�
   const { workspace, root } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const mutate = workspace.mutate.bind(workspace)
+  const submitCommands = workspace.submitCommands.bind(workspace)
   let jobId, lastWriteStarted = false, lastWriteFinished = false
   const lastWrite = Promise.withResolvers()
   const jobs = createImageJobs(workspace, { get: async () => ({ id: 'model' }) }, { generate: async () => [{ bytes, extension: 'png' }] })
-  workspace.mutate = async (...args) => {
+  workspace.submitCommands = async (...args) => {
     if (jobId && (await jobs.get(id, jobId)).finished) {
       lastWriteStarted = true
       try {
         // 稳定越过旧收尾的 30ms；延迟后仍执行真实的最后一次画板落盘。
         await delay(150)
-        const result = await mutate(...args)
+        const result = await submitCommands(...args)
         lastWriteFinished = true
         return result
       } finally { lastWrite.resolve() }
     }
-    return mutate(...args)
+    return submitCommands(...args)
   }
   ;({ jobId } = await jobs.submit(id, { expectedRevision: initial.revision, requests: [{ prompt: '收尾必须等落盘' }] }))
   try {

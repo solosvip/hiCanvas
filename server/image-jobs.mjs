@@ -3,16 +3,17 @@ import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
 import { readJsonFile, writeJsonAtomic } from './storage.mjs'
 import { httpError } from './file-lock.mjs'
-import { executeCanvasCommands, CanvasEditError } from '../engine/index.js'
+import { CanvasEditError } from '../engine/index.js'
 import { createCanvasMedia } from './canvas-media.mjs'
 import { createImageResults } from './image-results.mjs'
 import { requestImages, decodeReference } from './image-provider.mjs'
 import { getCanvasEvents } from './events.mjs'
+import { singlePageId } from './single-canvas.mjs'
 
 // Translate edit errors at the host boundary so the existing image HTTP/MCP
 // contract keeps its status codes and messages without coupling engine to HTTP.
-function editCanvas(snapshot, commands) {
-  try { return executeCanvasCommands(snapshot, commands) }
+async function commitCommands(workspace, id, revision, createCommands) {
+  try { return await workspace.submitCommands(id, revision, 'image-jobs', createCommands) }
   catch (error) {
     if (error instanceof CanvasEditError) throw httpError(error.message, error.code === 'conflict' ? 409 : 400)
     throw error
@@ -41,11 +42,11 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     settled.then(() => { if (canvasWrites.get(id) === settled) canvasWrites.delete(id) })
     return pending
   }
-  async function alter(id, transform) {
+  async function alter(id, createCommands) {
     return writeCanvas(id, async () => {
       for (let i = 0; i < 8; i++) {
         const current = await workspace.read(id)
-        try { const result = await workspace.mutate(id, current.revision, transform); events.broadcast(result); return result }
+        try { const result = await commitCommands(workspace, id, current.revision, createCommands); events.broadcast(result); return result }
         catch (e) { if (e.storage !== 'revision-conflict') throw e }
       }
       throw httpError('画板持续被修改，生成结果已保留。', 409)
@@ -57,8 +58,9 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     await persist(job)
     await alter(job.conversationId, snapshot => {
       const shape = snapshot.store[item.holderId]
-      if (shape?.meta?.hicanvasGeneration?.itemId === item.id) return editCanvas(snapshot, [{ type: 'update', id: item.holderId, changes: { meta: { hicanvasGeneration: { jobId: job.id, itemId: item.id, status, ...(error ? { error } : {}) } } } }]).snapshot
-      return snapshot
+      if (shape?.meta?.hicanvasGeneration?.itemId === item.id) return [{ type: 'update', id: item.holderId, changes: { meta: { hicanvasGeneration: { jobId: job.id, itemId: item.id, status, ...(error ? { error } : {}) } } } }]
+      // 目标已换掉时不改内容，仍完成原有的无变化事务，保留版本与收尾顺序。
+      return [{ type: 'update', id: singlePageId(snapshot), changes: {} }]
     }).catch(() => {})
   }
   async function execute(job, item) {
@@ -84,7 +86,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
             const target = current.snapshot.store[index === 0 ? item.holderId : item.shapeId]
             if (!target || (index === 0 && target.meta?.hicanvasGeneration?.itemId !== item.id)) return false
             try {
-              const result = await media.insertImage(job.conversationId, { expectedRevision: current.revision, assetUrl: image.src, anchorShapeId: index === 0 ? item.holderId : item.shapeId, matchAnchor: index === 0, replaceAiImageHolder: true })
+              const result = await media.insertImage(job.conversationId, { expectedRevision: current.revision, assetUrl: image.src, anchorShapeId: index === 0 ? item.holderId : item.shapeId, matchAnchor: index === 0, replaceAiImageHolder: true }, 'image-jobs')
               item.shapeId = result.shapeId; events.broadcast(result); break
             } catch (e) { if (e.storage !== 'revision-conflict' || attempt === 7) throw e }
           }
@@ -129,12 +131,8 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
       for (const src of item.references || []) if (typeof src !== 'string') throw httpError('参考图地址无效。'); else if (src.startsWith('data:')) decodeReference(src); else await media.readAsset(id, src)
     }
     const job = { id: randomUUID(), conversationId: id, modelId: selectedModel.id, createdAt: new Date().toISOString(), items: args.requests.map(r => ({ ...r, id: randomUUID(), holderId: r.anchorShapeId || `shape:${randomUUID()}`, status: 'queued' })) }
-    let holderIds
-    const reserved = await writeCanvas(id, () => workspace.mutate(id, args.expectedRevision, snapshot => {
-      const edit = editCanvas(snapshot, [{ type: 'reserve_image_batch', jobId: job.id, items: job.items, args }])
-      holderIds = edit.results[0].holderIds
-      return edit.snapshot
-    }))
+    const reserved = await writeCanvas(id, () => commitCommands(workspace, id, args.expectedRevision, () => [{ type: 'reserve_image_batch', jobId: job.id, items: job.items, args }]))
+    const holderIds = reserved.results[0].holderIds
     // Apply the receipt only after the complete reservation was saved. A failed
     // transaction cannot leak partially resolved holder IDs into persisted jobs.
     job.items.forEach((item, index) => { item.holderId = holderIds[index] })
@@ -144,7 +142,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     // 先将全部占位和任务持久化；HTTP/MCP 返回后由画板服务继续执行。
     queue.push(...job.items.map(item => ({ job, item })))
     setImmediate(pump)
-    return { jobId: job.id, conversationId: id, revision: reserved.revision, items: job.items.map(({ references: _refs, ...item }) => item) }
+    return { jobId: job.id, conversationId: id, revision: reserved.revision, actor: reserved.actor, items: job.items.map(({ references: _refs, ...item }) => item) }
   }
   async function get(id, jobId) {
     await ready

@@ -36,42 +36,40 @@ export function createCanvasMedia(workspace) {
     const saved = await saveAsset(id, image.bytes, `reference.${image.extension}`)
     return { ...saved, src: saved.assetUrl, mimeType: image.mimeType }
   }
-  async function insertHtml(id, args) {
+  async function insertHtml(id, args, actor = 'http') {
     if (typeof args.htmlContent !== 'string' || !args.htmlContent.trim() || Buffer.byteLength(args.htmlContent) > 5 * 1024 * 1024) throw httpError('需要非空且小于 5 MB 的 HTML。')
-    const result = await commitMedia(id, args, async () => {
+    const result = await commitMedia(id, args, actor, async () => {
       const saved = args.dryRun ? { assetUrl: '' } : await saveAsset(id, Buffer.from(args.htmlContent), (args.fileName || 'draft.html').replace(/(?:\.html?)?$/, '.html'))
       const html = { assetUrl: saved.assetUrl, contentHash: createHash('sha256').update(args.htmlContent).digest('hex'), url: `data:text/html;base64,${Buffer.from(args.htmlContent).toString('base64')}` }
       return { saved, command: { type: 'insert_html', args, html } }
     })
     return result.dryRun ? result : { ...result, contentHash: result.shapeRecord.meta.cowartHtmlDraftContentHash }
   }
-  async function insertImage(id, args) {
+  async function insertImage(id, args, actor = 'http') {
     const image = args.dataUrl ? decodeReference(args.dataUrl) : await readAsset(id, args.assetUrl)
     if (!image.mimeType.startsWith('image/')) throw httpError('需要图片资源。')
     const { w, h } = imageDimensions(image.bytes)
-    return commitMedia(id, args, async () => {
+    return commitMedia(id, args, actor, async () => {
       const saved = args.assetUrl ? { assetUrl: args.assetUrl } : args.dryRun ? { assetUrl: '' } : await saveAsset(id, image.bytes, args.fileName || `image.${image.extension}`)
       return { saved, command: { type: 'insert_image', args, image: { src: saved.assetUrl, name: saved.assetUrl.split('/').at(-1), w, h, mimeType: image.mimeType } } }
     })
   }
-  async function commitMedia(id, args, prepare) {
-    let inserted, saved
-    const transform = async snapshot => {
+  async function commitMedia(id, args, actor, prepare) {
+    let saved
+    const createCommands = async snapshot => {
       getMediaTarget(snapshot, args)
       const prepared = await prepare()
       saved = prepared.saved
-      const edit = executeCanvasCommands(snapshot, [prepared.command])
-      inserted = edit.results[0]
-      return edit.snapshot
+      return [prepared.command]
     }
     if (args.dryRun) {
       const state = await workspace.read(id)
       if (args.expectedRevision !== state.revision) throw httpError('画板版本已变化。', 409, { storage: 'revision-conflict', revision: state.revision })
-      await transform(state.snapshot)
-      return { ...inserted, dryRun: true, revision: state.revision }
+      const edit = executeCanvasCommands(state.snapshot, await createCommands(state.snapshot))
+      return { ...edit.results[0], dryRun: true, actor, revision: state.revision }
     }
-    const result = await workspace.mutate(id, args.expectedRevision, transform)
-    return { ...result, ...inserted, ...saved, snapshot: undefined }
+    const { changes: _changes, results, ...result } = await workspace.submitCommands(id, args.expectedRevision, actor, createCommands)
+    return { ...result, ...results[0], ...saved, snapshot: undefined }
   }
   return { saveAsset, readAsset, reference, insertHtml, insertImage }
 }

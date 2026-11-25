@@ -7,8 +7,7 @@ import { createConversations, conversations } from './conversations.mjs'
 import { getCanvasEvents } from './events.mjs'
 import { httpError } from './file-lock.mjs'
 import { requireLocalRequest, requireLocalRead, jsonBody } from './local-request.mjs'
-import { executeCanvasCommands, CanvasEditError } from '../engine/index.js'
-import { isEqual } from '@tldraw/utils'
+import { CanvasEditError } from '../engine/index.js'
 import { createCanvasMedia } from './canvas-media.mjs'
 import { createAgentRequests } from './agent-requests.mjs'
 import { saveExport } from './exports.mjs'
@@ -20,6 +19,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
   return async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost')
     const path = url.pathname
+    const actor = req.headers['x-hicanvas-actor'] || 'http'
     if (!path.startsWith('/api/') && !/^\/c\//.test(path) && !/^\/(?:page-assets|assets)\//.test(path)) return next()
     if (path.startsWith('/api/image')) return next()
     try {
@@ -69,33 +69,22 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
         return sendJson(res, 200, { dataBase64: result.bytes.toString('base64'), mimeType: result.mimeType, assetPath: result.assetPath })
       }
       if (['/api/canvas/html', '/api/canvas/image'].includes(path) && req.method === 'POST') {
-        const result = await (path.endsWith('/html') ? media.insertHtml : media.insertImage)(id, await jsonBody(req))
+        const result = await (path.endsWith('/html') ? media.insertHtml : media.insertImage)(id, await jsonBody(req), actor)
         if (!result.dryRun) events.broadcast(result)
         return sendJson(res, 200, result)
       }
       if (path === '/api/canvas' && req.method === 'GET') return sendJson(res, 200, await workspace.read(id))
       if ((path === '/api/canvas' && req.method === 'PUT') || (path === '/api/canvas/operations' && req.method === 'POST')) {
         const body = await jsonBody(req)
-        let edit
-        const result = await workspace.mutate(id, body.expectedRevision, snapshot => {
-          if (path === '/api/canvas') return body.snapshot
-          edit = executeCanvasCommands(snapshot, body.operations)
-          return edit.snapshot
-        })
-        if (edit) {
-          // 宿主会把本机资源地址限定到画板；回执中的新值必须与实际保存值一致。
-          result.changes = {
-            added: Object.fromEntries(Object.keys(edit.changes.added).map(key => [key, result.snapshot.store[key]])),
-            updated: Object.fromEntries(Object.entries(edit.changes.updated).filter(([key, [before]]) => !isEqual(before, result.snapshot.store[key])).map(([key, [before]]) => [key, [before, result.snapshot.store[key]]])),
-            removed: edit.changes.removed
-          }
-        }
+        const { results: _results, ...result } = path === '/api/canvas'
+          ? await workspace.replaceLegacySnapshot(id, body.expectedRevision, body.snapshot)
+          : await workspace.submitCommands(id, body.expectedRevision, actor, () => body.operations)
         events.broadcast(result)
         return sendJson(res, 200, result)
       }
       if (path === '/api/html-draft' && req.method === 'PUT') {
         const body = await jsonBody(req)
-        const result = await media.insertHtml(id, { ...body, updateExistingDraft: true })
+        const result = await media.insertHtml(id, { ...body, updateExistingDraft: true }, actor)
         events.broadcast(result)
         return sendJson(res, 200, result)
       }

@@ -21,7 +21,7 @@ export function createCanvasEvents() {
       req.on('close', () => { clearInterval(heartbeat); group.delete(res); if (!group.size) clients.delete(id) })
     },
     broadcast(result) {
-      const payload = { conversationId: result.conversationId, revision: result.revision, updatedAt: result.updatedAt }
+      const payload = { conversationId: result.conversationId, revision: result.revision, updatedAt: result.updatedAt, actor: result.actor }
       for (const client of clients.get(result.conversationId) || []) {
         try { client.write(`event: canvas-changed\ndata: ${JSON.stringify(payload)}\n\n`) } catch { /* 连接关闭时由 close 清理。 */ }
       }

@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fixture } from './test-helpers.mjs'
 import { createConversations } from './conversations.mjs'
-import { executeCanvasCommands } from '../engine/index.js'
 import { createImageJobs } from './image-jobs.mjs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -48,9 +47,9 @@ test('删除与保存使用同一画板锁，已变化的版本拒绝删除，�
   let entered, release
   const inside = new Promise(resolve => { entered = resolve })
   const barrier = new Promise(resolve => { release = resolve })
-  const save = workspace.mutate(id, state.revision, async snapshot => {
+  const save = workspace.submitCommands(id, state.revision, 'test', async snapshot => {
     entered(); await barrier
-    return executeCanvasCommands(snapshot, [{ type: 'create_shape', shapeType: 'text', text: '并发修改保留' }]).snapshot
+    return [{ type: 'create_shape', shapeType: 'text', text: '并发修改保留' }]
   })
   await inside
   const deletion = workspace.remove(id, state.revision)
@@ -60,7 +59,7 @@ test('删除与保存使用同一画板锁，已变化的版本拒绝删除，�
   assert.ok((await workspace.list()).some(c => c.id === id))
   await workspace.remove(id, updated.revision)
   const deleted = await readFile(join(root, 'conversations', id, 'state.json'), 'utf8')
-  await assert.rejects(workspace.mutate(id, updated.revision, s => s), e => e.status === 410)
+  await assert.rejects(workspace.submitCommands(id, updated.revision, 'test', s => s), e => e.status === 410)
   await assert.rejects(workspace.sidecar(id, 'view', { currentPageId: 'page:page', camera: { x: 0, y: 0, z: 1 } }), e => e.status === 410)
   assert.equal(await readFile(join(root, 'conversations', id, 'state.json'), 'utf8'), deleted)
 })
