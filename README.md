@@ -184,6 +184,19 @@ git config core.hooksPath .githooks
 
 提交前跑快检查，CI 跑完整入口。仓库为公开仓库，GitHub Actions 使用云端 Ubuntu 检查机运行完整入口。本地检查通过后仍需核对 PR 的远程检查结果。
 
+性能基线使用项目锁定版本的 Electron，在后台离屏窗口测量正式构建。先在占用白板登记专用端口，避开其他重任务，再运行（端口按实际登记替换）：
+
+```sh
+export HICANVAS_PROJECT_DIR="$PWD/.scratch/perf-data/project"
+export HICANVAS_CANVAS_DIR="$PWD/.scratch/perf-data/canvas"
+export HICANVAS_SETTINGS_DIR="$PWD/.scratch/perf-data/settings"
+export HICANVAS_DESKTOP_CONFIG_DIR="$PWD/.scratch/perf-data/desktop"
+npm run build
+npm run perf:baseline -- --port 43326 --load-note "测量期间无其他重任务"
+```
+
+脚本拒绝缺少上述变量、路径越出本 worktree 的 `.scratch/`、符号链接，以及使用端口 43218/43219。默认生成 500、2000、5000 个元素的合成画板（60% 几何图形、20% 文字、20% 图片；图片复用 16 张本地生成的 256×192 PNG），各测 3 次、每项操作持续 2.5 秒；可用 `--sizes 500,2000,5000 --runs 3 --duration-ms 2500` 调整。每次打开用新内存浏览会话，进程和系统文件缓存保持温热；打开时间从导航开始，到元素、字体、可见图片解码完成且真实指针输入选中元素为止，不含应用进程启动。平移、滚轮缩放和拖动用固定约 60 Hz 的原生输入；缩放在初始视角附近小幅往返并记录实际范围，断言画板状态确实变化；分别记录 rAF 与实际离屏绘制 FPS，并报告各轮中位数、帧间隔和环境。离屏绘制含图像回读开销、最高 60 FPS，不能等同于前台屏幕帧率。输出保存在 `.scratch/perf-results/run-*/` 的 JSON、截图和日志中，合成资料在结束时清理。换编辑器后保留相同数据与输入，替换 `tools/perf/page-probe.mjs` 的就绪／状态观察接口再重跑；性能测量不作为普通 CI 的速度门禁。
+
 本次浏览器验证使用合成图片与文字，实际操作了新建、重命名、切换和刷新恢复画板，确认 MCP 修改实时显示；模拟保存断网时切换被阻止、恢复后可继续切换。图片结果独立显示并能放入画板，其他画板保持空结果；1440 和 390 像素窗口中检查了浮层布局及 Escape 后焦点恢复。另在独立 REX 测试服务和合成接收程序中，实际操作画板按钮→终端通知→模拟 Agent 领取→原框写回，验证网页、影片和幻灯片流程；这不等于验证真实语言模型的内容质量。浏览器走查尚未接入持续执行的界面守卫；数据、并发、MCP 和保存切换逻辑由回归测试保护。
 
 ## 上游与许可

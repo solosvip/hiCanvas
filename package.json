@@ -15,6 +15,7 @@
     "start": "vite preview --host 127.0.0.1",
     "mcp": "node bin/hicanvas-mcp.mjs",
     "test": "node tools/check.mjs && node --import ./tools/test-sandbox.mjs --test --test-force-exit --test-timeout=15000 tools/*.test.mjs server/*.test.mjs",
+    "perf:baseline": "node tools/perf-baseline.mjs",
     "design:lint": "design.md lint DESIGN.md",
     "design:tokens": "node tools/generate-tokens.mjs",
     "desktop:bundle": "node tools/pack-desktop.mjs --bundle-only",
