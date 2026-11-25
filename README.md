@@ -199,3 +199,15 @@ git config core.hooksPath .githooks
 每个画板只有一张无限画布，界面不再提供页面切换、新建或移动到页面；用位置、画框和分组组织作品，幻灯片自身的页数和演示照常保留。MCP 使用 `open_conversation` 创建或恢复画板，`conversationId` 是画板标识；生成和插入不传 `pageId`，普通形状省略 `parentId` 自动放入画板。
 
 已有多页资料在新版服务首次读取时合到同一画布的横向不同区域，原始完整快照保存在该画板的 `before-single-canvas.json`，重复打开不会重复平移；资源地址和文件保持原样。回退需先停止新版服务，并从该原始快照恢复整份 `state.json`；迁移后的新修改不在原始快照中，应另存当前资料再恢复。不要让旧版服务和新版同时编辑同一份资料。
+
+### Skill 自动部署与 AI 接入
+
+把 hiCanvas.app 放入应用程序后首次打开，应用会自动寻找已有 Skill 目录（共享 `.agents/skills`、Claude、Codex、OpenCode、Pi 及 Documents/skills），并合并符号链接指向的同一目录；已部署的 hicanvas 共享目录优先。`CODEX_HOME` 有效时也参与识别。找不到、已有位置失效，或存在多个独立候选时，弹出目录选择器；请选择技能根目录，应用会放入 `hicanvas/`。取消不影响画板，稍后可在设置 → AI 接入中继续。
+
+部署位置记在应用配置目录的 `skill-preferences.json`，更新记录在 `skill-install.json`；应用升级会更新随附 Skill。遇到用户修改的同名文件会询问保留或备份更新，不改其他技能。备份保存在应用配置目录的 `skill-backup-*`。更改部署目录后，未修改的旧 Skill 目录会改为指向新目录的链接；含用户修改或额外文件的旧目录会保留并提示手动确认。不自动改任何 AI 客户端的真实 MCP 配置。
+
+在设置 → AI 接入点击「复制接入指令」，把指令发给要接入的 AI；它按 Skill 内的 `references/connect.md` 和本机 `installation.json` 配置当前宿主，再通过只读 MCP 工具验证。没有画板时，也可从 macOS 菜单「hiCanvas → AI 接入…」复制指令或选择目录。应用提供 stdio MCP 启动器，不需另装 Node；云端客户端需具备本机 MCP 连接能力。
+
+安装与升级的隔离回归测试已接入 `npm run check`；只用临时目录和模拟选择器，不修改真实客户端配置，不调用收费模型。
+
+桌面隔离测试可同时设置 `HICANVAS_DESKTOP_CONFIG_DIR` 和 `HICANVAS_SKILL_HOME`，后者只在指定的模拟用户目录内发现 Skill，并忽略外部 `CODEX_HOME`。

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Settings2, X } from 'lucide-react'
 import { TldrawUiButton, useEditor } from 'tldraw'
 import { useModels, ModelPicker } from './ModelContext.jsx'
+import { AIConnection } from '../ai-connection/AIConnection.jsx'
 import { ModelForm } from './ModelForm.jsx'
 
 export function SettingsPanel() {
@@ -10,6 +11,7 @@ export function SettingsPanel() {
   const { models, loading, error: loadError, reload, update, open, setOpen } = useModels()
   const panelRef = useRef(null)
   const dragState = useRef(null)
+  const [tab, setTab] = useState('models')
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -58,11 +60,23 @@ export function SettingsPanel() {
 
   const content = open && position ? (
     <div className="hc-settings-layer" onClick={event => { if (event.target === event.currentTarget && !busy) setOpen(false) }} onPointerDown={event => event.stopPropagation()}>
-      <section ref={panelRef} className="hc-model-dialog" aria-describedby="hc-model-help" aria-labelledby="hc-model-title" aria-modal="true" role="dialog" style={{ left: `${position.x}px`, top: `${position.y}px` }}>
+      <section ref={panelRef} className="hc-model-dialog" aria-labelledby="hc-model-title" aria-modal="true" role="dialog" style={{ left: `${position.x}px`, top: `${position.y}px` }}>
         <div className="hc-model-heading" onPointerDown={beginDrag}>
           <div><span className="hc-model-eyebrow">画板设置</span><h2 id="hc-model-title">设置</h2></div>
           <button aria-label="关闭设置" className="hc-model-close" disabled={busy} onClick={() => setOpen(false)} type="button"><X aria-hidden="true" size={16} strokeWidth={2} /></button>
         </div>
+        <div className="hc-settings-tabs" role="tablist" aria-label="设置分类" onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+          event.preventDefault()
+          const next = event.key === 'Home' ? 'models' : event.key === 'End' ? 'ai' : tab === 'ai' ? 'models' : 'ai'
+          setTab(next)
+          event.currentTarget.querySelector(next === 'ai' ? '#hc-tab-ai' : '#hc-tab-models').focus()
+        }}>
+          <button id="hc-tab-models" type="button" role="tab" aria-selected={tab === 'models'} tabIndex={tab === 'models' ? 0 : -1} aria-controls="hc-settings-content" onClick={() => setTab('models')}>生图模型</button>
+          <button id="hc-tab-ai" type="button" role="tab" aria-selected={tab === 'ai'} tabIndex={tab === 'ai' ? 0 : -1} aria-controls="hc-settings-content" onClick={() => setTab('ai')}>AI 接入</button>
+        </div>
+        <div id="hc-settings-content" role="tabpanel" aria-labelledby={tab === 'ai' ? 'hc-tab-ai' : 'hc-tab-models'}>
+        {tab === 'ai' ? <AIConnection /> : <>
         <p className="hc-model-help" id="hc-model-help">自行添加服务和模型。密钥只保存在本机；保存设置不会调用生图接口。</p>
         {loading ? <p role="status">加载中…</p> : loadError ? <div role="alert"><p>{loadError}</p><button onClick={reload} type="button">重新加载</button></div> : editing ?
           <ModelForm key={editing.id || 'new'} model={editing.id ? editing : null} onSaved={() => setEditing(null)} onCancel={() => setEditing(null)} /> : <>
@@ -76,6 +90,8 @@ export function SettingsPanel() {
             <button className="hc-primary hc-add-model" disabled={busy} onClick={() => setEditing({})} type="button"><span>＋</span>添加模型</button>
           </>}
         {error && <p className="hc-model-error" role="alert">{error}</p>}
+        </>}
+        </div>
       </section>
     </div>
   ) : null

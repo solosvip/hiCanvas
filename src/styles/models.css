@@ -50,3 +50,10 @@
 .hc-model-dialog .hc-select { width: 100%; }
 
 .hc-image-generation-panel { grid-template-rows: auto auto minmax(var(--spacing-none), 1fr) auto; height: calc(var(--spacing-xl) * 14); }
+
+.hc-settings-tabs { display: flex; gap: var(--spacing-md); border-bottom: thin solid var(--color-outline); margin-bottom: var(--spacing-lg); }
+.hc-model-dialog .hc-settings-tabs button { border: none; border-radius: var(--radius-xs); padding: var(--spacing-sm) var(--spacing-xs); background: transparent; color: var(--color-secondary); border-bottom: thin solid transparent; }
+.hc-model-dialog .hc-settings-tabs button[aria-selected="true"] { color: var(--color-on-surface); border-bottom-color: var(--color-on-surface); }
+.hc-ai-installation { display: grid; gap: var(--spacing-md); padding: var(--spacing-lg); margin-block: var(--spacing-lg); border: thin solid var(--color-outline); border-radius: var(--radius-md); }
+.hc-ai-status, .hc-ai-connection button { display: inline-flex; align-items: center; gap: var(--spacing-sm); }
+.hc-ai-installation code { overflow-wrap: anywhere; font-size: var(--text-label-md); color: var(--color-secondary); }
