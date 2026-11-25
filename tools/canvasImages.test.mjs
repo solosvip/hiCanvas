@@ -1,3 +1,4 @@
+import './test-sandbox.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { insertGeneratedImages } from '../src/image-models/canvasImages.js'

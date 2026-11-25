@@ -79,6 +79,27 @@ function checkLicenseWatermark(path, content) {
   }
 }
 
+function checkTestSandbox(path, content) {
+  if (!path.endsWith('.test.mjs')) return
+  let source = content.replace(/^\uFEFF/, '').replace(/^#![^\n]*(?:\n|$)/, '')
+  // 按首个注释结束符前进；重复正则会回溯跨过业务导入，误认后面的隔离导入。
+  while (true) {
+    source = source.trimStart()
+    if (source.startsWith('//')) {
+      const end = source.indexOf('\n')
+      source = end === -1 ? '' : source.slice(end + 1)
+    } else if (source.startsWith('/*')) {
+      const end = source.indexOf('*/', 2)
+      if (end === -1) break
+      source = source.slice(end + 2)
+    } else break
+  }
+  const first = source.match(/^import\s*(['"])([^'"\r\n]+)\1\s*(?:;|\r?\n|$)/)
+  if (!first || !first[2].startsWith('.') || resolve(root, dirname(path), first[2]) !== join(root, 'tools/test-sandbox.mjs')) {
+    errors.push(`${path}：测试必须第一条导入 tools/test-sandbox.mjs；否则可能读取或删除真实资料目录。`)
+  }
+}
+
 const rootDocs = new Set(['README.md', 'AGENTS.md', 'CONTEXT.md', 'DESIGN.md', '版本管理.md', 'todolist.md', '架构说明.md'])
 function checkDocument(path) {
   if (!/\.md$/i.test(path)) return
@@ -141,6 +162,7 @@ try {
       contents.set(path, content)
       checkSource(path, content)
       checkLicenseWatermark(path, content)
+      checkTestSandbox(path, content)
     }
   }
   checkRules(files, contents)

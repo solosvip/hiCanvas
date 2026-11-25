@@ -1,3 +1,4 @@
+import './test-sandbox.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { watchCanvasLifecycle, canvasRequestError } from '../src/conversations/canvasLifecycle.js'

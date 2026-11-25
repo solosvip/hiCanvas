@@ -1,3 +1,4 @@
+import './test-sandbox.mjs'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -125,7 +126,7 @@ test('许可提示守卫允许普通样式、SDK 导入和检查用例', () => f
   write('src/styles.css', '.canvas { display: block; }')
   write('src/sdk.js', 'import { Tldraw } from "tldraw"\n')
   write('src/image.js', 'export const options = { watermark: "用户图片水印" }\n')
-  write('tools/license.test.mjs', 'const fixture = ".tl-watermark { display: none }"\n')
+  write('tools/license.test.mjs', 'import "./test-sandbox.mjs"\nconst fixture = ".tl-watermark { display: none }"\n')
   assert.equal(check().status, 0)
 }))
 
@@ -177,4 +178,34 @@ test('无效基点必须报错，首次推送的全零基点允许通过', () =>
   assert.equal(check('--base', 'missing-ref').status, 1)
   assert.equal(check('--base', '0'.repeat(40)).status, 0)
   assert.equal(check('--base').status, 1)
+}))
+
+for (const [name, source] of [
+  ['没有隔离导入', "import assert from 'node:assert/strict'\n"],
+  ['业务模块先加载', "import '../server/storage.mjs'\nimport './test-sandbox.mjs'\n"],
+  ['说明注释之间先加载业务模块', "/* 测试 */\nimport { canvasDir } from '../server/storage.mjs'\n/* 为什么先隔离 */\nimport './test-sandbox.mjs'\n"],
+  ['注释中的假导入', "// import './test-sandbox.mjs'\nimport '../server/storage.mjs'\n"],
+  ['字符串中的假导入', "const note = \"import './test-sandbox.mjs'\"\n"],
+  ['同名错误模块', "import '../other/test-sandbox.mjs'\n"],
+]) {
+  test(`测试隔离守卫拦住${name}`, () => fixture(({ write, check }) => {
+    write('tools/unsafe.test.mjs', source)
+    const result = check()
+    assert.equal(result.status, 1, result.output)
+    assert.match(result.output, /测试必须第一条导入.*否则可能读取或删除真实资料目录/)
+  }))
+}
+
+test('测试隔离守卫接受首行副作用导入及其前面的说明注释', () => fixture(({ write, check }) => {
+  write('tools/safe.test.mjs', "#!/usr/bin/env node\n/* 为什么先隔离 */\n// 说明\nimport './test-sandbox.mjs';\nimport '../server/storage.mjs'\n")
+  write('server/safe.test.mjs', "import '../tools/test-sandbox.mjs'\nimport './storage.mjs'\n")
+  assert.equal(check().status, 0)
+}))
+
+test('测试隔离守卫检查暂存区，未暂存的补导入不能掩盖危险入口', () => fixture(({ git, write, check }) => {
+  write('server/unsafe.test.mjs', "import './storage.mjs'\n")
+  git('add', '.')
+  write('server/unsafe.test.mjs', "import '../tools/test-sandbox.mjs'\nimport './storage.mjs'\n")
+  assert.equal(check('--staged').status, 1)
+  assert.equal(check().status, 0)
 }))
