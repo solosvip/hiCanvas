@@ -1,6 +1,6 @@
 {
   "name": "hicanvas",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "private": true,
   "description": "Standalone canvas based on Cowart. Conversation isolation, custom image providers and MCP.",
   "type": "module",
@@ -29,6 +29,9 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tiptap/pm": "3.27.0",
     "@tldraw/assets": "^5.1.1",
+    "@tldraw/store": "5.1.1",
+    "@tldraw/tlschema": "5.1.1",
+    "@tldraw/utils": "5.1.1",
     "@vitejs/plugin-react": "^5.0.0",
     "electron": "42.5.0",
     "esbuild": "^0.27.0",

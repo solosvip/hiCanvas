@@ -1,6 +1,7 @@
 import { documentRecordTypes } from './canvas-documents.mjs'
 import { randomUUID } from 'node:crypto'
-import { getIndexAbove, toRichText } from 'tldraw'
+import { getIndexAbove } from '@tldraw/utils'
+import { toRichText } from '@tldraw/tlschema'
 import { httpError } from './file-lock.mjs'
 
 // 与锁定的 tldraw 5.1.1 文档格式一致；最后仍经同一个 schema 完整校验。

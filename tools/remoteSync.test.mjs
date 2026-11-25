@@ -1,13 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createTLStore } from 'tldraw'
+import { createCanvasStore } from '../server/canvas-snapshot.mjs'
 import { createCowartSnapshotWithDefaultPage } from '../src/canvasSnapshot.js'
 import { applyRemoteCanvasSnapshot } from '../src/editor/remoteSync.js'
 
 test('远端删除当前页时同步删除旧页面和形状，并切换到仍存在的页面', () => {
   const snapshot = createCowartSnapshotWithDefaultPage()
   const oldPage = Object.values(snapshot.store).find(r => r.typeName === 'page')
-  const store = createTLStore()
+  const store = createCanvasStore()
   store.put(Object.values(snapshot.store))
   store.put([{ ...oldPage, id: 'page:next', name: '保留页', index: 'a2' }])
   let currentPage = oldPage.id

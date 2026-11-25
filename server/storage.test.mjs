@@ -3,7 +3,7 @@ import { after, beforeEach, test } from 'node:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createTLStore } from 'tldraw'
+import { createCanvasStore } from './canvas-snapshot.mjs'
 import { createCanvasStorage } from './storage.mjs'
 
 const project = await mkdtemp(join(tmpdir(), 'hicanvas-storage-'))
@@ -14,7 +14,7 @@ after(() => rm(project, { recursive: true, force: true }))
 const { fixture } = await import('./test-helpers.mjs')
 
 function snapshot() {
-  const store = createTLStore()
+  const store = createCanvasStore()
   store.ensureStoreIsUsable()
   return store.getStoreSnapshot()
 }

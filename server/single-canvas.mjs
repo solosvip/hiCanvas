@@ -1,4 +1,5 @@
-import { b64Vecs, getIndexAbove, sortByIndex } from 'tldraw'
+import { b64Vecs } from '@tldraw/tlschema'
+import { getIndexAbove, sortByIndex } from '@tldraw/utils'
 import { httpError } from './file-lock.mjs'
 
 export function singlePageId(snapshot) {
