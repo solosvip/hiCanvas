@@ -1,9 +1,11 @@
 import { DefaultColorStyle, GeoShapeGeoStyle, toRichText } from '@tldraw/tlschema'
 import { getIndexAbove } from '@tldraw/utils'
 import { createCanvasSnapshot } from '../../model/index.js'
+import { createEmbedGallery } from './embed-gallery.js'
 
 // Synthetic document coordinates, independent of application UI tokens.
 export function createGallery(mode) {
+  if (mode === 'embeds') return createEmbedGallery()
   if (!['shapes', 'styles', 'metrics', 'metrics-long', 'metrics-curves'].includes(mode)) throw new Error('未知合成图鉴。')
   const snapshot = createCanvasSnapshot(), store = snapshot.store
   const pageId = Object.values(store).find(r => r.typeName === 'page').id

@@ -4,6 +4,8 @@ import { Text, FrameTitle } from './text-view.js'
 import { getShapeBounds } from './bounds.js'
 import { Geometry } from './geo.js'
 import { colorPaint } from './palette.js'
+import { Embed } from './embed.js'
+import { FrameState } from './frame-state.js'
 
 const colorOf = props => colorPaint(props).stroke
 
@@ -26,10 +28,11 @@ const Shape = memo(function Shape({ scene, id }) {
     h('svg', { key: 'body', width: props.w, height: props.h, overflow: 'visible' },
       h('rect', { width: props.w, height: props.h, fill: 'white', stroke: colorOf(props), strokeWidth: 2 })),
     h(FrameTitle, { key: 'title', text: props.name || '', color: colorOf(props) }),
-    h('div', { key: 'children', 'data-frame-clip': id, style: { position: 'absolute', left: 0, top: 0, width: props.w, height: props.h, overflow: 'hidden' } }, h(Children, { scene, parentId: id }))
+    h('div', { key: 'children', 'data-frame-clip': id, style: { position: 'absolute', left: 0, top: 0, width: props.w, height: props.h, overflow: 'hidden' } }, h(Children, { scene, parentId: id })),
+    h(FrameState, { shape, key: 'generation-state' })
   ]
   else {
-    if (getShapeBounds(shape)) body = shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : h(Geometry, { shape, key: 'body' })
+    if (getShapeBounds(shape)) body = ['embed', 'bookmark'].includes(shape.type) ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : h(Geometry, { shape, key: 'body' })
     body = [body, h(Children, { scene, parentId: id, key: 'children' })]
   }
   return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: shape.opacity ?? 1 } }, body)
