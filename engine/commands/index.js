@@ -10,6 +10,7 @@ import { reorderShapes } from './reorder-shapes.js'
 import { toggleLock, unlockAll } from './lock-shapes.js'
 import { nudgeShapes } from './nudge-shapes.js'
 import { reserveImageBatch } from './reserve-image-batch.js'
+import { alignShapes, stretchShapes, distributeShapes, stackShapes, packShapes, flipShapes } from './layout-shapes.js'
 
 // 新命令只增加处理函数并在此登记，不修改已有命令；一行一个，并行开发时互不冲突。
 export const commandHandlers = Object.freeze({
@@ -26,4 +27,10 @@ export const commandHandlers = Object.freeze({
   unlock_all: unlockAll,
   nudge_shapes: nudgeShapes,
   reserve_image_batch: reserveImageBatch,
+  align_shapes: alignShapes,
+  stretch_shapes: stretchShapes,
+  distribute_shapes: distributeShapes,
+  stack_shapes: stackShapes,
+  pack_shapes: packShapes,
+  flip_shapes: flipShapes,
 })
