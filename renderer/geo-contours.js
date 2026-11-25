@@ -62,7 +62,7 @@ const normalized = factory => (w, h) => fit(factory(), w, h)
 // Adding a geometric kind is one registration; callers never switch on kind.
 const contours = Object.freeze({
   rectangle: { outline: normalized(rectangle) },
-  ellipse: { outline: ellipse, ellipse: true },
+  ellipse: { outline: ellipse, ellipse: true, continuous: true },
   triangle: { outline: normalized(() => polygon([[0.5, 0], [1, 1], [0, 1]])) },
   diamond: { outline: normalized(() => polygon([[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]])) },
   pentagon: { outline: normalized(() => regular(5)) },
@@ -71,7 +71,7 @@ const contours = Object.freeze({
   star: { outline: normalized(() => regular(10, true)) },
   rhombus: { outline: normalized(() => polygon([[0.25, 0], [1, 0], [0.75, 1], [0, 1]])) },
   'rhombus-2': { outline: normalized(() => polygon([[0, 0], [0.75, 0], [1, 1], [0.25, 1]])) },
-  oval: { outline: oval },
+  oval: { outline: oval, continuous: true },
   trapezoid: { outline: normalized(() => polygon([[0.2, 0], [0.8, 0], [1, 1], [0, 1]])) },
   'arrow-right': { outline: normalized(() => arrow) },
   'arrow-left': { outline: normalized(() => arrow.map(p => point(1 - p.x, p.y))) },
@@ -79,8 +79,8 @@ const contours = Object.freeze({
   'arrow-down': { outline: normalized(() => arrow.map(p => point(p.y, p.x))) },
   'x-box': { outline: normalized(rectangle), marks: [[[0.2, 0.2], [0.8, 0.8]], [[0.8, 0.2], [0.2, 0.8]]] },
   'check-box': { outline: normalized(rectangle), marks: [[[0.22, 0.52], [0.43, 0.72], [0.8, 0.28]]] },
-  cloud: { outline: normalized(cloud) },
-  heart: { outline: normalized(heart) }
+  cloud: { outline: normalized(cloud), continuous: true },
+  heart: { outline: normalized(heart), continuous: true }
 })
 const cache = new WeakMap()
 export function getGeoSize(props) {
@@ -99,6 +99,7 @@ export function getGeoContour(props) {
   const value = Object.freeze({
     outline: freezePoints(registration.outline(w, h)),
     decorations: Object.freeze((registration.marks || []).map(line => freezePoints(line.map(([x, y]) => point(x * w, y * h))))),
+    continuous: !!registration.continuous,
     ellipse: registration.ellipse ? Object.freeze({ rx: w / 2, ry: h / 2 }) : null
   })
   cache.set(props, { signature, value })

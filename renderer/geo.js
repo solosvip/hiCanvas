@@ -1,27 +1,48 @@
 import { createElement as h, useId } from 'react'
 import { getShapeBounds, getShapeContour } from './bounds.js'
-import { dashArray, strokeWidth, PATTERN_METRICS } from './geo-metrics.js'
+import { dashLayout, strokeWidth, PATTERN_METRICS } from './geo-metrics.js'
 import { colorPaint } from './palette.js'
 
 const pathOf = (points, close = false) => points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ') + (close ? ' Z' : '')
 
 function Pattern({ id, props, paint }) {
-  const lined = props.fill === 'lined-fill', scale = props.scale || 1
-  const cell = (lined ? PATTERN_METRICS.linedCell : PATTERN_METRICS.cell) * scale
-  const d = lined ? `M0,${cell / 2} H${cell}` : `M${-cell / 2},${cell / 2} L${cell / 2},${-cell / 2} M0,${cell} L${cell},0 M${cell / 2},${cell * 1.5} L${cell * 1.5},${cell / 2}`
+  const scale = props.scale || 1, cell = PATTERN_METRICS.cell * scale
+  const half = PATTERN_METRICS.dashLength * scale / (2 * Math.SQRT2)
+  // 2026-11-25 对照运行中的旧版画面测量，未参照任何源码。
+  // Three isolated diagonal marks per tile; their round caps stay inside it.
+  const d = Array.from({ length: PATTERN_METRICS.strokesPerCell }, (_, i) => {
+    const center = cell * (i + 0.5) / PATTERN_METRICS.strokesPerCell
+    return `M${center - half},${center + half} L${center + half},${center - half}`
+  }).join(' ')
   return h('defs', null, h('pattern', { id, patternUnits: 'userSpaceOnUse', width: cell, height: cell },
-    h('rect', { width: cell, height: cell, fill: lined ? paint.lined : paint.semi }),
-    h('path', { d, stroke: paint.pattern, strokeWidth: PATTERN_METRICS.lineWidth * scale, fill: 'none' })))
+    h('rect', { width: cell, height: cell, fill: paint.semi }),
+    h('path', { d, stroke: paint.pattern, strokeWidth: PATTERN_METRICS.lineWidth * scale, strokeLinecap: 'round', fill: 'none' })))
+}
+
+const pathLength = (points, closed) => points.reduce((sum, point, i) => {
+  const next = points[(i + 1) % points.length]
+  return !closed && i === points.length - 1 ? sum : sum + Math.hypot(next.x - point.x, next.y - point.y)
+}, 0)
+
+function DashedStroke({ points, closed, props, stroke }) {
+  const layout = dashLayout(props, pathLength(points, closed), closed)
+  return h('path', { 'data-geo-stroke': '', d: pathOf(points, closed), fill: 'none', ...stroke,
+    strokeDasharray: layout.array.join(' '), strokeDashoffset: layout.offset })
 }
 
 export function Geometry({ shape }) {
   const id = useId(), contour = getShapeContour(shape), bounds = getShapeBounds(shape)
   if (!contour || !bounds) return null
-  const props = shape.props, paint = colorPaint(props), patterned = ['pattern', 'lined-fill'].includes(props.fill)
-  const fill = props.fill === 'none' ? 'none' : patterned ? `url(#${id})` : paint[props.fill] || paint.solid
-  const stroke = { stroke: paint.stroke, strokeWidth: strokeWidth(props), strokeDasharray: dashArray(props)?.join(' '), strokeLinecap: 'round', strokeLinejoin: 'round' }
+  const props = shape.props, paint = colorPaint(props), patterned = props.fill === 'pattern'
+  const fill = props.fill === 'none' ? 'none' : patterned ? `url(#${id})` : props.fill === 'lined-fill' ? paint.lined : paint[props.fill] || paint.solid
+  const stroke = { stroke: paint.stroke, strokeWidth: strokeWidth(props), strokeLinecap: 'round', strokeLinejoin: 'round' }
+  const dashed = ['dashed', 'dotted'].includes(props.dash)
+  const edges = !dashed ? [] : contour.continuous ? [contour.outline] : contour.outline.map((point, i) => [point, contour.outline[(i + 1) % contour.outline.length]])
   return h('svg', { width: bounds.w, height: bounds.h, overflow: 'visible' },
     patterned ? h(Pattern, { id, props, paint }) : null,
-    h('path', { 'data-geo-outline': '', d: pathOf(contour.outline, true), fill, ...stroke }),
-    contour.decorations.map((line, i) => h('path', { key: i, 'data-geo-decoration': '', d: pathOf(line), fill: 'none', ...stroke })))
+    h('path', { 'data-geo-outline': '', d: pathOf(contour.outline, true), fill, ...stroke, stroke: dashed ? 'none' : stroke.stroke }),
+    dashed ? edges.map((points, i) => h(DashedStroke, { key: `edge-${i}`, points, closed: !!contour.continuous, props, stroke })) : null,
+    contour.decorations.map((line, i) => dashed
+      ? h(DashedStroke, { key: i, points: line, closed: false, props, stroke })
+      : h('path', { key: i, 'data-geo-decoration': '', d: pathOf(line), fill: 'none', ...stroke })))
 }
