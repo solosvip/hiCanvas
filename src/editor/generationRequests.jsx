@@ -27,7 +27,7 @@ async function sendAiImageGenerationRequest({ editor, modelId, holderShape, user
   for (const [index, referenceFile] of imageReferences.entries()) {
     const referenceDataUrl = await readFileAsDataUrl(referenceFile)
     let savedReference = null
-    if (hasCowartWidgetBridge()) {
+    if (hasCowartWidgetBridge() || !window.cowartMcp) {
       try {
         savedReference = await saveCowartReferenceImage({
           holderShapeId: holderShape.id,
@@ -67,7 +67,7 @@ async function sendAiImageGenerationRequest({ editor, modelId, holderShape, user
   return sender(
     { prompt, content },
     {
-      promptType: 'ai_image',
+      promptType: 'ai_image', targetShapeId: holderShape.id,
       aiType: 'image',
       hasReference: imageReferences.length > 0
     }
@@ -84,7 +84,7 @@ async function sendAiDraftGenerationRequest({ holderShape, userPrompt, reference
   for (const [index, referenceFile] of imageReferences.entries()) {
     const referenceDataUrl = await readFileAsDataUrl(referenceFile)
     let savedReference = null
-    if (hasCowartWidgetBridge()) {
+    if (hasCowartWidgetBridge() || !window.cowartMcp) {
       try {
         savedReference = await saveCowartReferenceImage({
           holderShapeId: holderShape.id,
@@ -124,6 +124,7 @@ async function sendAiDraftGenerationRequest({ holderShape, userPrompt, reference
   return sender(
     { prompt, content },
     {
+      targetShapeId: holderShape.id,
       promptType: isAiFilmHolderShape(holderShape) ? 'ai_film' : 'ai_html',
       aiType: isAiFilmHolderShape(holderShape) ? 'film' : 'html',
       hasReference: imageReferences.length > 0,
@@ -142,7 +143,7 @@ async function sendAiSlidesGenerationRequest({ slidesShape, pageCount, userPromp
   for (const [index, referenceFile] of imageReferences.entries()) {
     const referenceDataUrl = await readFileAsDataUrl(referenceFile)
     let savedReference = null
-    if (hasCowartWidgetBridge()) {
+    if (hasCowartWidgetBridge() || !window.cowartMcp) {
       try {
         savedReference = await saveCowartReferenceImage({
           holderShapeId: slidesShape.id,
@@ -183,7 +184,7 @@ async function sendAiSlidesGenerationRequest({ slidesShape, pageCount, userPromp
   return sender(
     { prompt, content },
     {
-      promptType: 'ai_slides',
+      promptType: 'ai_slides', targetShapeId: slidesShape.id,
       aiType: 'slides',
       hasReference: imageReferences.length > 0,
       pageCount

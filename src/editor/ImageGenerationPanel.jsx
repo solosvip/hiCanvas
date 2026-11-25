@@ -64,7 +64,7 @@ function CowartAiImageGenerationPanel() {
   if (!selectedTarget) return null
   const { shape, layout } = selectedTarget
   const canSend = promptValue.trim().length > 0 || referenceFiles.length > 0
-  const isSending = status === 'sending'
+  const isSending = status === 'sending' || ['queued', 'running', 'pending', 'working', 'waiting'].includes(shape.meta?.hicanvasGeneration?.status)
   function handleReferenceChange(event) {
     const selectedFiles = Array.from(event.target.files || [])
     if (!selectedFiles.length) return
@@ -231,7 +231,7 @@ function CowartAiImageGenerationPanel() {
             {status === 'sending'
               ? '正在生成，请稍候…'
               : status === 'sent'
-                ? '已生成'
+                ? '已提交生成任务'
                 : errorMessage}
           </div>
           <button

@@ -1,0 +1,31 @@
+.hicanvas-generation-state {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-xl);
+  color: var(--tl-color-text-1);
+  font-family: var(--font-body-md);
+  font-size: var(--text-body-md);
+}
+
+.hicanvas-generation-state__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  max-width: 100%;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.hicanvas-generation-state__content > svg {
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
+}
+
+.hicanvas-generation-state__content small {
+  font-size: var(--text-label-md);
+  color: var(--color-error);
+}

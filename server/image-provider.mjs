@@ -51,7 +51,19 @@ async function downloadImage(src, signal) {
   return imageBytes(await limitedBytes(response, IMAGE_LIMIT))
 }
 
-export async function requestImages(model, { prompt, references = [] }) {
+// Gemini 的接口枚举使用比例而非像素尺寸；自定义框映射到最接近的支持比例。
+// 来源：https://ai.google.dev/api/generate-content#ImageConfig
+function geminiAspectRatio(value) {
+  const [w, h] = String(value).split(':').map(Number)
+  if (!(w > 0 && h > 0 && Number.isFinite(w / h))) throw inputError('图片比例无效。')
+  const supported = ['1:1', '1:4', '4:1', '1:8', '8:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']
+  return supported.reduce((best, ratio) => {
+    const distance = r => { const [a, b] = r.split(':').map(Number); return Math.abs(Math.log(w / h / (a / b))) }
+    return distance(ratio) < distance(best) ? ratio : best
+  })
+}
+
+export async function requestImages(model, { prompt, references = [], size, aspectRatio }) {
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 32000) throw inputError('请输入图片描述（最多 32000 字符）。')
   if (!Array.isArray(references) || references.length > 10) throw inputError('最多支持 10 张参考图。')
   const images = references.map(decodeReference)
@@ -62,7 +74,7 @@ export async function requestImages(model, { prompt, references = [] }) {
       const name = encodeURIComponent(model.model.replace(/^models\//, ''))
       const result = await jsonRequest(`${model.baseUrl}/models/${name}:generateContent`, {
         method: 'POST', headers: { 'content-type': 'application/json', ...(model.apiKey ? { 'x-goog-api-key': model.apiKey } : {}) },
-        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } })
+        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(aspectRatio ? { imageConfig: { aspectRatio: geminiAspectRatio(aspectRatio) } } : {}) } })
       }, signal)
       const output = (result.candidates || []).flatMap(candidate => candidate.content?.parts || []).filter(part => part.inlineData && !part.thought)
       if (!output.length || output.length > 4) throw inputError('服务没有返回图片，请检查所选模型是否支持生图或提示词是否被拦截。', 502)
@@ -72,11 +84,12 @@ export async function requestImages(model, { prompt, references = [] }) {
     let body, path
     if (images.length) {
       body = new FormData(); body.set('model', model.model); body.set('prompt', prompt.trim()); body.set('n', '1')
+      if (size) body.set('size', size)
       images.forEach((image, index) => body.append('image[]', new Blob([image.bytes], { type: image.mimeType }), `reference-${index + 1}.${image.extension}`))
       path = '/images/edits'
     } else {
       headers['content-type'] = 'application/json'
-      body = JSON.stringify({ model: model.model, prompt: prompt.trim(), n: 1 }); path = '/images/generations'
+      body = JSON.stringify({ model: model.model, prompt: prompt.trim(), n: 1, ...(size ? { size } : {}) }); path = '/images/generations'
     }
     const result = await jsonRequest(model.baseUrl + path, { method: 'POST', headers, body }, signal)
     if (!Array.isArray(result.data) || !result.data.length || result.data.length > 4) throw inputError('服务没有返回图片，或返回数量超过本次支持范围。', 502)

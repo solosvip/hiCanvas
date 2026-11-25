@@ -1,6 +1,7 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { Box } from "tldraw"
 import { sendTrackedWidgetMessage } from "../analytics.js"
+import { sendCanvasAgentRequest } from '../agentBridge.js'
 import { ANNOTATION_EDIT_NEAR_MARGIN_MIN, ANNOTATION_EDIT_NEAR_MARGIN_MAX, ANNOTATION_EDIT_COLORS, ANNOTATION_EDIT_RELATED_TEXT_MARGIN, ANNOTATION_EDIT_PROMPT, AI_IMAGE_HOLDER_DEFAULT_W, AI_IMAGE_HOLDER_DEFAULT_H, ANNOTATION_HTML_PROMPT, ANNOTATION_EDIT_MAX_EXPORT_DIMENSION, ANNOTATION_EDIT_MAX_EXPORT_PIXELS, ANNOTATION_EDIT_EXPORT_PADDING } from './configuration.jsx'
 import { isImageShape, isCowartHtmlDraftEmbedShape, isAiSlidesShape } from './holderMeta.jsx'
 function expandBox(bounds, padding) {
@@ -196,7 +197,7 @@ function followUpSender() {
   } else if (typeof window.openai?.sendFollowUpMessage === 'function') {
     sendMessage = (message) => window.openai.sendFollowUpMessage(message)
   }
-  if (!sendMessage) return null
+  if (!sendMessage) return sendCanvasAgentRequest
   return (message, analyticsContext = {}) =>
     sendTrackedWidgetMessage(sendMessage, message, analyticsContext)
 }
@@ -213,6 +214,6 @@ function cowartHostCapabilities() {
   }
 }
 function supportsCowartMessageImages() {
-  return Boolean(cowartHostCapabilities()?.message?.image)
+  return !window.cowartMcp || Boolean(cowartHostCapabilities()?.message?.image)
 }
 export { expandBox, annotationEditNearMargin, shapeHasAnnotationColor, isAnnotationArrowShape, isAnnotationTextShape, uniqueShapeIds, collectAnnotationTargetShapeIds, collectAnnotationEditShapeIds, collectHtmlDraftAnnotationShapeIds, collectAiSlidesAnnotationShapeIds, buildAnnotationEditPrompt, buildAnnotationHtmlPrompt, getAnnotationEditExportPixelRatio, getAnnotationEditExportSize, isAnnotationEditExportTooLarge, prepareAnnotationEditRequest, annotationEditScreenshotFileName, annotationHtmlScreenshotFileName, dataUrlToImageContent, followUpSender, cowartHostCapabilities, supportsCowartMessageImages }

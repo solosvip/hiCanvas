@@ -5,10 +5,12 @@ import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createImageMiddleware } from './image-routes.mjs'
+import { createConversations } from './conversations.mjs'
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'hicanvas-images-'))
-  let middleware = createImageMiddleware({ settingsDir: join(root, 'settings'), assetsDir: join(root, 'assets') })
+  const workspace = createConversations(join(root, 'isolated-canvas'))
+  let middleware = createImageMiddleware({ workspace, settingsDir: join(root, 'settings'), assetsDir: join(root, 'assets') })
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404); res.end() }))
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   t.after(async () => { await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true }) })
@@ -17,9 +19,13 @@ async function fixture(t) {
     const response = await fetch(base + path, { method, headers: { 'x-hicanvas-client': '1', 'content-type': 'application/json', ...extraHeaders }, body: body === undefined ? undefined : JSON.stringify(body) })
     return { status: response.status, body: await response.json() }
   }
-  return { root, api, base, restart: () => { middleware = createImageMiddleware({ settingsDir: join(root, 'settings'), assetsDir: join(root, 'assets') }) } }
+  return { root, api, base, restart: () => { middleware = createImageMiddleware({ workspace, settingsDir: join(root, 'settings'), assetsDir: join(root, 'assets') }) } }
 }
 const profile = { name: '自己的模型', protocol: 'openai-images', baseUrl: 'https://images.example.test/custom/v1', model: 'user-chosen-model', apiKey: 'synthetic-test-credential' }
+
+test('测试未提供隔离资料库时，在读取或恢复任何任务前阻止启动', () => {
+  assert.throws(() => createImageMiddleware(), /必须显式传入隔离 workspace/)
+})
 
 test('用户添加任意模型后可重读配置，密钥不回显，配置文件仅本人可读', async t => {
   const { api, root, restart } = await fixture(t)
@@ -87,10 +93,11 @@ test('Gemini 格式按用户所选模型发送文字及参考图，读取真正�
     res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: '说明' }, { inlineData: { mimeType: 'image/png', data: pngBase64 } }] } }] }))
   })
   const modelId = (await api('/api/image-models', 'POST', { ...profile, protocol: 'gemini', model: 'my-image-model', baseUrl: baseUrl + '/v1beta' })).body.activeModelId
-  const result = await api('/api/images', 'POST', { modelId, prompt: '换成蓝色', references: [`data:image/png;base64,${pngBase64}`] })
+  const result = await api('/api/images', 'POST', { modelId, prompt: '换成蓝色', aspectRatio: '1024:576', references: [`data:image/png;base64,${pngBase64}`] })
   assert.equal(result.status, 200)
   assert.equal(received.path, '/v1beta/models/my-image-model:generateContent')
   assert.equal(received.key, profile.apiKey)
+  assert.equal(received.body.generationConfig.imageConfig.aspectRatio, '16:9')
   assert.deepEqual(received.body.contents[0].parts, [{ text: '换成蓝色' }, { inlineData: { mimeType: 'image/png', data: pngBase64 } }])
   assert.equal(result.body.images.length, 1)
 })
@@ -123,7 +130,7 @@ test('图片接口可随 Vite 开发服务和生产预览正常启动', async t 
   await mkdir(join(root, 'dist'))
   await writeFile(join(root, 'dist', 'index.html'), '<p>synthetic canvas</p>')
   t.after(() => rm(root, { recursive: true, force: true }))
-  const options = { configFile: false, root, logLevel: 'silent', plugins: [imageToolsPlugin()], server: { port: 0, host: '127.0.0.1' }, preview: { port: 0, host: '127.0.0.1' } }
+  const options = { configFile: false, root, logLevel: 'silent', plugins: [imageToolsPlugin({ workspace: createConversations(join(root, 'isolated-canvas')), settingsDir: join(root, 'settings') })], server: { port: 0, host: '127.0.0.1' }, preview: { port: 0, host: '127.0.0.1' } }
   const development = await createViteServer(options)
   try { await development.listen() } finally { await development.close() }
   const production = await preview(options)

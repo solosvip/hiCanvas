@@ -180,7 +180,7 @@ function CowartAnnotationEditToolbarButton({ imageShapeId }) {
     status === 'sending'
       ? '正在按标注生成'
       : status === 'sent'
-        ? '已生成修改图片'
+        ? '已提交修改任务'
         : status === 'error'
           ? '提交失败，请重试'
           : ANNOTATION_EDIT_TOOL_LABEL

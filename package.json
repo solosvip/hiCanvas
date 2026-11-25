@@ -1,8 +1,8 @@
 {
   "name": "hicanvas",
-  "version": "0.0.3",
+  "version": "0.0.8",
   "private": true,
-  "description": "Standalone canvas based on Cowart. Custom image providers and MCP are planned.",
+  "description": "Standalone canvas based on Cowart. Conversation isolation, custom image providers and MCP.",
   "type": "module",
   "engines": {
     "node": ">=24 <25"
@@ -13,6 +13,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "node tools/build.mjs",
     "start": "vite preview --host 127.0.0.1",
+    "mcp": "node bin/hicanvas-mcp.mjs",
     "test": "node --test --test-force-exit --test-timeout=15000 tools/*.test.mjs server/*.test.mjs",
     "design:lint": "design.md lint DESIGN.md",
     "design:tokens": "node tools/generate-tokens.mjs"

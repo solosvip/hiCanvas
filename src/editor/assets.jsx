@@ -40,12 +40,12 @@ function buildCowartAssetUrls() {
   return { ...base, icons: { ...base.icons, ...icons } }
 }
 function isCowartLocalAssetUrl(src) {
-  return typeof src === 'string' && (src.startsWith(PAGE_ASSETS_ROUTE) || src.startsWith(GLOBAL_ASSETS_ROUTE))
+  return typeof src === 'string' && (src.startsWith(PAGE_ASSETS_ROUTE) || src.startsWith(GLOBAL_ASSETS_ROUTE) || /^\/c\/[^/]+\/(?:page-assets|assets)\//.test(src))
 }
 const COWART_HTML_DRAFT_LOCAL_IMAGE_PATTERN =
-  /(?:https?:\/\/cowart\.local)?(\/(?:page-assets|assets)\/[^"'()\s<>?#]+\.(?:apng|avif|gif|jpe?g|png|svg|webp))(?:[?#][^"'()\s<>]*)?/gi
+  /(?:https?:\/\/cowart\.local)?(\/(?:c\/[^/]+\/)?(?:page-assets|assets)\/[^"'()\s<>?#]+\.(?:apng|avif|gif|jpe?g|png|svg|webp))(?:[?#][^"'()\s<>]*)?/gi
 async function hydrateCowartHtmlDraftLocalImages(htmlContent, options = {}) {
-  if (typeof htmlContent !== 'string' || !htmlContent || !hasCowartWidgetBridge()) return htmlContent
+  if (typeof htmlContent !== 'string' || !htmlContent) return htmlContent
   const references = new Map()
   for (const match of htmlContent.matchAll(COWART_HTML_DRAFT_LOCAL_IMAGE_PATTERN)) {
     references.set(match[0], match[1])
@@ -71,7 +71,7 @@ async function hydrateCowartHtmlDraftLocalImages(htmlContent, options = {}) {
     (reference) => replacements.get(references.get(reference)) || reference)
 }
 function isCowartHtmlDraftAssetUrl(src) {
-  return typeof src === 'string' && src.startsWith(PAGE_ASSETS_ROUTE) && /\.html?(?:$|[?#])/i.test(src)
+  return isCowartLocalAssetUrl(src) && /\.html?(?:$|[?#])/i.test(src)
 }
 function isCowartHtmlDraftDataUrl(src) {
   return typeof src === 'string' && /^data:text\/html(?:;[^,]*)?,/i.test(src)

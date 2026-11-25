@@ -5,3 +5,6 @@
 @import './styles/cowart-3.css';
 
 @import "./styles/models.css";
+
+@import './styles/conversations.css';
+@import './styles/generation-state.css';

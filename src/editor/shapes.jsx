@@ -1,5 +1,5 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
-import { EmbedShapeUtil, FrameShapeUtil, HTMLContainer, DEFAULT_EMBED_DEFINITIONS, toDomPrecision, useEditor, useIsEditing } from "tldraw"
+import { EmbedShapeUtil, FrameShapeUtil, HTMLContainer, DEFAULT_EMBED_DEFINITIONS, toDomPrecision, useEditor, useIsEditing, DefaultSpinner } from "tldraw"
 import { attachCowartFilmController } from "../filmPlayback.js"
 import { getFilmOptions } from "../filmConfig.js"
 import { useCallback, useEffect, useState } from "react"
@@ -10,6 +10,18 @@ import { isCowartHtmlDraftDataUrl, cowartHtmlDraftAssetUrlFromVirtualUrl, cowart
 import { waitForHtmlDraftDocument, cowartHtmlDraftDataUrl, createCowartHtmlDraftDomEditorSession } from './htmlEditor.jsx'
 import { CowartFilmPlaybackControls } from './htmlToolbar.jsx'
 class CowartFrameShapeUtil extends FrameShapeUtil {
+  component(shape) {
+    const task = shape.meta?.hicanvasGeneration
+    const labels = { queued: '排队中', running: '正在生成', pending: '已发送至 Agent', working: 'Agent 正在制作', waiting: '等待 Agent 连接', failed: '生成失败', interrupted: '生成已中断', saved: '图片已保存' }
+    const label = labels[task?.status]
+    return <>{super.component(shape)}{label && <HTMLContainer className="hicanvas-generation-state" aria-live="polite">
+      <div className="hicanvas-generation-state__content">
+        {['queued', 'running', 'pending', 'working'].includes(task.status) && <DefaultSpinner />}
+        <span>{label}</span>
+        {task.error && <small>{task.error}</small>}
+      </div>
+    </HTMLContainer>}</>
+  }
   isAspectRatioLocked(shape) {
     if (isCowartAiHolderShape(shape)) {
       return isAiImageAspectLocked(shape)
@@ -93,7 +105,7 @@ function CowartHtmlDraftEmbed({ shape }) {
     htmlSourcePromise
       .then((htmlContent) => {
         if (isDisposed || htmlContent === null) return null
-        return hasCowartWidgetBridge() ? hydrateCowartHtmlDraftLocalImages(htmlContent, { signal: controller.signal }) : htmlContent
+        return hydrateCowartHtmlDraftLocalImages(htmlContent, { signal: controller.signal })
       })
       .then((htmlContent) => {
         if (isDisposed || htmlContent === null) return
