@@ -1,3 +1,4 @@
 export { executeCanvasCommands } from './execute.js'
 export { CanvasEditError } from './errors.js'
 export { recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction } from './undo.js'
+export { pageFor, getMediaTarget } from './media-target.js'
