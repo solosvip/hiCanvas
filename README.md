@@ -184,6 +184,21 @@ git config core.hooksPath .githooks
 
 提交前跑快检查，CI 跑完整入口。仓库为公开仓库，GitHub Actions 使用云端 Ubuntu 检查机运行完整入口。本地检查通过后仍需核对 PR 的远程检查结果。
 
+新渲染层的只读开发预览单独启动，不启动画板服务，也不加载真实资料。先登记专用端口，再运行：
+
+```sh
+npm run renderer:preview -- --port 43330
+# 打开 http://127.0.0.1:43330/?count=500，count 也支持 2000、5000
+npm run renderer:check
+npm run renderer:smoke
+```
+
+预览入口是 `tools/renderer-preview/index.html`，独立 Vite 配置只扫描这个入口；正式构建仍从根 `index.html` 进入，桌面只复制正式 `dist/`，因此预览页不进入应用产物。合成规则复用性能基线的坐标、相机、尺寸、60% 几何／20% 文本／20% 图片构成及 16 张本地 PNG；为匹配首批支持范围，三角形和菱形转为矩形、半透明填充转为实心。滚轮平移、Ctrl+滚轮或触控板捏合缩放只实现在预览页。只读观察接口 `window.__HICANVAS_RENDERER_PREVIEW__.getState()` 返回 `ready`、`error`、`camera`、`count`、`counts`、`renderedShapes`、`imageCount`、`decodedImages` 的副本，不暴露存储或修改接口；`ready` 等到全部形状、字体和图片解码完成后置为真，供后续测量工具读取。
+
+渲染挂载入口 `renderer/index.js` 导出 `mountCanvasRenderer(element, { store, camera?, pageId? })`，返回 `setCamera({ x, y, z })`、`getCamera()`、`hitTest({ x, y })`、`unmount()`。传入 `model/` 创建的 Store；调用方管理输入，相机满足 `屏幕坐标 = (画布坐标 + 相机平移) × 缩放`，查询坐标相对于挂载元素左上角，返回顶层形状 ID 或 `null`。挂载和相机变化不修改 Store，卸载释放订阅且不销毁调用方的 Store。首批支持矩形／椭圆、纯文本、图片和带裁剪子形状的框；配色为独立实现的 CSS 命名色，文字忽略富文本格式、用等宽排版估算行高和换行，尚不代表旧编辑器的视觉精度。
+
+无界面几何入口 `renderer/geometry.js` 可直接在 Node 使用，不依赖 React 或 DOM：`getShapeBounds(shape)` 返回局部外框，`getShapePageBounds(snapshot, id)` 返回考虑父子旋转后的画布外框；`shapeToPagePoint`／`pageToShapePoint` 互换局部与画布坐标，`canvasToScreen`／`screenToCanvas` 互换画布与屏幕坐标，`pointInShape` 判断局部点，`hitTestCanvas(snapshot, point, camera?, pageId?)` 查询顶层记录。文本高度暂为行数估算，真实文字测量另行实现。`npm test` 包含几何、边界和合成接口回归；`renderer:smoke` 需已安装的项目 Electron，使用自动隔离环境在后台离屏打开三档画板，检查全量图片解码、真实滚轮输入、单记录订阅及卸载，结果与三张截图保存到 `.scratch/renderer-smoke/`。截图供检查，不代表人工视觉验收，也不是性能比较报告。
+
 性能基线使用项目锁定版本的 Electron，在后台离屏窗口测量正式构建。先在占用白板登记专用端口，避开其他重任务，再运行（端口按实际登记替换）：
 
 ```sh

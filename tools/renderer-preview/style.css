@@ -1,0 +1,5 @@
+@import '../../src/styles/tokens.css';
+
+html, body { margin: var(--spacing-none); overflow: hidden; background: var(--color-neutral); color: var(--color-on-neutral); font-family: var(--font-body-md); font-size: var(--text-body-md); }
+#canvas { position: fixed; inset: var(--spacing-none); }
+#status { position: fixed; top: var(--spacing-sm); left: var(--spacing-sm); padding: var(--spacing-sm); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-on-surface); pointer-events: none; }
