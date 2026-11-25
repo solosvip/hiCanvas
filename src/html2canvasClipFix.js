@@ -21,15 +21,13 @@
  * THE SOFTWARE.
  */
 import html2canvasModule from 'html2canvas/dist/lib/index.js'
-import stackingContext from 'html2canvas/dist/lib/render/stacking-context.js'
-import effectsModule from 'html2canvas/dist/lib/render/effects.js'
-import boundCurves from 'html2canvas/dist/lib/render/bound-curves.js'
-import pathModule from 'html2canvas/dist/lib/render/path.js'
+import { ElementPaint } from 'html2canvas/dist/lib/render/stacking-context.js'
+import { ClipEffect, isClipEffect } from 'html2canvas/dist/lib/render/effects.js'
+import { calculateBorderBoxPath, calculatePaddingBoxPath } from 'html2canvas/dist/lib/render/bound-curves.js'
+import { equalPath } from 'html2canvas/dist/lib/render/path.js'
 
-const { ElementPaint } = stackingContext
-const { ClipEffect, isClipEffect } = effectsModule
-const { calculateBorderBoxPath, calculatePaddingBoxPath } = boundCurves
-const { equalPath } = pathModule
+// These CJS internals mark __esModule but have no default export. Named imports
+// preserve their exports through Vite's development interop as well as builds.
 const BACKGROUND_AND_CONTENT = 2 | 4
 const isOutOfFlow = (position) => position === 2 || position === 3 // ABSOLUTE / FIXED
 

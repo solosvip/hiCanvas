@@ -1,8 +1,7 @@
 import html2canvas from './html2canvasClipFix.js'
 
-import documentCloner from 'html2canvas/dist/lib/dom/document-cloner.js'
+import { DocumentCloner } from 'html2canvas/dist/lib/dom/document-cloner.js'
 
-const { DocumentCloner } = documentCloner
 const activeCaptures = new WeakMap()
 const originalCloneElement = DocumentCloner.prototype.createElementClone
 
