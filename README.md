@@ -2,7 +2,7 @@
 
 基于 [Cowart](https://github.com/zhongerxin/Cowart) 逐步建设的独立 AI 画板。
 
-三层设计、技术替换条件及完整功能保留要求见 [hiCanvas 三层架构说明](hiCanvas%20三层架构说明.md)。这是后续架构的说明，当前应用仍使用 tldraw。
+当前应用运行在 tldraw 上，正在用自有实现替换其受限部分；目标结构、必须守住的规则和切换条件见 [架构说明](架构说明.md)。
 
 ## 现在能做什么
 
