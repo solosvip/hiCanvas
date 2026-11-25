@@ -11,7 +11,9 @@ const geometryByType = Object.freeze({
   text: { bounds: textSize, contour: shape => box(textSize(shape)) },
   image: { bounds: stored, contour: shape => box(stored(shape)) },
   frame: { bounds: stored, contour: shape => box(stored(shape)) },
-  group: { bounds: () => null, contour: () => null }
+  group: { bounds: () => null, contour: () => null },
+  embed: { bounds: stored, contour: shape => box(stored(shape)) },
+  bookmark: { bounds: stored, contour: shape => box(stored(shape)) }
 })
 
 export function getShapeBounds(shape) {
