@@ -1,13 +1,7 @@
 import { getShapeAncestors } from './shape-coordinates.js'
+import { canStretchShape, stretchShapeProps } from './shape-scaling.js'
 
-// #58 建立按类型的缩放规则后，并入那张表。文字高度来自排版，暂不拉伸。
-const resizeByType = Object.freeze({
-  geo: (shape, sx, sy) => ({ ...shape.props, w: shape.props.w * sx, h: shape.props.h * sy }),
-  image: (shape, sx, sy) => ({ ...shape.props, w: shape.props.w * sx, h: shape.props.h * sy }),
-  frame: (shape, sx, sy) => ({ ...shape.props, w: shape.props.w * sx, h: shape.props.h * sy }),
-})
-
-export const canLayoutResize = shape => Object.hasOwn(resizeByType, shape.type)
+export const canLayoutResize = canStretchShape
 export const pageRotation = (records, shape) => shape.rotation + getShapeAncestors(records, shape.parentId).reduce((sum, parent) => sum + parent.rotation, 0)
 
 export function stretchLayoutShape(records, item, axis, factor) {
@@ -17,7 +11,7 @@ export function stretchLayoutShape(records, item, axis, factor) {
   if (!horizontal && !vertical) return null
   const sx = (horizontal && axis === 'x') || (vertical && axis === 'y') ? factor : 1
   const sy = (horizontal && axis === 'y') || (vertical && axis === 'x') ? factor : 1
-  return { ...item.shape, props: resizeByType[item.shape.type](item.shape, sx, sy) }
+  return { ...item.shape, props: stretchShapeProps(item.shape, { x: sx, y: sy }) }
 }
 
 export function mirrorLayoutShape(records, shape, axis) {
