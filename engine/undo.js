@@ -99,6 +99,21 @@ function assertCurrent(store, changes) {
   }
 }
 
+function assertRestoredIndices(store, changes, allowed) {
+  const outside = new Map()
+  for (const record of Object.values(store)) {
+    if (record.typeName !== 'shape' || allowed.has(record.id)) continue
+    if (!outside.has(record.parentId)) outside.set(record.parentId, new Map())
+    outside.get(record.parentId).set(record.index, record.id)
+  }
+  const restored = [...Object.values(changes.removed), ...Object.values(changes.updated).map(([before]) => before)]
+  for (const record of restored) {
+    if (record.typeName !== 'shape') continue
+    const otherId = outside.get(record.parentId)?.get(record.index)
+    if (otherId) invalid(`记录 ${record.id} 要恢复的层级索引已被同级记录 ${otherId} 占用。`)
+  }
+}
+
 function invert(snapshot, changes) {
   assertCurrent(snapshot?.store, changes)
   // 先恢复记录，再整体删除，关系只在整次事务结束时校验。
@@ -117,6 +132,7 @@ function invert(snapshot, changes) {
     updated: Object.fromEntries(Object.entries(changes.updated).map(([id, [before, after]]) => [id, [after, before]])),
     removed: changes.added,
   })
+  assertRestoredIndices(result.snapshot.store, changes, allowed)
   return result
 }
 
