@@ -70,7 +70,7 @@ function checkSource(path, content) {
   }
 }
 
-const rootDocs = new Set(['README.md', 'AGENTS.md', 'CONTEXT.md', 'DESIGN.md', '版本管理.md', 'todolist.md'])
+const rootDocs = new Set(['README.md', 'AGENTS.md', 'CONTEXT.md', 'DESIGN.md', '版本管理.md', 'todolist.md', '架构说明.md'])
 function checkDocument(path) {
   if (!/\.md$/i.test(path)) return
   const allowed = rootDocs.has(path)
