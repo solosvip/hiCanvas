@@ -21,6 +21,35 @@ async function until(predicate) {
   throw new Error('等待渲染器就绪超时。')
 }
 const check = (condition, message) => { if (!condition) throw new Error(message) }
+async function cameraLayoutProbe() {
+  const contents = window.webContents
+  contents.debugger.attach('1.3')
+  try {
+    await contents.debugger.sendCommand('Performance.enable')
+    const metrics = async () => Object.fromEntries((await contents.debugger.sendCommand('Performance.getMetrics')).metrics.map(({ name, value }) => [name, value]))
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    const before = await metrics()
+    let zoom = await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.getCamera().z')
+    for (const deltaY of [-3, 3, -3, 3]) {
+      contents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY, modifiers: ['control'], canScroll: true })
+      await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+      const next = await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.getCamera().z')
+      check(next !== zoom, '布局回归检查的真实滚轮没有改变缩放')
+      zoom = next
+    }
+    const pan = await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.getCamera()')
+    contents.sendInputEvent({ type: 'mouseMove', x: 640, y: 400 })
+    contents.sendInputEvent({ type: 'mouseDown', x: 640, y: 400, button: 'middle', clickCount: 1 })
+    contents.sendInputEvent({ type: 'mouseMove', x: 680, y: 430, button: 'middle', modifiers: ['middleButtonDown'] })
+    contents.sendInputEvent({ type: 'mouseUp', x: 680, y: 430, button: 'middle', clickCount: 1 })
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    const moved = await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.getCamera()')
+    check(moved.x !== pan.x && moved.y !== pan.y, '布局回归检查的真实中键没有改变平移')
+    const after = await metrics(), layouts = after.LayoutCount - before.LayoutCount
+    check(layouts === 0, `相机平移缩放触发了 ${layouts} 次布局；静态内容不应逐帧重排`)
+    return { cameraLayouts: layouts }
+  } finally { contents.debugger.detach() }
+}
 function createWindow(key) {
   const target = new BrowserWindow({ show: false, width: 1280, height: 800, useContentSize: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, partition: `renderer-${process.pid}-${key}` } })
   target.webContents.session.webRequest.onBeforeRequest((details, callback) => {
@@ -48,9 +77,13 @@ async function run() {
       const pan = await until(async () => { const value = await state(); return value.camera.x !== initial.camera.x && value })
       window.webContents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: -40, modifiers: ['control'], canScroll: true })
       const zoom = await until(async () => { const value = await state(); return value.camera.z !== pan.camera.z && value })
-      let lifecycle
-      if (count === 500) lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle })
+      let lifecycle, cameraLayout, text
+      if (count === 5000) cameraLayout = await cameraLayoutProbe()
+      if (count === 500) {
+        lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
+        text = await evaluate("import('/tools/renderer-preview/text-probe.js').then(module => module.runTextProbe())")
+      }
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }

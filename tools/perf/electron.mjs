@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, contentTracing } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -7,6 +7,7 @@ import os from 'node:os'
 import { benchmarkViewport, isolatedDirectories, parseOptions, scratchPath, summarizeFrames, phaseChanged } from './config.mjs'
 import { pageObserver, cameraReaderScript } from './observers.mjs'
 import { startFrames, stopFrames } from './frame-probe.mjs'
+import { startPhaseTrace } from './trace.mjs'
 
 console.log('Electron: validating isolated paths')
 const directories = await isolatedDirectories()
@@ -31,7 +32,7 @@ for (const flag of ['disable-background-timer-throttling', 'disable-renderer-bac
 // Each sample gets a fresh window/session without quitting between samples.
 app.on('window-all-closed', () => {})
 
-let window, probe
+let window, probe, activeTrace
 const samples = [], blockedHosts = new Set(), consoleErrors = []
 const evaluate = (fn, arg) => window.webContents.executeJavaScript(`(${fn.toString()})(${JSON.stringify(arg)})`)
 const input = event => window.webContents.sendInputEvent(event)
@@ -60,6 +61,7 @@ async function measurePhase(name, fixture, paints) {
     button('mouseDown', point); button('mouseUp', point)
     await assertSelected(fixture.targetId)
   }
+  if (process.env.HICANVAS_PERF_TRACE === '1') activeTrace = await startPhaseTrace({ tracing: contentTracing, contents: window.webContents, outputDir: manifest.outputDir, label: `${fixture.renderer}-${fixture.count}-${fixture.repeat}-${name}` })
   const start = performance.now()
   await evaluate(startFrames)
   if (name !== 'zoom') button('mouseDown', point, name === 'pan' ? 'middle' : 'left')
@@ -82,9 +84,11 @@ async function measurePhase(name, fixture, paints) {
   }
   if (name !== 'zoom') button('mouseUp', { x: point.x + 100, y: point.y + 70 }, name === 'pan' ? 'middle' : 'left')
   const frames = await evaluate(stopFrames)
-  const end = performance.now(), after = await evaluate(probe.inspectState, fixture)
+  const end = performance.now()
+  const trace = await activeTrace?.(); activeTrace = undefined
+  const after = await evaluate(probe.inspectState, fixture)
   if (!phaseChanged(name, before, after, frames.zoomRange)) throw new Error(`${name} 输入没有改变预期画板状态，拒绝输出空转 FPS。`)
-  const result = { raf: summarizeFrames(frames.times, frames.start, frames.end), paint: summarizeFrames(paints, start, end), zoomRange: frames.zoomRange, inputEvents: inputs, before, after }
+  const result = { raf: summarizeFrames(frames.times, frames.start, frames.end), paint: summarizeFrames(paints, start, end), zoomRange: frames.zoomRange, inputEvents: inputs, before, after, trace }
   if (result.raf.frames < 2 || result.paint.frames < 2) throw new Error(`${name} 无有效渲染帧。`)
   return result
 }
@@ -133,6 +137,7 @@ async function run() {
     }
     app.exit(0)
   } catch (error) {
+    await activeTrace?.().catch(() => {}); activeTrace = undefined
     if (window && !window.isDestroyed()) await writeFile(join(manifest.outputDir, 'failure.png'), (await window.webContents.capturePage()).toPNG())
     await writeFile(manifest.resultPath, JSON.stringify({ error: error.stack, samples, blockedHosts: [...blockedHosts], consoleErrors }, null, 2))
     window?.destroy()

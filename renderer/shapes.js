@@ -1,6 +1,6 @@
 import { createElement as h, memo } from 'react'
 import { useValue } from '@tldraw/state-react'
-import { textLayout } from './text.js'
+import { Text, FrameTitle } from './text-view.js'
 import { getShapeBounds } from './bounds.js'
 import { Geometry } from './geo.js'
 import { colorPaint } from './palette.js'
@@ -11,13 +11,6 @@ const Children = memo(function Children({ scene, parentId }) {
   const ids = useValue('child ids', () => scene.ids(parentId), [scene, parentId])
   return ids.map(id => h(Shape, { scene, id, key: id }))
 })
-
-function Text({ props }) {
-  const { lines, size, scale, lineHeight, w, h: height } = textLayout(props)
-  return h('svg', { width: w, height, overflow: 'visible' },
-    h('g', { transform: `scale(${scale})`, fill: colorPaint(props).text, fontFamily: 'monospace', fontSize: size },
-      lines.map((line, i) => h('text', { key: i, x: 0, y: i * lineHeight + size, textLength: line.width || undefined, lengthAdjust: 'spacingAndGlyphs' }, line.text))))
-}
 
 function Image({ scene, props }) {
   const asset = useValue('image asset', () => props.assetId ? scene.store.get(props.assetId) : undefined, [scene, props.assetId])
@@ -31,8 +24,8 @@ const Shape = memo(function Shape({ scene, id }) {
   let body = null
   if (shape.type === 'frame') body = [
     h('svg', { key: 'body', width: props.w, height: props.h, overflow: 'visible' },
-      h('rect', { width: props.w, height: props.h, fill: 'white', stroke: colorOf(props), strokeWidth: 2 }),
-      h('text', { x: 0, y: -8, fill: colorOf(props), fontFamily: 'sans-serif', fontSize: 14 }, props.name || '')),
+      h('rect', { width: props.w, height: props.h, fill: 'white', stroke: colorOf(props), strokeWidth: 2 })),
+    h(FrameTitle, { key: 'title', text: props.name || '', color: colorOf(props) }),
     h('div', { key: 'children', 'data-frame-clip': id, style: { position: 'absolute', left: 0, top: 0, width: props.w, height: props.h, overflow: 'hidden' } }, h(Children, { scene, parentId: id }))
   ]
   else {
@@ -44,5 +37,7 @@ const Shape = memo(function Shape({ scene, id }) {
 
 export function CanvasWorld({ scene, camera }) {
   const { x, y, z } = useValue(camera)
-  return h('div', { 'data-renderer-world': '', style: { position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `scale(${z}) translate(${x}px, ${y}px)` } }, h(Children, { scene, parentId: scene.pageId }))
+  // Zero depth preserves the 2D camera math while changing the browser's
+  // compositing strategy. Camera changes never touch shape records.
+  return h('div', { 'data-renderer-world': '', style: { position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `scale(${z}) translate3d(${x}px, ${y}px, 0)` } }, h(Children, { scene, parentId: scene.pageId }))
 }
