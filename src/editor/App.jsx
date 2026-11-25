@@ -1,7 +1,7 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { Tldraw } from "tldraw"
 import { backupCanvas } from './backupCanvas.js'
-import { canvasApiUrl } from '../conversations/client.js'
+import { watchCanvasLifecycle } from '../conversations/canvasLifecycle.js'
 import { reportCowartStartup } from "../widgetStartup.js"
 import { useCallback, useEffect, useState } from "react"
 import { trackCanvasOpened } from "../analytics.js"
@@ -283,7 +283,8 @@ function App() {
       containerDocument.body.appendChild(notice)
       conflictNotice = notice
     }
-    async function saveCanvas() {
+    async function saveCanvas(final = false) {
+      if (isDisposed && final !== true) return
       if (!hasUnsavedChanges || saveConflict) return
       if (isSaving) {
         hasPendingSave = true
@@ -308,13 +309,14 @@ function App() {
         }
       } finally {
         isSaving = false
-        if (!saveConflict && (hasPendingSave || hasUnsavedChanges)) {
+        if (!isDisposed && !saveConflict && (hasPendingSave || hasUnsavedChanges)) {
           hasPendingSave = false
           scheduleSave()
         }
       }
     }
     function scheduleSave() {
+      if (isDisposed) return
       documentChangeVersion += 1
       hasUnsavedChanges = true
       if (conflictReloadButton) conflictReloadButton.disabled = true
@@ -370,11 +372,7 @@ function App() {
     if (hasCowartWidgetBridge()) {
       canvasRefreshTimer = window.setInterval(loadRemoteCanvasSnapshot, 1600)
     } else if (!IS_COWART_WIDGET_BUILD && 'EventSource' in window) {
-      canvasEvents = new window.EventSource(canvasApiUrl('/api/canvas-events'))
-      canvasEvents.addEventListener('canvas-changed', loadRemoteCanvasSnapshot)
-      canvasEvents.onerror = (error) => {
-        console.warn('Cowart canvas live refresh disconnected.', error)
-      }
+      canvasEvents = watchCanvasLifecycle(loadRemoteCanvasSnapshot)
     }
     const unsubscribeAnnotationEditingToolLock = editor.store.listen(
       ({ changes }) => {
@@ -458,7 +456,7 @@ function App() {
       disposeSlidesBeforeCreateHandler()
       disposeSlidesOperationHandler()
       syncViewState()
-      saveCanvas()
+      saveCanvas(true)
       canvasSaveSession.dispose()
       stopWatermarkLocalization()
     }

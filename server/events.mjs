@@ -6,6 +6,11 @@ export function getCanvasEvents(workspace) {
 export function createCanvasEvents() {
   const clients = new Map()
   return {
+    deleted(result) {
+      for (const client of clients.get(result.conversationId) || []) {
+        try { client.write(`event: canvas-deleted\ndata: ${JSON.stringify(result)}\n\n`); client.end() } catch { /* 连接关闭时清理。 */ }
+      }
+    },
     subscribe(id, req, res) {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
       res.write('event: canvas-changed\ndata: {"connected":true}\n\n')

@@ -10,7 +10,7 @@ export function canvasApiUrl(path) {
 export async function conversationApi(path, method = 'GET', body) {
   const response = await fetch(path, { method, headers: { 'content-type': 'application/json', 'x-hicanvas-client': '1' }, body: body === undefined ? undefined : JSON.stringify(body) })
   const data = await response.json()
-  if (!response.ok) throw new Error(data.error || '画板操作失败。')
+  if (!response.ok) throw Object.assign(new Error(data.error || '画板操作失败。'), { status: response.status, storage: data.storage })
   return data
 }
 export async function initializeConversation() {
@@ -20,7 +20,13 @@ export async function initializeConversation() {
   if (!id) {
     try { id = localStorage.getItem('hicanvas:last-conversation') } catch { /* 浏览器可禁用本机偏好存储。 */ }
     const { conversations } = await conversationApi('/api/conversations')
-    if (!conversations.some(c => c.id === id)) id = 'legacy'
+    if (!conversations.some(c => c.id === id)) id = conversations[0]?.id
+    if (!id) {
+      conversationId = null
+      document.title = 'hiCanvas'
+      try { localStorage.removeItem('hicanvas:last-conversation') } catch { /* 本机偏好可禁用。 */ }
+      return null
+    }
   }
   const { conversation } = await conversationApi('/api/conversations/open', 'POST', { conversationId: id })
   conversationId = conversation.id
