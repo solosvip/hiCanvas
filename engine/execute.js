@@ -1,8 +1,11 @@
-import { createCanvasStore, isCanvasSnapshot } from '../model/index.js'
+import { loadValidatedCanvasSnapshot } from './load-snapshot.js'
 import { isEqual } from '@tldraw/utils'
 import { CanvasEditError } from './errors.js'
 import { commandHandlers } from './commands/index.js'
 import { validateRelationships } from './relationships.js'
+
+// MCP 在自己的工具参数中限制 500 条；HTTP 请求另有 50 MB 上限，编辑器的大手势允许一次提交。
+export const MAX_TRANSACTION_COMMANDS = 20000
 
 /**
  * 在独立存储内执行一批普通数据命令；失败时丢弃存储，输入始终保持不变。
@@ -11,7 +14,7 @@ import { validateRelationships } from './relationships.js'
  * results 与命令逐项对应；没有回执的命令返回 null。
  */
 export function executeCanvasCommands(snapshot, commands) {
-  if (!Array.isArray(commands) || !commands.length || commands.length > 500) throw new CanvasEditError('每批需要 1 至 500 个操作。')
+  if (!Array.isArray(commands) || !commands.length || commands.length > MAX_TRANSACTION_COMMANDS) throw new CanvasEditError(`每批需要 1 至 ${MAX_TRANSACTION_COMMANDS} 个操作。`)
   return executeCanvasTransaction(snapshot, commands)
 }
 
@@ -19,14 +22,8 @@ export function executeCanvasCommands(snapshot, commands) {
 export function executeCanvasTransaction(snapshot, commands) {
   let store
   try {
-    if (!isCanvasSnapshot(snapshot)) throw new CanvasEditError('无效的画板快照。')
-    const pages = Object.values(snapshot.store).filter(record => record?.typeName === 'page')
-    if (pages.length !== 1) throw new CanvasEditError('画板必须只有一张内部画布。')
-    store = createCanvasStore()
-    for (const [id, record] of Object.entries(snapshot.store)) {
-      if (record?.id !== id || !store.scopedTypes.document.has(record?.typeName)) throw new CanvasEditError('画板记录 ID 或类型无效。')
-    }
-    store.loadStoreSnapshot(structuredClone(snapshot))
+    const loaded = loadValidatedCanvasSnapshot(snapshot)
+    store = loaded.store
     const input = structuredClone(commands)
     const results = []
     const changes = store.extractingChanges(() => store.atomic(() => {
@@ -35,7 +32,7 @@ export function executeCanvasTransaction(snapshot, commands) {
         if (!handler) throw new CanvasEditError('未知的画板操作。')
         results.push(handler(store, command) ?? null)
       }
-      validateRelationships(store, pages[0].id)
+      validateRelationships(store, loaded.pageId)
     }))
     for (const [id, [before, after]] of Object.entries(changes.updated)) {
       if (isEqual(before, after)) delete changes.updated[id]

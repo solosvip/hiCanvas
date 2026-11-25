@@ -121,7 +121,7 @@ test('新建形状沿用全部默认类型，拒绝无效父形状、重复 ID �
 
 test('批次命令数量与类型无效时抛编辑层错误，失败后可安全再次执行', () => {
   const initial = structuredClone(legacy)
-  for (const commands of [null, [], Array(501).fill({ type: 'delete', ids: [] }), [null], [{ type: 'constructor' }]]) {
+  for (const commands of [null, [], Array(20001).fill({ type: 'delete', ids: [] }), [null], [{ type: 'constructor' }]]) {
     assert.throws(() => executeCanvasCommands(initial, commands), CanvasEditError)
   }
   assert.throws(() => executeCanvasCommands(initial, [

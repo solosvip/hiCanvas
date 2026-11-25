@@ -123,7 +123,7 @@ test('撤销和重做整体恢复超过 600 条记录的级联删除，一条冲
   assert.deepEqual(engine.redoCanvasTransaction(undone.snapshot, undone.history, 'AI甲').snapshot, deleted.snapshot)
   const reused = engine.executeCanvasCommands(deleted.snapshot, [shape('large-frame', { shapeType: 'frame', x: 5 })])
   expectConflict(reused.snapshot, deleted.history, 'AI甲')
-  assert.throws(() => engine.executeCanvasCommands(original, commands), error => error instanceof engine.CanvasEditError && /500/.test(error.message), '公开命令上限仍然生效')
+  assert.throws(() => engine.executeCanvasCommands(original, Array(20001).fill({ type: 'delete', ids: [] })), error => error instanceof engine.CanvasEditError && /20000/.test(error.message), '公开命令上限仍然生效')
 })
 
 test('别人在撤销后修改记录或加入子形状，重做也不能覆盖或级联删除', () => {
