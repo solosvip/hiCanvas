@@ -3,12 +3,21 @@ import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
 import { readJsonFile, writeJsonAtomic } from './storage.mjs'
 import { httpError } from './file-lock.mjs'
-import { applyCanvasOperations } from './canvas-operations.mjs'
+import { executeCanvasCommands, CanvasEditError } from '../engine/index.js'
 import { createCanvasMedia } from './canvas-media.mjs'
-import { pageFor } from './media-placement.mjs'
 import { createImageResults } from './image-results.mjs'
 import { requestImages, decodeReference } from './image-provider.mjs'
 import { getCanvasEvents } from './events.mjs'
+
+// Translate edit errors at the host boundary so the existing image HTTP/MCP
+// contract keeps its status codes and messages without coupling engine to HTTP.
+function editCanvas(snapshot, commands) {
+  try { return executeCanvasCommands(snapshot, commands) }
+  catch (error) {
+    if (error instanceof CanvasEditError) throw httpError(error.message, error.code === 'conflict' ? 409 : 400)
+    throw error
+  }
+}
 
 export function createImageJobs(workspace, models, { generate = requestImages, concurrency = 3 } = {}) {
   const directory = join(workspace.root, 'image-jobs')
@@ -48,7 +57,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     await persist(job)
     await alter(job.conversationId, snapshot => {
       const shape = snapshot.store[item.holderId]
-      if (shape?.meta?.hicanvasGeneration?.itemId === item.id) shape.meta.hicanvasGeneration = { jobId: job.id, itemId: item.id, status, ...(error ? { error } : {}) }
+      if (shape?.meta?.hicanvasGeneration?.itemId === item.id) return editCanvas(snapshot, [{ type: 'update', id: item.holderId, changes: { meta: { hicanvasGeneration: { jobId: job.id, itemId: item.id, status, ...(error ? { error } : {}) } } } }]).snapshot
       return snapshot
     }).catch(() => {})
   }
@@ -120,37 +129,15 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
       for (const src of item.references || []) if (typeof src !== 'string') throw httpError('参考图地址无效。'); else if (src.startsWith('data:')) decodeReference(src); else await media.readAsset(id, src)
     }
     const job = { id: randomUUID(), conversationId: id, modelId: selectedModel.id, createdAt: new Date().toISOString(), items: args.requests.map(r => ({ ...r, id: randomUUID(), holderId: r.anchorShapeId || `shape:${randomUUID()}`, status: 'queued' })) }
-    const columns = args.columns ?? Math.min(4, Math.ceil(Math.sqrt(job.items.length)))
-    if (!Number.isInteger(columns) || columns < 1 || columns > 16) throw httpError('每行数量需要 1 至 16。')
+    let holderIds
     const reserved = await writeCanvas(id, () => workspace.mutate(id, args.expectedRevision, snapshot => {
-      const store = snapshot.store
-      const anchor = args.anchorShapeId ? store[args.anchorShapeId] : null
-      if (args.anchorShapeId && !anchor) throw httpError('原目标框已删除。', 409)
-      const pageId = args.pageId || Object.values(store).find(r => r.typeName === 'page')?.id
-      if (store[pageId]?.typeName !== 'page') throw httpError('目标画布不存在。')
-      if (anchor && pageFor(store, anchor) !== pageId) throw httpError('目标框不属于指定画布。')
-      const width = args.displayWidth ?? anchor?.props.w ?? 512
-      const height = args.displayHeight ?? anchor?.props.h ?? 512
-      const gap = args.gap ?? 40
-      if (![width, height].every(n => Number.isFinite(n) && n > 0 && n <= 8192) || !Number.isFinite(gap) || gap < 0) throw httpError('图片框尺寸或间距无效。')
-      const rowHeight = Math.max(height, ...job.items.map(item => { const ratio = item.aspectRatio?.split(':').map(Number); return ratio ? width * ratio[1] / ratio[0] : height }))
-      const startX = args.x ?? (anchor ? anchor.x + (anchor.meta?.cowartAiImageHolder ? 0 : anchor.props.w + gap) : Object.values(store).filter(r => r.typeName === 'shape' && r.parentId === pageId).reduce((x, r) => Math.max(x, r.x + (r.props?.w || 0) + gap), 0))
-      const startY = args.y ?? anchor?.y ?? 0
-      for (const [i, item] of job.items.entries()) {
-        if (i === 0 && anchor?.meta?.cowartAiImageHolder && !item.anchorShapeId) item.holderId = anchor.id
-        const ratio = item.aspectRatio?.split(':').map(Number)
-        const h = ratio ? width * ratio[1] / ratio[0] : height
-        const status = { jobId: job.id, itemId: item.id, status: 'queued' }
-        const existing = store[item.holderId]
-        if (existing) {
-          if (!existing.meta?.cowartAiImageHolder || existing.type !== 'frame') throw httpError('只能替换 AI 图片占位框；改图请在原图旁新建目标。')
-          if (pageFor(store, existing) !== pageId) throw httpError('图片框不属于指定画布。')
-          if (['queued', 'running'].includes(existing.meta.hicanvasGeneration?.status)) throw httpError('这个图片框正在生成，请等待当前任务完成。', 409)
-          existing.meta.hicanvasGeneration = status
-        } else applyCanvasOperations(snapshot, [{ type: 'create_shape', id: item.holderId, shapeType: 'frame', parentId: anchor?.parentId || pageId, x: startX + (i % columns) * (width + gap), y: startY + Math.floor(i / columns) * (rowHeight + gap), props: { w: width, h, name: 'AI 图片', color: 'blue' }, meta: { cowartAiImageHolder: true, hicanvasGeneration: status } }])
-      }
-      return snapshot
+      const edit = editCanvas(snapshot, [{ type: 'reserve_image_batch', jobId: job.id, items: job.items, args }])
+      holderIds = edit.results[0].holderIds
+      return edit.snapshot
     }))
+    // Apply the receipt only after the complete reservation was saved. A failed
+    // transaction cannot leak partially resolved holder IDs into persisted jobs.
+    job.items.forEach((item, index) => { item.holderId = holderIds[index] })
     await persist(job)
     jobs.set(job.id, job)
     events.broadcast(reserved)

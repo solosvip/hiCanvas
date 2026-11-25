@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { prepareRexReceiver, deliverRexRequest } from './rex-delivery.mjs'
 import { createAgentRequests } from './agent-requests.mjs'
 import { fixture } from './test-helpers.mjs'
-import { applyCanvasOperations } from './canvas-operations.mjs'
+import { executeCanvasCommands } from '../engine/index.js'
 
 const receiver = { kind: 'rex', sessionId: 'session:test', blockId: 'block:test' }
 test('REX 回传只发到原 AI 进程，不会把用户提示词输入 shell，也不执行客户端指定的程序', async () => {
@@ -29,7 +29,7 @@ test('并发重复点击只投递一次；迟到的回执不回退终态，新�
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
   const current = await workspace.read(id)
-  await workspace.mutate(id, current.revision, snapshot => applyCanvasOperations(snapshot, [{ type: 'create_shape', id: 'shape:target', shapeType: 'frame', meta: { cowartAiDraftHolder: true } }]))
+  await workspace.mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{ type: 'create_shape', id: 'shape:target', shapeType: 'frame', meta: { cowartAiDraftHolder: true } }]).snapshot)
   let release, deliveries = 0
   const barrier = new Promise(resolve => { release = resolve })
   const requests = createAgentRequests(workspace, { prepare: async r => r, deliver: async () => { deliveries++; await barrier; return { status: 'delivered' } } })

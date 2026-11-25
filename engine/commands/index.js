@@ -9,6 +9,7 @@ import { removeFrames } from './remove-frames.js'
 import { reorderShapes } from './reorder-shapes.js'
 import { toggleLock, unlockAll } from './lock-shapes.js'
 import { nudgeShapes } from './nudge-shapes.js'
+import { reserveImageBatch } from './reserve-image-batch.js'
 
 // 新命令只增加处理函数并在此登记，不修改已有命令；一行一个，并行开发时互不冲突。
 export const commandHandlers = Object.freeze({
@@ -24,4 +25,5 @@ export const commandHandlers = Object.freeze({
   toggle_lock: toggleLock,
   unlock_all: unlockAll,
   nudge_shapes: nudgeShapes,
+  reserve_image_batch: reserveImageBatch,
 })

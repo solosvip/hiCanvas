@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fixture } from './test-helpers.mjs'
 import { createConversations } from './conversations.mjs'
-import { applyCanvasOperations } from './canvas-operations.mjs'
+import { executeCanvasCommands } from '../engine/index.js'
 import { createImageJobs } from './image-jobs.mjs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -50,7 +50,7 @@ test('删除与保存使用同一画板锁，已变化的版本拒绝删除，�
   const barrier = new Promise(resolve => { release = resolve })
   const save = workspace.mutate(id, state.revision, async snapshot => {
     entered(); await barrier
-    return applyCanvasOperations(snapshot, [{ type: 'create_shape', shapeType: 'text', text: '并发修改保留' }])
+    return executeCanvasCommands(snapshot, [{ type: 'create_shape', shapeType: 'text', text: '并发修改保留' }]).snapshot
   })
   await inside
   const deletion = workspace.remove(id, state.revision)
