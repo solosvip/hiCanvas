@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { executeCanvasCommands } from '../engine/index.js'
 import { readJsonFile, writeJsonAtomic } from './storage.mjs'
 import { withFileLock, httpError } from './file-lock.mjs'
 import { getCanvasEvents } from './events.mjs'
@@ -22,10 +21,10 @@ export function createAgentRequests(workspace, { prepare = prepareRexReceiver, d
         const shape = current.snapshot.store[request.context.targetShapeId]
         if (shape?.type !== 'frame') return
         try {
-          const result = await workspace.mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{
+          const result = await workspace.submitCommands(id, current.revision, 'agent-requests', () => [{
             type: 'update', id: shape.id,
             changes: { meta: { hicanvasGeneration: { requestId: request.id, status: next, ...(actual.message ? { error: actual.message } : {}) } } },
-          }]).snapshot)
+          }])
           events.broadcast(result)
           return
         } catch (e) { if (e.storage !== 'revision-conflict') throw e }
@@ -85,9 +84,9 @@ export function createAgentRequests(workspace, { prepare = prepareRexReceiver, d
       state.requests.push(value)
       return value
     })
-    if (request.delivery?.status === 'delivered') return request
+    if (request.delivery?.status === 'delivered') return { ...request, actor: 'agent-requests' }
     await markTarget(id, request, 'pending')
-    return notify(id, request)
+    return { ...await notify(id, request), actor: 'agent-requests' }
   }
   async function list(id, { requestId, claimBy, includeFinished = false } = {}) {
     const requests = await update(id, state => state.requests.filter(r => (!requestId || r.id === requestId) && (includeFinished || !['completed', 'failed'].includes(r.status))).map(r => {
@@ -98,7 +97,7 @@ export function createAgentRequests(workspace, { prepare = prepareRexReceiver, d
       return r
     }).filter(Boolean), !claimBy)
     if (claimBy) for (const request of requests) await markTarget(id, request, 'working')
-    return requests
+    return requests.map(request => ({ ...request, actor: 'agent-requests' }))
   }
   async function complete(id, requestId, input) {
     const request = await update(id, state => {
@@ -110,7 +109,7 @@ export function createAgentRequests(workspace, { prepare = prepareRexReceiver, d
       return request
     })
     await markTarget(id, request, input.status)
-    return request
+    return { ...request, actor: 'agent-requests' }
   }
   return { connect, submit, list, complete }
 }

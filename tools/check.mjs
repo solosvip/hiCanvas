@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse } from '@babel/parser'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const staged = process.argv.includes('--staged')
@@ -100,6 +101,93 @@ function checkTestSandbox(path, content) {
   }
 }
 
+function checkCommandWrites(path, content) {
+  if (!path.startsWith('server/') || path.endsWith('.test.mjs') || !/\.[cm]?js$/.test(path)) return
+  // ADR 0006 判据清单（检查工作区与暂存区同样生效）：
+  // 1. 禁止读取或调用已移除的 .mutate 通用快照写入接口。
+  // 2. 禁止对 .store 及从它取得的记录/属性赋值、自增、delete。
+  // 3. 禁止 Object.assign/defineProperty、Reflect.set/deleteProperty 或数组方法就地修改它。
+  // 跟踪声明、解构、遍历与集合回调中的别名；读取、构造命令和格式迁移的新对象可保留。
+  const nodes = [], aliases = new Set(), scopes = new WeakMap(), parents = new WeakMap()
+  const isFunction = node => /^(?:FunctionDeclaration|FunctionExpression|ArrowFunctionExpression|ObjectMethod|ClassMethod)$/.test(node.type)
+  function walk(node, scope, parent) {
+    if (!node || typeof node.type !== 'string') return
+    if (node.type === 'Program' || isFunction(node) || ['BlockStatement', 'CatchClause', 'ForStatement', 'ForOfStatement', 'ForInStatement'].includes(node.type)) {
+      scope = { parent: scope, bindings: new Map(), function: node.type === 'Program' || isFunction(node) }
+    }
+    nodes.push(node); scopes.set(node, scope); parents.set(node, parent)
+    for (const child of Object.values(node)) if (Array.isArray(child)) child.forEach(value => walk(value, scope, node)); else if (child && typeof child === 'object') walk(child, scope, node)
+  }
+  walk(parse(content, { sourceType: 'module' }).program)
+  function identifiers(pattern) {
+    if (!pattern) return []
+    if (pattern.type === 'Identifier') return [pattern]
+    if (pattern.type === 'ObjectPattern') return pattern.properties.flatMap(property => identifiers(property.value || property.argument))
+    if (pattern.type === 'ArrayPattern') return pattern.elements.flatMap(identifiers)
+    if (pattern.type === 'AssignmentPattern') return identifiers(pattern.left)
+    if (pattern.type === 'RestElement') return identifiers(pattern.argument)
+    return []
+  }
+  function declare(pattern, scope) {
+    for (const identifier of identifiers(pattern)) if (!scope.bindings.has(identifier.name)) scope.bindings.set(identifier.name, {})
+  }
+  for (const node of nodes) {
+    let scope = scopes.get(node)
+    if (node.type === 'VariableDeclarator') {
+      if (parents.get(node).kind === 'var') while (!scope.function) scope = scope.parent
+      declare(node.id, scope)
+    }
+    if (isFunction(node)) node.params.forEach(parameter => declare(parameter, scope))
+    if (node.type === 'CatchClause') declare(node.param, scope)
+  }
+  function binding(identifier) {
+    for (let scope = scopes.get(identifier); scope; scope = scope.parent) if (scope.bindings.has(identifier.name)) return scope.bindings.get(identifier.name)
+  }
+  const member = node => ['MemberExpression', 'OptionalMemberExpression'].includes(node?.type)
+  const name = node => node?.computed ? node.property.value : node?.property?.name
+  function stored(node) {
+    if (!node) return false
+    if (node.type === 'Identifier') return aliases.has(binding(node))
+    if (member(node)) return name(node) === 'store' || stored(node.object)
+    if (node.type === 'CallExpression') return stored(node.callee?.object) ||
+      (['values', 'entries'].includes(name(node.callee)) && node.callee.object?.name === 'Object' && stored(node.arguments[0])) ||
+      (node.callee.name === 'structuredClone' && stored(node.arguments[0]))
+    return false
+  }
+  function bind(pattern) {
+    for (const identifier of identifiers(pattern)) { const symbol = binding(identifier); if (symbol) aliases.add(symbol) }
+  }
+  function propagate(pattern, value) {
+    if (stored(value)) bind(pattern)
+    else if (pattern.type === 'AssignmentPattern') propagate(pattern.left, pattern.right)
+    else if (pattern.type === 'ObjectPattern') for (const property of pattern.properties) if ((property.key?.name || property.key?.value) === 'store') bind(property.value)
+  }
+  let size
+  do {
+    size = aliases.size
+    for (const node of nodes) {
+      if (node.type === 'VariableDeclarator') propagate(node.id, node.init)
+      if (node.type === 'AssignmentExpression') propagate(node.left, node.right)
+      if (isFunction(node)) node.params.forEach(parameter => propagate(parameter))
+      if (node.type === 'ForOfStatement' && stored(node.right)) bind(node.left.declarations?.[0]?.id || node.left)
+      if (node.type === 'CallExpression' && member(node.callee) && stored(node.callee.object)) {
+        for (const callback of node.arguments.filter(arg => ['ArrowFunctionExpression', 'FunctionExpression'].includes(arg.type))) {
+          // reduce 的首参是调用方创建的累加器，其余集合方法的首参是记录。
+          bind(callback.params[name(node.callee) === 'reduce' ? 1 : 0])
+        }
+      }
+    }
+  } while (aliases.size !== size)
+  for (const node of nodes) {
+    const direct = node.type === 'AssignmentExpression' ? member(node.left) && stored(node.left) : node.type === 'UpdateExpression' || (node.type === 'UnaryExpression' && node.operator === 'delete') ? member(node.argument) && stored(node.argument) : false
+    const removed = (member(node) && name(node) === 'mutate') || (node.type === 'ObjectPattern' && node.properties.some(property => (property.key?.name || property.key?.value) === 'mutate'))
+    const call = node.type === 'CallExpression' && member(node.callee) && (
+      (['assign', 'defineProperty', 'defineProperties', 'set', 'deleteProperty'].includes(name(node.callee)) && ['Object', 'Reflect'].includes(node.callee.object?.name) && stored(node.arguments[0])) ||
+      (['push', 'pop', 'shift', 'unshift', 'splice', 'fill', 'copyWithin', 'reverse', 'sort'].includes(name(node.callee)) && stored(node.callee.object) && node.callee.object.type !== 'CallExpression'))
+    if (direct || removed || call) errors.push(`${path}:${node.loc.start.line}：服务端不得直接修改快照记录或使用通用写入；改用 submitCommands；旧界面整份提交仅可使用临时例外 replaceLegacySnapshot。`)
+  }
+}
+
 const rootDocs = new Set(['README.md', 'AGENTS.md', 'CONTEXT.md', 'DESIGN.md', '版本管理.md', 'todolist.md', '架构说明.md'])
 function checkDocument(path) {
   if (!/\.md$/i.test(path)) return
@@ -163,6 +251,7 @@ try {
       checkSource(path, content)
       checkLicenseWatermark(path, content)
       checkTestSandbox(path, content)
+      checkCommandWrites(path, content)
     }
   }
   checkRules(files, contents)

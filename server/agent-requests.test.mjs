@@ -2,12 +2,11 @@ import '../tools/test-sandbox.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createAgentRequests } from './agent-requests.mjs'
-import { executeCanvasCommands } from '../engine/index.js'
 import { fixture } from './test-helpers.mjs'
 
 async function edit(workspace, id, commands) {
   const current = await workspace.read(id)
-  return workspace.mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, commands).snapshot)
+  return workspace.submitCommands(id, current.revision, 'test', snapshot => commands)
 }
 
 async function setup(t) {
@@ -36,10 +35,10 @@ test('请求状态标记从只读输入快照产生新数据，不就地修改�
   const { workspace, id } = await setup(t)
   const requests = createAgentRequests({
     ...workspace,
-    mutate: (id, revision, transform) => workspace.mutate(id, revision, snapshot => {
+    submitCommands: (id, revision, actor, createCommands) => workspace.submitCommands(id, revision, actor, snapshot => {
       const before = structuredClone(snapshot)
       freeze(snapshot)
-      const result = transform(snapshot)
+      const result = createCommands(snapshot)
       assert.deepEqual(snapshot, before, '请求模块不得修改宿主传入的快照')
       return result
     }),
@@ -84,14 +83,14 @@ test('标记保存遭遇真实版本冲突后重读重试，保留冲突期间�
       readVersions.push(current.revision)
       return current
     },
-    async mutate(id, revision, transform) {
+    async submitCommands(id, revision, actor, createCommands) {
       attemptedVersions.push(revision)
       if (interleave) {
         interleave = false
         // 在请求读完、持久化前插入真正的用户事务，让存储层拒绝旧版本。
         userResult = await edit(workspace, id, userEdits)
       }
-      return workspace.mutate(id, revision, transform)
+      return workspace.submitCommands(id, revision, actor, createCommands)
     },
   }, delivery)
   const submitted = await requests.submit(id, input)

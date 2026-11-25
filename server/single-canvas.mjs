@@ -51,7 +51,7 @@ export function mergeLegacyPages(snapshot) {
   const store = snapshot.store
   const pages = Object.values(store).filter(r => r.typeName === 'page').sort(sortByIndex)
   if (pages.length <= 1) return null
-  const pageId = pages[0].id, offsets = {}
+  const pageId = pages[0].id, offsets = {}, replacements = new Map()
   let right = boundsFor(store, pageId).right
   let index = Object.values(store).filter(r => r.typeName === 'shape' && r.parentId === pageId).sort(sortByIndex).at(-1)?.index || 'a0'
   for (const page of pages.slice(1)) {
@@ -59,14 +59,14 @@ export function mergeLegacyPages(snapshot) {
     const dx = right + 240 - bounds.left
     offsets[page.id] = { x: dx, y: 0, name: page.name }
     for (const shape of Object.values(store).filter(r => r.typeName === 'shape' && r.parentId === page.id).sort(sortByIndex)) {
-      shape.parentId = pageId
-      shape.x += dx
-      shape.index = index = getIndexAbove(index)
+      index = getIndexAbove(index)
+      replacements.set(shape.id, { ...shape, parentId: pageId, x: shape.x + dx, index })
     }
     right = bounds.right + dx
-    delete store[page.id]
+    replacements.set(page.id, null)
   }
-  return { pageId, offsets }
+  // 旧格式导入产生新快照，不开放修改宿主快照的通道。
+  return { migration: { pageId, offsets }, snapshot: { ...snapshot, store: Object.fromEntries(Object.entries(store).flatMap(([id, record]) => replacements.has(id) ? replacements.get(id) ? [[id, replacements.get(id)]] : [] : [[id, record]])) } }
 }
 
 export function restoreSingleCanvasView(value, migration) {

@@ -1,7 +1,7 @@
 import './test-sandbox.mjs'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -28,7 +28,8 @@ function fixture(run) {
     git('config', 'core.hooksPath', '.disabled-hooks')
     write('AGENTS.md', '# Fixture rules\n')
     mkdirSync(join(root, 'tools'))
-    copyFileSync(checker, join(root, 'tools/check.mjs'))
+    // 临时仓库复用正式检查器所用的解析器，不另装环境或软链依赖。
+    write('tools/check.mjs', readFileSync(checker, 'utf8').replace("from '@babel/parser'", `from '${import.meta.resolve('@babel/parser')}'`))
     run({ root, git, write, check })
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -207,5 +208,67 @@ test('测试隔离守卫检查暂存区，未暂存的补导入不能掩盖危�
   git('add', '.')
   write('server/unsafe.test.mjs', "import '../tools/test-sandbox.mjs'\nimport './storage.mjs'\n")
   assert.equal(check('--staged').status, 1)
+  assert.equal(check().status, 0)
+}))
+
+for (const [name, source] of [
+  ['直接赋值', 'snapshot.store[id] = record'],
+  ['深层属性', 'snapshot.store[id].props.w = 300'],
+  ['删除记录', 'delete snapshot.store[id]'],
+  ['累加属性', 'snapshot.store[id].x += 20'],
+  ['自增属性', 'snapshot.store[id].x++'],
+  ['Object.assign', 'Object.assign(snapshot.store[id].meta, changes)'],
+  ['别名', 'const records = snapshot.store; const shape = records[id]; shape.x = 10'],
+  ['赋值别名', 'let shape; shape = snapshot.store[id]; shape.x = 99'],
+  ['赋值存储别名', 'let records; records = snapshot.store; delete records[id]'],
+  ['解构赋值别名', 'let records; ({store: records} = snapshot); delete records[id]'],
+  ['解构别名', 'const {store: records} = snapshot; delete records[id]'],
+  ['遍历别名', 'for (const shape of Object.values(snapshot.store)) shape.x = 10'],
+  ['回调别名', 'Object.values(snapshot.store).forEach(shape => { shape.x = 10 })'],
+  ['参数解构', 'function edit({store}, target, value) { store[target] = value }'],
+  ['参数改名', 'function edit({store: records}, target) { delete records[target] }'],
+  ['参数默认值', 'function edit({store: records = {}} = {}, target) { records[target].x = 30 }'],
+  ['已删除的通用写入', 'workspace.mutate(id, revision, snapshot => snapshot)'],
+  ['改名的通用写入', 'const write = workspace.mutate; write(id, revision, transform)'],
+  ['解构的通用写入', 'const { mutate: write } = workspace; write(id, revision, transform)'],
+]) {
+  test(`命令写入守卫拦住${name}`, () => fixture(({ write, check }) => {
+    write('server/violation.mjs', `export function bad(snapshot, workspace, id, record, revision, changes, transform) { ${source} }`)
+    const result = check()
+    assert.equal(result.status, 1, result.output)
+    assert.match(result.output, /server\/violation.mjs.*改用 submitCommands.*旧界面.*replaceLegacySnapshot/)
+  }))
+}
+
+test('命令写入守卫允许读取、命令数据和测试材料，忽略注释字符串中的示例', () => fixture(({ write, check }) => {
+  write('server/valid.mjs', `
+    // delete snapshot.store[id]
+    const example = 'snapshot.store[id] = record'
+    const record = snapshot.store[id]
+    workspace.submitCommands(id, revision, actor, () => [{type: 'update', id, changes: {x: record.x + 1}}])
+    workspace.replaceLegacySnapshot(id, revision, replacement)
+  `)
+  write('server/material.test.mjs', "import '../tools/test-sandbox.mjs'\nsnapshot.store[id].x = 10\n")
+  assert.equal(check().status, 0)
+}))
+
+test('命令写入守卫读取暂存区，未暂存的改正不能掩盖违规', () => fixture(({ git, write, check }) => {
+  write('server/violation.mjs', 'snapshot.store[id].x = 50')
+  git('add', '.')
+  write('server/violation.mjs', 'const record = snapshot.store[id]')
+  assert.equal(check('--staged').status, 1)
+  assert.equal(check().status, 0)
+}))
+
+test('命令写入守卫区分作用域，同名新对象的修改不会被误报', () => fixture(({ write, check }) => {
+  write('server/scopes.mjs', `
+    function read(snapshot, id) { const record = snapshot.store[id]; return record.x }
+    function create() { const record = {x: 1}; record.x = 2; return record }
+    function shadow(snapshot, id) {
+      const record = snapshot.store[id]
+      { const record = {x: 1}; record.x = 2 }
+      return record.x
+    }
+  `)
   assert.equal(check().status, 0)
 }))

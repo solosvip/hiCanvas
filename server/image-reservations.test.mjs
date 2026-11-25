@@ -3,17 +3,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { fixture } from './test-helpers.mjs'
 import { createImageJobs } from './image-jobs.mjs'
-import { executeCanvasCommands } from '../engine/index.js'
 
 test('预留整批有一项不能复用时，已有标记、新框、画板版本和供应商均不变', async t => {
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const setup = await workspace.mutate(id, initial.revision, snapshot => executeCanvasCommands(snapshot, [
+  const setup = await workspace.submitCommands(id, initial.revision, 'test', snapshot => [
     { type: 'create_shape', id: 'shape:valid', shapeType: 'frame', meta: { cowartAiImageHolder: true, keep: '用户数据' } },
     { type: 'create_shape', id: 'shape:ordinary', shapeType: 'frame' },
     { type: 'create_shape', id: 'shape:busy', shapeType: 'frame', meta: { cowartAiImageHolder: true, hicanvasGeneration: { itemId: 'previous', status: 'running' } } }
-  ]).snapshot)
+  ])
   let calls = 0
   const jobs = createImageJobs(workspace, { get: async () => ({ id: 'model' }) }, { generate: async () => { calls++; return [] } })
   t.after(() => jobs.waitForIdle())
@@ -38,15 +37,15 @@ test('预留之后写状态遇到用户移动、改名和元数据编辑，重�
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const mutate = workspace.mutate.bind(workspace)
+  const submitCommands = workspace.submitCommands.bind(workspace)
   let writes = 0, holderId, conflicts = 0, generated = 0
-  workspace.mutate = async (...args) => {
+  workspace.submitCommands = async (...args) => {
     if (++writes === 2) {
       const current = await workspace.read(id)
       holderId = Object.values(current.snapshot.store).find(shape => shape.meta?.cowartAiImageHolder).id
-      await mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{ type: 'update', id: holderId, changes: { x: 123, y: 456, props: { name: '用户刚改的名字' }, meta: { note: { text: '用户备注' }, cowartAiDraftHolder: true } } }]).snapshot)
+      await submitCommands(id, current.revision, 'test', snapshot => [{ type: 'update', id: holderId, changes: { x: 123, y: 456, props: { name: '用户刚改的名字' }, meta: { note: { text: '用户备注' }, cowartAiDraftHolder: true } } }])
     }
-    try { return await mutate(...args) }
+    try { return await submitCommands(...args) }
     catch (error) { if (error.storage === 'revision-conflict') conflicts++; throw error }
   }
   const entered = Promise.withResolvers(), release = Promise.withResolvers()
@@ -73,16 +72,16 @@ test('预留之后目标被新任务接管，迟到状态不能覆盖新 itemId 
   const { workspace } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const mutate = workspace.mutate.bind(workspace)
+  const submitCommands = workspace.submitCommands.bind(workspace)
   let writes = 0, holderId
   const nextStatus = { jobId: 'new-job', itemId: 'new-item', status: 'queued' }
-  workspace.mutate = async (...args) => {
+  workspace.submitCommands = async (...args) => {
     if (++writes === 2) {
       const current = await workspace.read(id)
       holderId = Object.values(current.snapshot.store).find(shape => shape.meta?.cowartAiImageHolder).id
-      await mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{ type: 'update', id: holderId, changes: { meta: { hicanvasGeneration: nextStatus, userNote: '新任务保留' } } }]).snapshot)
+      await submitCommands(id, current.revision, 'test', snapshot => [{ type: 'update', id: holderId, changes: { meta: { hicanvasGeneration: nextStatus, userNote: '新任务保留' } } }])
     }
-    return mutate(...args)
+    return submitCommands(...args)
   }
   const jobs = createImageJobs(workspace, { get: async () => ({ id: 'model' }) }, { generate: async () => { throw Object.assign(new Error('合成失败'), { status: 502 }) } })
   const result = await jobs.submit(id, { expectedRevision: initial.revision, requests: [{ prompt: '迟到状态' }] })
@@ -97,10 +96,10 @@ test('本机批量接口保持忙碌框和已删目标的 409，以及参数错�
   const { workspace, api, base } = await fixture(t)
   const { id } = await workspace.open()
   const initial = await workspace.read(id)
-  const setup = await workspace.mutate(id, initial.revision, snapshot => executeCanvasCommands(snapshot, [
+  const setup = await workspace.submitCommands(id, initial.revision, 'test', snapshot => [
     { type: 'create_shape', id: 'shape:busy', shapeType: 'frame', meta: { cowartAiImageHolder: true, hicanvasGeneration: { itemId: 'previous', status: 'running' } } },
     { type: 'create_shape', id: 'shape:ordinary', shapeType: 'frame' }
-  ]).snapshot)
+  ])
   const model = await api('/api/image-models', 'POST', { name: '隔离模拟配置', protocol: 'openai-images', baseUrl: `${base}/synthetic-provider`, model: 'synthetic', apiKey: 'synthetic-test-only' })
   assert.equal(model.status, 200)
   const pageId = Object.values(setup.snapshot.store).find(record => record.typeName === 'page').id

@@ -1,10 +1,17 @@
 import { createCanvasSnapshot } from '../model/index.js'
+import { executeCanvasCommands } from '../engine/index.js'
+import { isEqual } from '@tldraw/utils'
 import { documentRecordTypes } from './canvas-documents.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { createCanvasStorage, canvasDir as defaultRoot, readJsonFile, writeJsonAtomic } from './storage.mjs'
 import { httpError, withFileLock } from './file-lock.mjs'
 import { mergeLegacyPages, restoreSingleCanvasView, singlePageId } from './single-canvas.mjs'
+
+function readOnly(value) {
+  for (const child of Object.values(value)) if (child && typeof child === 'object') readOnly(child)
+  return Object.freeze(value)
+}
 
 export function createConversations(root = defaultRoot) {
   root = resolve(root)
@@ -77,15 +84,15 @@ export function createConversations(root = defaultRoot) {
       if (!normalized.startsWith(`/c/${id}/assets/`) && !normalized.startsWith(`/c/${id}/page-assets/`)) throw httpError('不能引用另一个画板的本机资源。')
       return `${normalized}${parsed.search}${parsed.hash}`
     }
-    const result = structuredClone(snapshot)
-    for (const record of Object.values(result.store)) {
+    const entries = Object.entries(snapshot.store).map(([key, record]) => {
       if (record.typeName === 'asset' && record.props) {
-        for (const field of ['src', 'favicon']) if (field in record.props) record.props[field] = resource(record.props[field])
+        return [key, { ...record, props: Object.fromEntries(Object.entries(record.props).map(([field, value]) => [field, ['src', 'favicon'].includes(field) ? resource(value) : value])) }]
       }
-      if (record.typeName === 'shape' && record.props && 'url' in record.props) record.props.url = resource(record.props.url)
-      if (record.typeName === 'user') record.imageUrl = resource(record.imageUrl)
-    }
-    return result
+      if (record.typeName === 'shape' && record.props && 'url' in record.props) return [key, { ...record, props: { ...record.props, url: resource(record.props.url) } }]
+      if (record.typeName === 'user') return [key, { ...record, imageUrl: resource(record.imageUrl) }]
+      return [key, record]
+    })
+    return { ...snapshot, store: Object.fromEntries(entries) }
   }
   async function checked(snapshot) {
     const { sanitizeCanvasSnapshotForServer } = storageFor('legacy')
@@ -111,23 +118,22 @@ export function createConversations(root = defaultRoot) {
     try { state = await readJsonFile(stateFile(id)) } catch (error) {
       if (error.code !== 'ENOENT') throw error
       const legacy = id === 'legacy' ? (await storageFor(id).loadCanvasSnapshot()).snapshot : null
-      const initial = legacy ?? createCanvasSnapshot()
-      if (!legacy) for (const record of Object.values(initial.store)) if (record.typeName === 'page') record.name = '第 1 页'
+      let initial = legacy ?? createCanvasSnapshot()
+      if (!legacy) initial = executeCanvasCommands(initial, [{ type: 'update', id: singlePageId(initial), changes: { name: '第 1 页' } }]).snapshot
       state = { revision: randomUUID(), snapshot: await checked(initial) }
       state.snapshot = await qualify(state.snapshot, id)
       await writeJsonAtomic(stateFile(id), state)
     }
     if (typeof state.revision !== 'string' || !state.snapshot) throw new Error('损坏的画板文件，已停止读取。')
     await checked(state.snapshot)
-    const merged = structuredClone(state.snapshot)
-    const migration = mergeLegacyPages(merged)
+    const migration = mergeLegacyPages(state.snapshot)
     if (migration) {
       const archive = join(directory, id, 'before-single-canvas.json')
       try { await readJsonFile(archive) } catch (error) {
         if (error.code !== 'ENOENT') throw error
         await writeJsonAtomic(archive, state)
       }
-      state = { ...state, snapshot: await checked(merged), revision: randomUUID(), singleCanvasMigration: migration }
+      state = { ...state, snapshot: await checked(migration.snapshot), revision: randomUUID(), singleCanvasMigration: migration.migration }
       await writeJsonAtomic(stateFile(id), state)
     }
     return { ...state, conversationId: id, storage: 'conversation' }
@@ -136,18 +142,26 @@ export function createConversations(root = defaultRoot) {
     validId(id)
     return lock(id, async () => { await requireConversation(id); return readState(id) })
   }
-  async function mutate(id, expectedRevision, transform) {
+  async function commit(id, expectedRevision, actor, prepare) {
     validId(id)
     return lock(id, async () => {
       await requireConversation(id)
       const current = await readState(id)
       if (typeof expectedRevision !== 'string' || !expectedRevision) throw httpError('写入前必须读取画板并提供版本。', 428)
       if (expectedRevision !== current.revision) throw httpError('画板已被其他操作更新。请读取最新版本后合并修改。', 409, { storage: 'revision-conflict', revision: current.revision })
-      const snapshot = await qualify(await checked(await transform(structuredClone(current.snapshot))), id)
+      if (typeof actor !== 'string' || !actor.trim()) throw httpError('写入需要有效的操作者。')
+      const edit = await prepare(readOnly(structuredClone(current.snapshot)))
+      const snapshot = await qualify(await checked(edit.snapshot), id)
       if (singlePageId(snapshot) !== singlePageId(current.snapshot)) throw httpError('不能替换画板的内部画布。')
-      const result = { snapshot, revision: randomUUID(), updatedAt: now(), ...(current.singleCanvasMigration && { singleCanvasMigration: current.singleCanvasMigration }) }
+      const result = { snapshot, actor, revision: randomUUID(), updatedAt: now(), ...(current.singleCanvasMigration && { singleCanvasMigration: current.singleCanvasMigration }) }
+      // 本机资源地址归一化后，变化中的新值必须与最终保存值一致。
+      const changes = edit.changes && structuredClone({
+        added: Object.fromEntries(Object.keys(edit.changes.added).map(key => [key, snapshot.store[key]])),
+        updated: Object.fromEntries(Object.entries(edit.changes.updated).filter(([key, [before]]) => !isEqual(before, snapshot.store[key])).map(([key, [before]]) => [key, [before, snapshot.store[key]]])),
+        removed: edit.changes.removed,
+      })
       await writeJsonAtomic(stateFile(id), result)
-      return { ...result, previousRevision: current.revision, conversationId: id, storage: 'conversation', ok: true }
+      return { ...result, ...(changes && { changes, results: edit.results }), previousRevision: current.revision, conversationId: id, storage: 'conversation', ok: true }
     })
   }
   async function sidecar(id, type, value) {
@@ -167,7 +181,14 @@ export function createConversations(root = defaultRoot) {
     return null
   }
   return {
-    root, open, requireConversation, read, mutate, sidecar,
+    root, open, requireConversation, read, sidecar,
+    submitCommands(id, expectedRevision, actor, createCommands) {
+      return commit(id, expectedRevision, actor, async snapshot => executeCanvasCommands(snapshot, await createCommands(snapshot)))
+    },
+    // ADR 0006：仅供 PUT /api/canvas，换上新编辑器后删除的临时例外。
+    replaceLegacySnapshot(id, expectedRevision, snapshot) {
+      return commit(id, expectedRevision, 'legacy-ui', () => ({ snapshot }))
+    },
     withActiveConversation(id, operation) {
       validId(id)
       return lock(`lifecycle-${id}`, async () => { await requireConversation(id); return operation() })
