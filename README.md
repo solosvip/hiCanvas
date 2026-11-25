@@ -176,6 +176,8 @@ npm run check
 
 `npm test` 先检查测试入口，再预加载 `tools/test-sandbox.mjs`，为每个进程建立独有临时目录；主目录、资料、模型设置和桌面配置路径均指向其中，子进程继承隔离环境，退出时自动清理。每个 `*.test.mjs` 的第一条导入也必须是该模块，因此可单独运行 `node --test server/storage.test.mjs`；业务模块的静态导入会先于正文执行，不能在正文中才设置隔离路径。工程检查会拦住缺失或顺序错误的导入。
 
+`npm test`、提交前检查与 CI 共用 `tools/run-tests.mjs`：从 `tools/` 与 `server/` 发现测试文件，逐文件对照 Node 的登记事件（`test:enqueue`）、带身份编号的完成事件与文件最终汇总；漏项、重复结果或缺汇总均以非零退出，并指出文件和差额。循环登记、动态子测试、套件、跳过与 TODO 都计入，不靠人工维护固定总数。只复查指定文件时运行 `node tools/run-tests.mjs server/engine-layout.test.mjs`。Node 24.22.1 的强制退出可能丢失尚未写完的报告，本入口的专用预加载将测试报告管道改为同步写出；保留强制结束悬挂句柄的能力，数量核对仍独立生效。该绕开使用 Node 内部的 `setBlocking` 接口，升级运行时后须重跑 `tools/run-tests.test.mjs` 的长报告和丢事件回归。
+
 本机默认与当前提交比较；检查已提交改动时用 `npm run check -- --base <基点提交>`。CI 使用 PR 的目标提交或推送前的提交。首次克隆后启用提交前检查：
 
 ```sh
