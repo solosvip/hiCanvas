@@ -145,7 +145,7 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
       />
     )
   }
-  return <div className="cowart-slides-media-status">{error || 'Loading'}</div>
+  return <div className="cowart-slides-media-status">{error || '正在加载…'}</div>
 }
 function CowartSlidesScaledMedia({ className = '', onUnhandledHtmlClick, shape, title }) {
   const containerRef = useRef(null)

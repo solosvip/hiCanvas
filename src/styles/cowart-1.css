@@ -178,6 +178,19 @@ body {
 .cowart-annotation-html-toolbar-button {
   min-width: 138px;
 }
+.tlui-media__toolbar [data-testid="tool.image-alt-text"] > .tlui-icon {
+  display: grid;
+  place-items: center;
+  mask: none !important;
+  -webkit-mask: none !important;
+  background: none;
+  font-family: var(--font-label-md);
+  font-size: var(--text-label-md);
+  font-weight: var(--font-weight-label-md);
+}
+.tlui-media__toolbar [data-testid="tool.image-alt-text"] > .tlui-icon::before {
+  content: '文';
+}
 .cowart-html-draft-toolbar-button {
   width: auto;
   min-width: 112px;

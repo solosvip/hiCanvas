@@ -154,7 +154,7 @@ function CowartSlidesToolbar({ slidesShapeId }) {
     <TldrawUiContextualToolbar
       className="tlui-media__toolbar cowart-slides-toolbar"
       getSelectionBounds={getSelectionBounds}
-      label="AI Slides 工具栏"
+      label="AI 幻灯片工具栏"
     >
       <CowartExportMenu
         disabled={!hasContent}

@@ -40,7 +40,7 @@ function CowartHtmlDraftToolbar({ draftShapeId }) {
     <TldrawUiContextualToolbar
       className="tlui-media__toolbar tlui-image__toolbar cowart-html-draft__toolbar"
       getSelectionBounds={getSelectionBounds}
-      label={isFilm ? "AI 影片工具栏" : "AI HTML 工具栏"}
+      label={isFilm ? "AI 影片工具栏" : "AI 网页工具栏"}
     >
       {!isDomEditing && (
         <CowartExportMenu

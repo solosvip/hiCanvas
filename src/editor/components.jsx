@@ -3,11 +3,23 @@ import { CowartStylePanel } from './StylePanel.jsx'
 import { CowartSelectionToolbar } from './CowartSelectionToolbar.jsx'
 import { CowartToolbar } from './Toolbar.jsx'
 import { CowartSlidesPresentationOverlay } from './SlidesPresentation.jsx'
+import { DefaultMainMenu } from 'tldraw'
 import { CowartAiImageGenerationPanel } from './ImageGenerationPanel.jsx'
 import { CowartAiDraftGenerationPanel } from './DraftGenerationPanel.jsx'
 import { CowartAiSlidesGenerationPanel } from './SlidesGenerationPanel.jsx'
+import { SettingsPanel } from '../image-models/ModelSettings.jsx'
+
+function CowartMainMenu() {
+  return <>
+    <DefaultMainMenu />
+    <SettingsPanel />
+  </>
+}
+
 const cowartComponents = {
   Toolbar: CowartToolbar,
+  MainMenu: CowartMainMenu,
+  SharePanel: null,
   ImageToolbar: CowartSelectionToolbar,
   InFrontOfTheCanvas: CowartCanvasOverlay,
   StylePanel: CowartStylePanel

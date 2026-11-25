@@ -196,7 +196,7 @@ function CowartAiSlidesGenerationPanel() {
   return (
     <div className="cowart-ai-generation-overlay" aria-hidden={false}>
       <form
-        aria-label="AI Slides 生成"
+        aria-label="AI 幻灯片生成"
         className="cowart-ai-generation-panel cowart-ai-slides-generation-panel"
         data-status={status}
         onClick={stopEditorOverlayEvent}
@@ -242,7 +242,7 @@ function CowartAiSlidesGenerationPanel() {
           />
         </div>
         <textarea
-          aria-label="自定义 Slides prompt"
+          aria-label="自定义幻灯片提示词"
           className="cowart-ai-generation-prompt"
           disabled={isSending}
           onChange={(event) => {
@@ -254,7 +254,7 @@ function CowartAiSlidesGenerationPanel() {
           }}
           onKeyDown={handlePromptKeyDown}
           onPaste={handlePromptPaste}
-          placeholder="描述你想生成的 Slides，或是将图片和 HTML 放进 Slides..."
+          placeholder="描述你想生成的幻灯片，或将图片和网页放进幻灯片…"
           rows={3}
           value={promptValue}
         />
@@ -277,7 +277,7 @@ function CowartAiSlidesGenerationPanel() {
                 <ChevronDown aria-hidden="true" size={14} strokeWidth={2} />
               </button>
               {isPageCountMenuOpen && (
-                <div aria-label="Slides 页数" className="cowart-ai-slides-page-count-popover" role="listbox">
+                <div aria-label="幻灯片页数" className="cowart-ai-slides-page-count-popover" role="listbox">
                   {[
                     ['3', '3 页'],
                     ['5', '5 页'],
@@ -310,7 +310,7 @@ function CowartAiSlidesGenerationPanel() {
             {pageCountMode === 'custom' && (
               <input
                 ref={customPageCountInputRef}
-                aria-label="自定义 Slides 页数"
+                aria-label="自定义幻灯片页数"
                 className="cowart-ai-slides-custom-page-count"
                 disabled={isSending}
                 inputMode="numeric"
@@ -322,7 +322,7 @@ function CowartAiSlidesGenerationPanel() {
               />
             )}
             <button
-              aria-label="发送 Slides 生成请求"
+              aria-label="发送幻灯片生成请求"
               className="cowart-ai-generation-send"
               disabled={!canSend || isSending}
               type="submit"

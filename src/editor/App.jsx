@@ -15,11 +15,13 @@ import { CowartAnnotationTool } from './annotationTools.jsx'
 import { cowartShapeUtils } from './shapes.jsx'
 import { cowartUiOverrides } from './overrides.jsx'
 import { cowartComponents } from './components.jsx'
+import { startWatermarkLocalization } from './watermarkLocalization.js'
+import { hiCanvasUser, useHiCanvasLocale } from './userPreferences.js'
 import { getCowartSelection, getCowartSelectionSnapshot, getCowartSelectionRecords, cowartSelectionRecordsEqual, getCowartViewState, restoreCowartViewState, writeCowartSelectionState } from './selection.jsx'
 function App() {
   const [snapshot, setSnapshot] = useState()
   const [viewState, setViewState] = useState()
-  const [loadError, setLoadError] = useState(null)
+  const [loadError, setLoadError] = useState(null), locale = useHiCanvasLocale()
   useEffect(() => {
     const controller = new AbortController()
     async function loadCanvas() {
@@ -50,6 +52,7 @@ function App() {
     window.__cowartViewState = () => getCowartViewState(editor)
     let isDisposed = false
     const canvasSaveSession = attachCowartCanvasSaveSession(editor)
+    const stopWatermarkLocalization = startWatermarkLocalization(editor.getContainerDocument())
     const feedback = createPersistenceFeedback(editor.getContainer(), () => { saveCanvas(); syncSelectionState(); syncViewState() }, () => hasUnsavedChanges)
     let lastWrittenSelectionState = ''
     let lastSyncedSelectionState = ''
@@ -460,12 +463,13 @@ function App() {
       syncViewState()
       saveCanvas()
       canvasSaveSession.dispose()
+      stopWatermarkLocalization()
     }
   }, [viewState])
   if (snapshot === undefined || viewState === undefined) {
     return (
       <main className="cowart-status" aria-live="polite">
-        Loading canvas...
+        正在加载画布…
       </main>
     )
   }
@@ -477,11 +481,12 @@ function App() {
     )
   }
   return (
-    <main className="cowart-canvas" aria-label="hiCanvas infinite canvas">
+    <main className="cowart-canvas" aria-label="hiCanvas 无限画布">
       <Tldraw
         snapshot={snapshot ?? undefined}
         assetUrls={cowartAssetUrls}
         assets={cowartTldrawAssetStore}
+        locale={locale} user={hiCanvasUser}
         inferDarkMode
         onMount={handleMount}
         options={cowartTldrawOptions}
@@ -493,5 +498,4 @@ function App() {
     </main>
   )
 }
-export { App }
-export default App
+export { App }; export default App

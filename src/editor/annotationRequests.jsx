@@ -81,7 +81,7 @@ function collectHtmlDraftAnnotationShapeIds(editor, draftShapeId) {
     editor,
     draftShapeId,
     isCowartHtmlDraftEmbedShape,
-    '请选择一个已生成 HTML 的 AI HTML。'
+    '请选择一个已生成网页的 AI 网页。'
   )
 }
 function collectAiSlidesAnnotationShapeIds(editor, slidesShapeId) {
@@ -89,7 +89,7 @@ function collectAiSlidesAnnotationShapeIds(editor, slidesShapeId) {
     editor,
     slidesShapeId,
     isAiSlidesShape,
-    '请选择一个已有内容的 AI Slides。'
+    '请选择一个已有内容的 AI 幻灯片。'
   )
 }
 function buildAnnotationEditPrompt({ imageShapeId, shapeIds, exportWidth, exportHeight, screenshotAsset }) {

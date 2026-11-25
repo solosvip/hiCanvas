@@ -174,12 +174,12 @@ async function exportCowartFilm(editor, draftShapeId, onProgress, signal) {
 }
 async function exportCowartSlides(editor, slidesShapeId, format) {
   if (!hasCowartWidgetBridge()) {
-    throw new Error('导出 Slides 文件夹需要在 Codex Cowart 小组件中使用。')
+    throw new Error('导出幻灯片文件夹需要在 Codex Cowart 小组件中使用。')
   }
   const slidesShape = editor.getShape(slidesShapeId)
-  if (!isAiSlidesShape(slidesShape)) throw new Error('请选择一个 AI Slides。')
+  if (!isAiSlidesShape(slidesShape)) throw new Error('请选择一个 AI 幻灯片。')
   const items = getAiSlidesItems(editor, slidesShapeId)
-  if (!items.length) throw new Error('当前 AI Slides 还没有可导出的页面。')
+  if (!items.length) throw new Error('当前 AI 幻灯片还没有可导出的页面。')
   let directoryName = cowartSlidesExportName(slidesShape)
   const results = []
   if (format === 'image') {
