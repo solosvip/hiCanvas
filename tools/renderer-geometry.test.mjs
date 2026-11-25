@@ -45,7 +45,7 @@ test('隐藏、其他页面及不支持的形状不拦截；坏父子环不会�
   const bottom = shape('shape:bottom')
   assert.equal(pick(snapshot(bottom, shape('shape:hidden', {}, { index: 'a2', opacity: 0 })), 50, 40), bottom.id)
   assert.equal(pick(snapshot(bottom, shape('shape:other', {}, { parentId: 'page:other', index: 'a2' })), 50, 40), bottom.id)
-  assert.equal(pick(snapshot(bottom, shape('shape:unsupported', { geo: 'triangle' }, { index: 'a2' })), 50, 40), bottom.id)
+  assert.equal(pick(snapshot(bottom, shape('shape:unsupported', { geo: 'unsupported-geo' }, { index: 'a2' })), 50, 40), bottom.id)
   assert.equal(pick(snapshot(shape('shape:cycle', {}, { parentId: 'shape:cycle' })), 50, 40), null)
 })
 
@@ -61,7 +61,7 @@ test('各类型独立计算外框，嵌套旋转的世界外框和局部坐标�
   for (const type of ['geo', 'image', 'frame']) assert.deepEqual(getShapeBounds(shape('shape:bounds', {}, { type })), { x: 0, y: 0, w: 100, h: 80 })
   const text = shape('shape:text', { w: 100, size: 'm', scale: 2, richText: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'one' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'two' }] }] } }, { type: 'text' })
   assert.deepEqual(getShapeBounds(text), { x: 0, y: 0, w: 200, h: 100 })
-  assert.equal(getShapeBounds(shape('shape:unknown', { geo: 'triangle' })), null)
+  assert.equal(getShapeBounds(shape('shape:unknown', { geo: 'unsupported-geo' })), null)
   const ellipse = shape('shape:ellipse', { w: 100, h: 20, geo: 'ellipse' }, { rotation: Math.PI / 4 })
   const ellipseBounds = getShapePageBounds(snapshot(ellipse), ellipse.id)
   assert.ok(Math.abs(ellipseBounds.w - Math.sqrt(5200)) < 1e-10)

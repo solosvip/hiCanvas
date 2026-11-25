@@ -21,19 +21,24 @@ async function until(predicate) {
   throw new Error('等待渲染器就绪超时。')
 }
 const check = (condition, message) => { if (!condition) throw new Error(message) }
+function createWindow(key) {
+  const target = new BrowserWindow({ show: false, width: 1280, height: 800, useContentSize: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, partition: `renderer-${process.pid}-${key}` } })
+  target.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    const url = new URL(details.url), allowed = url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
+    if (!allowed) blocked.push(details.url)
+    callback({ cancel: !allowed })
+  })
+  target.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  target.webContents.on('console-message', detail => { if (detail.level === 'error') errors.push(detail.message.slice(0, 500)) })
+  target.webContents.on('render-process-gone', (_event, detail) => errors.push(`renderer gone: ${detail.reason}`))
+  return target
+}
+
 async function run() {
   try {
     app.dock?.hide()
     for (const count of [500, 2000, 5000]) {
-      window = new BrowserWindow({ show: false, width: 1280, height: 800, useContentSize: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, partition: `renderer-${process.pid}-${count}` } })
-      window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-        const url = new URL(details.url), allowed = url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
-        if (!allowed) blocked.push(details.url)
-        callback({ cancel: !allowed })
-      })
-      window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-      window.webContents.on('console-message', detail => { if (detail.level === 'error') errors.push(detail.message.slice(0, 500)) })
-      window.webContents.on('render-process-gone', (_event, detail) => errors.push(`renderer gone: ${detail.reason}`))
+      window = createWindow(count)
       await window.loadURL(`${manifest.url}/?count=${count}`)
       const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
       check(initial.renderedShapes === count && initial.imageCount === count / 5 && initial.decodedImages === count / 5, `元素/图片数量不符：${JSON.stringify(initial)}`)
@@ -47,6 +52,16 @@ async function run() {
       if (count === 500) lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
       samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
+      window.destroy(); window = undefined
+    }
+    for (const gallery of ['shapes', 'styles']) {
+      window = createWindow(gallery)
+      await window.loadURL(`${manifest.url}/?gallery=${gallery}`)
+      const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
+      check(initial.renderedShapes === initial.count && initial.counts.geo === (gallery === 'shapes' ? 20 : 82), '图鉴元素未完整绘制')
+      await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
+      const geometry = gallery === 'shapes' ? await evaluate("import('/tools/renderer-preview/geo-probe.js').then(module => module.runGeoProbe())") : undefined
+      samples.push({ gallery, initial, geometry })
       window.destroy(); window = undefined
     }
     check(errors.length === 0 && blocked.length === 0, `浏览器错误：${errors.join('; ')}；外部请求：${blocked.join('; ')}`)

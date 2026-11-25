@@ -12,8 +12,9 @@ export function screenToCanvas(point, camera) {
   const { x, y, z } = checkedCamera(camera)
   return { x: point.x / z - x, y: point.y / z - y }
 }
-import { getShapeBounds } from './bounds.js'
-export { getShapeBounds } from './bounds.js'
+import { getShapeBounds, getShapeContour } from './bounds.js'
+import { strokeWidth } from './geo-metrics.js'
+export { getShapeBounds, getShapeContour } from './bounds.js'
 
 
 export function orderedChildren(records) {
@@ -45,17 +46,27 @@ export function pointInShape(shape, point, tolerance = 0) {
   if (!bounds) return false
   const { w, h } = bounds
   if (w <= 0 || h <= 0) return false
-  if (shape.type !== 'geo') return inBox(point, w, h)
-  // The independently rendered outline has width 2, even when the caller does
-  // not request an additional pointer margin. Its visible edge must be hittable.
-  tolerance = Math.max(1, tolerance)
-  const filled = shape.props.fill === 'solid'
-  if (shape.props.geo === 'ellipse') {
-    const radius = (rx, ry) => ((point.x - w / 2) / rx) ** 2 + ((point.y - h / 2) / ry) ** 2
-    if (filled) return radius(w / 2, h / 2) <= 1
-    return radius(w / 2 + tolerance, h / 2 + tolerance) <= 1 && (w <= tolerance * 2 || h <= tolerance * 2 || radius(w / 2 - tolerance, h / 2 - tolerance) >= 1)
+  const contour = getShapeContour(shape)
+  if (!contour) return false
+  const margin = shape.type === 'geo' ? Math.max(strokeWidth(shape.props) / 2, tolerance) : 0
+  const edgeHit = (points, closed) => points.some((end, i) => (i || closed) && segmentDistance(point, points[(i + points.length - 1) % points.length], end) <= margin)
+  return ((shape.type !== 'geo' || shape.props.fill !== 'none') && pointInPolygon(point, contour.outline))
+    || edgeHit(contour.outline, true) || contour.decorations.some(line => edgeHit(line, false))
+}
+
+function segmentDistance(point, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy
+  const t = length ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length)) : 0
+  return Math.hypot(point.x - a.x - t * dx, point.y - a.y - t * dy)
+}
+
+function pointInPolygon(point, points) {
+  let inside = false
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j]
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside
   }
-  return filled ? inBox(point, w, h) : inBox(point, w, h, tolerance) && !inBox(point, w, h, -tolerance)
+  return inside
 }
 
 // point is relative to the mounted viewport, in CSS pixels. No DOM, Store,
@@ -104,14 +115,16 @@ export function pageToShapePoint(snapshot, shapeId, point) {
 export function getShapePageBounds(snapshot, shapeId) {
   const shape = snapshot.store[shapeId], bounds = shape && getShapeBounds(shape)
   if (!bounds) return null
-  if (shape.type === 'geo' && shape.props.geo === 'ellipse') {
+  const contour = getShapeContour(shape)
+  if (!contour) return null
+  if (contour.ellipse) {
     const center = shapeToPagePoint(snapshot, shapeId, { x: bounds.w / 2, y: bounds.h / 2 })
     const angle = ancestors(snapshot, shapeId).reduce((sum, record) => sum + (record.rotation || 0), 0)
     const c = Math.cos(angle), s = Math.sin(angle)
     const rx = Math.hypot(bounds.w / 2 * c, bounds.h / 2 * s), ry = Math.hypot(bounds.w / 2 * s, bounds.h / 2 * c)
     return { x: center.x - rx, y: center.y - ry, w: rx * 2, h: ry * 2 }
   }
-  const corners = [{ x: 0, y: 0 }, { x: bounds.w, y: 0 }, { x: 0, y: bounds.h }, { x: bounds.w, y: bounds.h }].map(p => shapeToPagePoint(snapshot, shapeId, p))
+  const corners = contour.outline.map(p => shapeToPagePoint(snapshot, shapeId, p))
   const x = Math.min(...corners.map(p => p.x)), y = Math.min(...corners.map(p => p.y))
   return { x, y, w: Math.max(...corners.map(p => p.x)) - x, h: Math.max(...corners.map(p => p.y)) - y }
 }
