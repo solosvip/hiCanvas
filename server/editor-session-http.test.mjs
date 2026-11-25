@@ -2,6 +2,7 @@ import '../tools/test-sandbox.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
+import { access, rm } from 'node:fs/promises'
 import { createEditorSession } from '../engine/index.js'
 import { fixture } from './test-helpers.mjs'
 import { httpSessionTransport } from './fixtures/editor-session-http-fixture.mjs'
@@ -13,12 +14,12 @@ async function waitFor(predicate) {
 }
 
 async function open(t) {
-  const { api, base } = await fixture(t)
+  const { api, base, root, workspace, beforeClose } = await fixture(t)
   const { body } = await api('/api/conversations/open', 'POST', { title: '合成运行时测试' })
   const id = body.conversation.id
   const transport = httpSessionTransport(base, id)
   const session = await createEditorSession({ transport, actor: 'ui:synthetic-http' })
-  t.after(() => session.dispose())
+  beforeClose(() => session.dispose())
   await transport.ready
   async function remote(commands) {
     const current = await transport.read()
@@ -26,7 +27,7 @@ async function open(t) {
     assert.equal(result.status, 200)
     return result.body
   }
-  return { api, base, id, transport, session, remote }
+  return { api, base, id, root, workspace, beforeClose, transport, session, remote }
 }
 
 test('真实隔离本机服务：预览不写服务，提交净变化并接收 SSE，无关改动保留', async t => {
@@ -68,10 +69,10 @@ test('真实隔离本机服务：广播的同记录冲突立即取消整个手�
 
 
 test('两个运行时连接同一本机合成画板，交错手势提交后双方快照及版本一致', async t => {
-  const { base, id, transport: firstTransport, session: first } = await open(t)
+  const { base, id, beforeClose, transport: firstTransport, session: first } = await open(t)
   const secondTransport = httpSessionTransport(base, id)
   const second = await createEditorSession({ transport: secondTransport, actor: 'ui:second-http' })
-  t.after(() => second.dispose())
+  beforeClose(() => second.dispose())
   await secondTransport.ready
   assert.equal(first.state.get().revision, second.state.get().revision)
   first.beginGesture()
@@ -96,4 +97,36 @@ test('两个运行时连接同一本机合成画板，交错手势提交后双�
   assert.deepEqual(snapshotOf(second), actual.snapshot)
   assert.equal(first.store.get('shape:first').x, 12)
   assert.equal(first.store.get('shape:second').y, 34)
+})
+
+test('测试夹具等待 SSE 触发的在途读取完成才删目录，退出后不会重建锁目录', async t => {
+  const hooks = []
+  const { api, id, root, workspace, session } = await open({ after: hook => hooks.push(hook) })
+  const entered = Promise.withResolvers(), release = Promise.withResolvers(), finished = Promise.withResolvers()
+  let timer, closing, readStarted = false
+  t.after(async () => {
+    session.dispose()
+    release.resolve()
+    clearTimeout(timer)
+    if (readStarted) await finished.promise
+    await (closing || hooks[0]()).catch(() => {})
+    await rm(root, { recursive: true, force: true })
+  })
+  const originalRead = workspace.read
+  workspace.read = async (...args) => {
+    readStarted = true
+    entered.resolve()
+    await release.promise
+    try { return await originalRead(...args) } finally { finished.resolve() }
+  }
+  await api(`/api/canvas/operations?conversation=${id}`, 'POST', { expectedRevision: session.state.get().revision, operations: [shape('trigger-sse')] })
+  await entered.promise
+  // 旧夹具先返回清理结果，再让迟到的读继续，会稳定重建 lock 的父目录。
+  // 修复后清理必须等读完成；定时器仅用于释放人为暂停，不作为正确性断言。
+  timer = setTimeout(() => release.resolve(), 100)
+  closing = hooks[0]()
+  void closing.finally(() => release.resolve()).catch(() => {})
+  await finished.promise
+  await closing
+  await assert.rejects(access(root), { code: 'ENOENT' })
 })
