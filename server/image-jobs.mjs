@@ -15,6 +15,8 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
   const media = createCanvasMedia(workspace)
   const events = getCanvasEvents(workspace)
   const jobs = new Map(), queue = []
+  const canvasWrites = new Map()
+  const running = new Set()
   let active = 0
   let writing = Promise.resolve()
   const persist = job => {
@@ -22,13 +24,23 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     writing = pending.catch(() => {})
     return pending
   }
+  function writeCanvas(id, operation) {
+    // 只排队画板读改写；生图请求继续并发，避免同批任务耗尽彼此的版本重试。
+    const pending = (canvasWrites.get(id) ?? Promise.resolve()).then(operation)
+    const settled = pending.catch(() => {})
+    canvasWrites.set(id, settled)
+    settled.then(() => { if (canvasWrites.get(id) === settled) canvasWrites.delete(id) })
+    return pending
+  }
   async function alter(id, transform) {
-    for (let i = 0; i < 8; i++) {
-      const current = await workspace.read(id)
-      try { const result = await workspace.mutate(id, current.revision, transform); events.broadcast(result); return result }
-      catch (e) { if (e.storage !== 'revision-conflict') throw e }
-    }
-    throw httpError('画板持续被修改，生成结果已保留。', 409)
+    return writeCanvas(id, async () => {
+      for (let i = 0; i < 8; i++) {
+        const current = await workspace.read(id)
+        try { const result = await workspace.mutate(id, current.revision, transform); events.broadcast(result); return result }
+        catch (e) { if (e.storage !== 'revision-conflict') throw e }
+      }
+      throw httpError('画板持续被修改，生成结果已保留。', 409)
+    })
   }
   async function mark(job, item, status, error) {
     item.status = status
@@ -56,20 +68,20 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
       const results = createImageResults(assetsDir, `/c/${job.conversationId}/assets/`)
       item.images = await results.save(output)
       await persist(job)
-      let inserted = true
-      if (inserted) {
+      const inserted = await writeCanvas(job.conversationId, async () => {
         for (const [index, image] of item.images.entries()) {
           for (let attempt = 0; attempt < 8; attempt++) {
             const current = await workspace.read(job.conversationId)
             const target = current.snapshot.store[index === 0 ? item.holderId : item.shapeId]
-            if (!target || (index === 0 && target.meta?.hicanvasGeneration?.itemId !== item.id)) { inserted = false; break }
+            if (!target || (index === 0 && target.meta?.hicanvasGeneration?.itemId !== item.id)) return false
             try {
               const result = await media.insertImage(job.conversationId, { expectedRevision: current.revision, assetUrl: image.src, anchorShapeId: index === 0 ? item.holderId : item.shapeId, matchAnchor: index === 0, replaceAiImageHolder: true })
               item.shapeId = result.shapeId; events.broadcast(result); break
             } catch (e) { if (e.storage !== 'revision-conflict' || attempt === 7) throw e }
           }
         }
-      }
+        return true
+      })
       item.inserted = inserted
       await mark(job, item, inserted ? 'succeeded' : 'saved', inserted ? undefined : '原目标框已删除或替换；图片已保存在本画板的图片结果中。')
     } catch (error) {
@@ -80,7 +92,8 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     while (active < concurrency && queue.length) {
       const { job, item } = queue.shift()
       active++
-      execute(job, item).finally(() => { active--; pump() }).catch(() => {})
+      const pending = execute(job, item).finally(() => { running.delete(pending); active--; pump() }).catch(() => {})
+      running.add(pending)
     }
   }
   const ready = (async () => {
@@ -109,7 +122,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     const job = { id: randomUUID(), conversationId: id, modelId: selectedModel.id, createdAt: new Date().toISOString(), items: args.requests.map(r => ({ ...r, id: randomUUID(), holderId: r.anchorShapeId || `shape:${randomUUID()}`, status: 'queued' })) }
     const columns = args.columns ?? Math.min(4, Math.ceil(Math.sqrt(job.items.length)))
     if (!Number.isInteger(columns) || columns < 1 || columns > 16) throw httpError('每行数量需要 1 至 16。')
-    const reserved = await workspace.mutate(id, args.expectedRevision, snapshot => {
+    const reserved = await writeCanvas(id, () => workspace.mutate(id, args.expectedRevision, snapshot => {
       const store = snapshot.store
       const anchor = args.anchorShapeId ? store[args.anchorShapeId] : null
       if (args.anchorShapeId && !anchor) throw httpError('原目标框已删除。', 409)
@@ -137,7 +150,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
         } else applyCanvasOperations(snapshot, [{ type: 'create_shape', id: item.holderId, shapeType: 'frame', parentId: anchor?.parentId || pageId, x: startX + (i % columns) * (width + gap), y: startY + Math.floor(i / columns) * (rowHeight + gap), props: { w: width, h, name: 'AI 图片', color: 'blue' }, meta: { cowartAiImageHolder: true, hicanvasGeneration: status } }])
       }
       return snapshot
-    })
+    }))
     await persist(job)
     jobs.set(job.id, job)
     events.broadcast(reserved)
@@ -153,5 +166,16 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     if (!job || job.conversationId !== id) throw httpError('找不到这个画板的生成任务。', 404)
     return { ...job, items: job.items.map(({ references: _refs, ...item }) => item), finished: job.items.every(item => !['queued', 'running'].includes(item.status)) }
   }
-  return { submit, get }
+  async function waitForIdle() {
+    await ready
+    // 完成状态可能先于落盘可见；执行中的任务还会继续追加持久化和画板写入。
+    // concurrency 为 0 时只等已经开始的工作，不启动刻意暂停的队列。
+    while (true) {
+      pump()
+      const persisted = writing
+      await Promise.all([persisted, ...canvasWrites.values(), ...running])
+      if (!running.size && !canvasWrites.size && writing === persisted) return
+    }
+  }
+  return { submit, get, waitForIdle }
 }

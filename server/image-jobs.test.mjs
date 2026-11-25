@@ -11,7 +11,7 @@ const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQ
 async function finished(jobs, id, jobId) {
   for (let i = 0; i < 300; i++) {
     const job = await jobs.get(id, jobId)
-    if (job.finished) { await delay(30); return job }
+    if (job.finished) { await jobs.waitForIdle(); return jobs.get(id, jobId) }
     await delay(10)
   }
   throw new Error('后台任务没有完成')
@@ -48,7 +48,7 @@ test('16 张一次建好 4×4 占位，后台限并发执行；切默认模型�
   assert.equal(new Set(calls.map(c => c.prompt)).size, 16)
   assert.deepEqual([...new Set(calls.map(c => c.model))], ['model-a'])
   assert.ok(maximum <= 3)
-  assert.ok(job.items.every(item => item.status === 'succeeded'))
+  assert.ok(job.items.every(item => item.status === 'succeeded'), JSON.stringify(job.items.map(({ id, status, error }) => ({ id, status, error }))))
   const final = await workspace.read(id)
   assert.ok(final.snapshot.store['shape:user'])
   assert.equal(final.snapshot.store['shape:user'].parentId, pageId)
@@ -69,6 +69,8 @@ test('服务重启只恢复尚未发送的队列，中断的收费请求不会�
   const models = { get: async () => ({ id: 'model' }) }
   const paused = createImageJobs(workspace, models, { concurrency: 0 })
   const job = await paused.submit(id, { pageId, expectedRevision: current.revision, requests: [{ prompt: '已发出但未收回' }, { prompt: '尚未发出' }] })
+  await paused.waitForIdle()
+  assert.deepEqual((await paused.get(id, job.jobId)).items.map(item => item.status), ['queued', 'queued'], '等待落定不应启动刻意暂停的队列')
   const path = join(root, 'image-jobs', `${job.jobId}.json`)
   const persisted = await readJsonFile(path)
   persisted.items[0].status = 'running'
