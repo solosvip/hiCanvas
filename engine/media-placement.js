@@ -1,5 +1,5 @@
-import { getIndicesBetween, sortByIndex } from '@tldraw/utils'
 import { CanvasEditError } from './errors.js'
+import { reparentChildren } from './reparent-children.js'
 import { getMediaTarget } from './media-target.js'
 import { createShape } from './commands/create-shape.js'
 import { deleteRecords } from './commands/delete.js'
@@ -46,14 +46,7 @@ export function placeMedia(store, args, { type, props, meta = {} }) {
   const id = update ? anchor.id : `shape:${globalThis.crypto.randomUUID()}`
   if (replace) {
     // 占位框内的用户标注继续保留在原画布位置，并保持原先的前后层次。
-    const children = Object.values(records).filter(record => record.typeName === 'shape' && record.parentId === anchor.id).sort(sortByIndex)
-    const above = Object.values(records).filter(record => record.typeName === 'shape' && record.parentId === anchor.parentId && record.index > anchor.index).map(record => record.index).sort()[0]
-    const indices = getIndicesBetween(anchor.index, above, children.length)
-    for (const [i, child] of children.entries()) {
-      const x = anchor.x + Math.cos(anchor.rotation) * child.x - Math.sin(anchor.rotation) * child.y
-      const y = anchor.y + Math.sin(anchor.rotation) * child.x + Math.cos(anchor.rotation) * child.y
-      updateRecord(store, { id: child.id, changes: { index: indices[i], parentId: anchor.parentId, x, y, rotation: child.rotation + anchor.rotation } })
-    }
+    for (const change of reparentChildren(Object.values(records), anchor)) updateRecord(store, change)
     deleteRecords(store, { ids: [anchor.id] })
   }
   if (update) store.remove([id])
