@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { executeCanvasCommands } from '../engine/index.js'
 import { readJsonFile, writeJsonAtomic } from './storage.mjs'
 import { withFileLock, httpError } from './file-lock.mjs'
 import { getCanvasEvents } from './events.mjs'
@@ -21,10 +22,10 @@ export function createAgentRequests(workspace, { prepare = prepareRexReceiver, d
         const shape = current.snapshot.store[request.context.targetShapeId]
         if (shape?.type !== 'frame') return
         try {
-          const result = await workspace.mutate(id, current.revision, snapshot => {
-            snapshot.store[shape.id].meta.hicanvasGeneration = { requestId: request.id, status: next, ...(actual.message ? { error: actual.message } : {}) }
-            return snapshot
-          })
+          const result = await workspace.mutate(id, current.revision, snapshot => executeCanvasCommands(snapshot, [{
+            type: 'update', id: shape.id,
+            changes: { meta: { hicanvasGeneration: { requestId: request.id, status: next, ...(actual.message ? { error: actual.message } : {}) } } },
+          }]).snapshot)
           events.broadcast(result)
           return
         } catch (e) { if (e.storage !== 'revision-conflict') throw e }
