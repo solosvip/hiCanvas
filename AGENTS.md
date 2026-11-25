@@ -112,14 +112,14 @@
 ## H. 本项目专属约定（本项目补充）
 > A–G 为通用规范，本节只记本项目特有内容，初始化时留空、落地时填；踩坑教训按 D 段准则以禁令形式追加至此。
 - 技术栈与运行环境：项目名 hiCanvas，基于 Cowart 的 React 19 + tldraw 5 + Vite 7，使用 Node.js 24；`npm run dev` 开发，`npm run build` 构建，`npm start` 本机预览，`npm run check` 完整检查。第一阶段包括独立画板、自定义生图模型和通用 MCP；当前已完成独立画板及用户自行配置的生图/改图，内置文本模型及对话助手为第二阶段。
-- 目录结构与分层约定：`src/editor/` 是按职责拆分的 Cowart 界面和画板逻辑，外部经 `App.jsx` 进入；`src/` 其余文件是沿用的客户端、图片缓存、快照与媒体工具；`src/styles/` 是样式；`src/image-models/` 是模型设置与图片结果接入；`server/` 是本机 HTTP 存储与生图接口，依赖纯快照工具，不导入界面组件；`tools/` 放工程检查，`.githooks/` 放提交前检查，`.github/workflows/` 放 CI。`src/conversations/` 是对话和图片结果界面；`mcp/` 是通用 MCP 工具与本机服务启动，`bin/` 是启动入口，`desktop/` 是 Electron 外壳与本机打包资源，`server/local-service.mjs` 是生产静态宿主，复用同一套中间件。MCP 通过 HTTP 复用浏览器同一服务，禁止绕过版本检查直接写画板。
+- 目录结构与分层约定：`src/editor/` 是按职责拆分的 Cowart 界面和画板逻辑，外部经 `App.jsx` 进入；`src/` 其余文件是沿用的客户端、图片缓存、快照与媒体工具；`src/styles/` 是样式；`src/image-models/` 是模型设置与图片结果接入；`server/` 是本机 HTTP 存储与生图接口，依赖纯快照工具，不导入界面组件；`tools/` 放工程检查，`.githooks/` 放提交前检查，`.github/workflows/` 放 CI。`src/conversations/` 是画板切换和图片结果界面；`mcp/` 是通用 MCP 工具与本机服务启动，`bin/` 是启动入口，`desktop/` 是 Electron 外壳与本机打包资源，`server/local-service.mjs` 是生产静态宿主，复用同一套中间件。MCP 通过 HTTP 复用浏览器同一服务，禁止绕过版本检查直接写画板。
 - 命名约定：产品名称固定为 hiCanvas；新代码及工具文件用英文，用户向文档用中文，工具约定文件名照约定；上游 Cowart 的文件名、记录类型和工具名暂时保留，避免破坏保存格式。
 - 重启与验证方式：界面改动在开发模式热更新；`server/` 改动要重启服务；预览模式需重新构建。AI 自测只用 `.scratch/` 下的合成画板和模拟 API，不读写用户画板，不调用真实生图接口。默认只监听本机 `127.0.0.1:43218`，不开放局域网。
 - 界面与视觉规范：2026-11-20 用户同意导入 Cowart 并保留现有界面；根 `DESIGN.md` 记录此次既有设计提炼，生成 `src/styles/tokens.css`。本轮迁移的既有 JSX、`cowart-*.css` 和第三方 tldraw 样式保留上游原值，作为继承基线；新增 hiCanvas 界面按 B 段使用令牌；`tools/check-styles.mjs` 守住 CSS 与 JSX 内联静态值，`tools/upstream-styles.json` 只记录这次上游迁移的既有值，数量不能增加，不作为新样式的放行清单。修改既有视觉前先提炼涉及的令牌，不在迁移中顺带重画。
 - 部署与上线细节：桌面版使用 Electron 薄外壳（`desktop/`），由 `npm run desktop:pack` 构建 Apple 芯片 Mac 的 Developer ID 签名应用与 ZIP，打包产物在 `build/`；应用自带 Chromium 与 Node，MCP 启动器在应用的 `Contents/Resources/hicanvas-mcp`。窗口、MCP 和后台服务共用连接配置（`~/Library/Application Support/hiCanvas/connection.json`，可用 `HICANVAS_DESKTOP_CONFIG_DIR` 隔离），关闭窗口或退出应用不取消后台任务。默认数据保存在用户 `Documents/hiCanvas/canvas/`，可用 `HICANVAS_PROJECT_DIR` 或 `HICANVAS_CANVAS_DIR` 改路径；数据与源码分离。tldraw 单独授权，正式生产使用前必须解决其许可要求，保留官方许可提示。
 - 当前阶段工作方式（适用阶段：基础画板、自定义生图模型、对话隔离、通用 MCP 与桌面打包；2026-11-20 用户同意基础导入，2026-11-21 用户要求继续并明确模型由用户在界面添加）：从 main 开独立功能分支，一件事一个提交及一个 PR；用户正在试用的画板目录保持运行，新阶段使用独立 worktree 和隔离数据自测。本机先完成数据测试、构建和基础浏览器验证，再推功能分支创建 PR；main 保持不动，合并前向用户报告验证与限制并另行确认。CI 使用公开仓库的 GitHub Actions 云端 Ubuntu 检查机；仓库可见性已由用户于 2026-11-20 明确同意改为公开，远程完整检查已通过。不修改账户账单或保护规则，不把未运行的 CI 当作通过。用户体验由用户集中验收。出问题优先撤销该次提交或回到已验证标签。版本条目随功能提交准备，进入 main 后才打对应标签。
 - 文档地图补充：画板只分发一个 `hicanvas` 技能，入口放 `skills/hicanvas/SKILL.md`，按任务加载的操作与参考放 `skills/hicanvas/references/*.md`；本机安装到 `/Users/solos/Documents/skills/hicanvas/` 供宿主共用；接口或工作流变化时同步更新，能力移除时删除对应技能。临时材料只放不进 Git 的 `.scratch/`；新增文档类别时同步更新 `tools/check.mjs`。第三方许可原文放 `LICENSE` 与 `licenses/*.txt`。
-- 本项目禁令与前置条件：保留 Cowart 上游许可证与来源，依赖授权单独核对；API 密钥、用户画板、生成图片和数据库不进 Git；配置及生成工具只向 Agent 暴露必要参数，不把 API 密钥作为 MCP 工具入参；所有画板写入必须显式指定对话并检查 expectedRevision；冲突后先读取、合并，禁止不带版本重试或强制覆盖。
+- 本项目禁令与前置条件：保留 Cowart 上游许可证与来源，依赖授权单独核对；API 密钥、用户画板、生成图片和数据库不进 Git；配置及生成工具只向 Agent 暴露必要参数，不把 API 密钥作为 MCP 工具入参；每个画板只提供一张无限画布，不提供页面管理；所有画板写入必须显式指定画板（兼容字段 `conversationId`）并检查 expectedRevision；冲突后先读取、合并，禁止不带版本重试或强制覆盖。
 <!-- sxx-project-init:end -->
 
 ## Agent skills

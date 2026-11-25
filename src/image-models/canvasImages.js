@@ -13,7 +13,7 @@ function dimensions(src) {
 
 export async function insertGeneratedImages(editor, images, { anchorId, pageId = editor.getCurrentPageId(), beside = false } = {}) {
   const loaded = await Promise.all(images.map(async image => ({ ...image, ...await dimensions(image.src) })))
-  if (!editor.getPage(pageId) || (anchorId && (!editor.getShape(anchorId) || editor.getAncestorPageId(anchorId) !== pageId))) throw new Error('原页面或图片框已被删除。结果已保存，请在“菜单栏 → 图片结果”中找回。')
+  if (!editor.getPage(pageId) || (anchorId && (!editor.getShape(anchorId) || editor.getAncestorPageId(anchorId) !== pageId))) throw new Error('原图片框已被删除。结果已保存，请在“菜单栏 → 图片结果”中找回。')
   const anchor = anchorId ? editor.getShapePageBounds(anchorId) : null
   const viewport = editor.getViewportPageBounds()
   let x = anchor ? anchor.x + (beside ? anchor.w + 40 : 0) : viewport.center.x

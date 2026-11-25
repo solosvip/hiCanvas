@@ -31,7 +31,7 @@ export function applyCanvasOperations(snapshot, operations) {
       store[op.record.id] = op.record
     } else if (op.type === 'create_shape') {
       const parentId = op.parentId || Object.values(store).find(r => r.typeName === 'page')?.id
-      if (!store[parentId] || !['page', 'shape'].includes(store[parentId].typeName)) throw httpError('找不到形状所属页面或父形状。')
+      if (!store[parentId] || !['page', 'shape'].includes(store[parentId].typeName)) throw httpError('找不到形状所属画布或父形状。')
       const id = op.id || `shape:${randomUUID()}`
       if (!id.startsWith('shape:') || store[id]) throw httpError('形状 ID 无效或已存在。')
       const siblings = Object.values(store).filter(r => r.typeName === 'shape' && r.parentId === parentId).map(r => r.index).sort()

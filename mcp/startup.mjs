@@ -30,6 +30,7 @@ export async function ensureService(baseUrl, options = {}) {
     let health
     try { health = await response.json() } catch { throw new Error('端口已被旧版画板或其他程序占用；请先停止旧服务，再重新连接 MCP。') }
     if (health.name !== 'hiCanvas' || health.protocol !== 2 || health.workspace !== identity) throw new Error('端口对应其他服务或资料目录，未连接也未停止该服务。请核对 HICANVAS_URL 和资料目录。')
+    if (health.canvasMode !== 'single') throw new Error('旧版画板服务仍在运行。请先保存作品并停止旧服务，再重新打开 hiCanvas 或连接 MCP。')
     if (health.settingsWorkspace && health.settingsWorkspace !== workspaceIdentity(connection.settingsDir)) throw new Error('服务使用其他模型设置目录，请核对 HICANVAS_SETTINGS_DIR。')
     return true
   }

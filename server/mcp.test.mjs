@@ -84,7 +84,7 @@ test('MCP 复用用户配置生图、插入图片、看图并参考改图；模�
   const canvas = (await call('get_canvas', { conversationId: id })).structuredContent
   const pageId = Object.values(canvas.snapshot.store).find(r => r.typeName === 'page').id
   assert.ok(!JSON.stringify(await call('list_image_models')).includes('synthetic-secret'))
-  const result = (await call('generate_image', { conversationId: id, expectedRevision: canvas.revision, modelId: model.activeModelId, prompt: '蓝色海报', pageId })).structuredContent
+  const result = (await call('generate_image', { conversationId: id, expectedRevision: canvas.revision, modelId: model.activeModelId, prompt: '蓝色海报' })).structuredContent
   assert.ok(result.jobId)
   const completed = await waitJob(call, id, result.jobId)
   assert.equal(completed.items[0].status, 'succeeded')
@@ -94,7 +94,7 @@ test('MCP 复用用户配置生图、插入图片、看图并参考改图；模�
   assert.equal(image.content[0].type, 'image')
   assert.equal(image.content[0].data, png)
   assert.equal((await call('read_image', { conversationId: 'legacy', src })).isError, true)
-  const edited = (await call('generate_image', { conversationId: id, expectedRevision: (await call('get_canvas', { conversationId: id })).structuredContent.revision, modelId: model.activeModelId, prompt: '改成绿色', pageId, referenceUrls: [src] })).structuredContent
+  const edited = (await call('generate_image', { conversationId: id, expectedRevision: (await call('get_canvas', { conversationId: id })).structuredContent.revision, modelId: model.activeModelId, prompt: '改成绿色', referenceUrls: [src] })).structuredContent
   assert.equal((await waitJob(call, id, edited.jobId)).items[0].status, 'succeeded')
   assert.equal(calls, 2)
   assert.equal((await call('generate_image', { conversationId: id, expectedRevision: result.revision, prompt: '旧版本', pageId })).isError, true)

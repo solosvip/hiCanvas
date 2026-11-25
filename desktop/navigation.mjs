@@ -14,5 +14,6 @@ export async function validateCanvasLink({ url, baseUrl, workspace }) {
   const response = await fetch(new URL('/api/health', baseUrl), { signal: AbortSignal.timeout(3000), redirect: 'error' })
   const health = await response.json()
   if (!response.ok || health.name !== 'hiCanvas' || health.protocol !== 2 || health.workspace !== workspace) throw new Error('画板链接与本机资料目录不匹配。')
+  if (health.canvasMode !== 'single') throw new Error('旧版画板服务仍在运行，请先保存作品并更新服务。')
   return url
 }

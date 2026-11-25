@@ -15,7 +15,7 @@ export function targetFor(snapshot, args) {
   const anchor = id ? store[id] : null
   if (id && anchor?.typeName !== 'shape') throw httpError('目标框已被删除；结果未插入其他位置。', 409)
   const pageId = args.pageId || pageFor(store, anchor) || Object.values(store).find(r => r.typeName === 'page')?.id
-  if (store[pageId]?.typeName !== 'page' || (anchor && pageFor(store, anchor) !== pageId)) throw httpError('目标页面无效或与选中对象不一致。')
+  if (store[pageId]?.typeName !== 'page' || (anchor && pageFor(store, anchor) !== pageId)) throw httpError('目标画布无效或与选中对象不一致。')
   return { store, anchor, pageId }
 }
 function adjacent(store, anchor, parentId, w, h, args) {

@@ -68,7 +68,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
         }
       }
       item.inserted = inserted
-      await mark(job, item, inserted ? 'succeeded' : 'saved', inserted ? undefined : '原目标框已删除或替换；图片已保存在本对话的图片结果中。')
+      await mark(job, item, inserted ? 'succeeded' : 'saved', inserted ? undefined : '原目标框已删除或替换；图片已保存在本画板的图片结果中。')
     } catch (error) {
       await mark(job, item, item.images?.length ? 'saved' : 'failed', error.status ? error.message : '生成或写回失败；未自动重新调用生图，请先检查结果与服务商记录。')
     }
@@ -111,8 +111,8 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
       const anchor = args.anchorShapeId ? store[args.anchorShapeId] : null
       if (args.anchorShapeId && !anchor) throw httpError('原目标框已删除。', 409)
       const pageId = args.pageId || Object.values(store).find(r => r.typeName === 'page')?.id
-      if (store[pageId]?.typeName !== 'page') throw httpError('目标页面不存在。')
-      if (anchor && pageFor(store, anchor) !== pageId) throw httpError('目标框不属于指定页面。')
+      if (store[pageId]?.typeName !== 'page') throw httpError('目标画布不存在。')
+      if (anchor && pageFor(store, anchor) !== pageId) throw httpError('目标框不属于指定画布。')
       const width = args.displayWidth ?? anchor?.props.w ?? 512
       const height = args.displayHeight ?? anchor?.props.h ?? 512
       const gap = args.gap ?? 40
@@ -128,7 +128,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
         const existing = store[item.holderId]
         if (existing) {
           if (!existing.meta?.cowartAiImageHolder || existing.type !== 'frame') throw httpError('只能替换 AI 图片占位框；改图请在原图旁新建目标。')
-          if (pageFor(store, existing) !== pageId) throw httpError('图片框不属于指定页面。')
+          if (pageFor(store, existing) !== pageId) throw httpError('图片框不属于指定画布。')
           if (['queued', 'running'].includes(existing.meta.hicanvasGeneration?.status)) throw httpError('这个图片框正在生成，请等待当前任务完成。', 409)
           existing.meta.hicanvasGeneration = status
         } else applyCanvasOperations(snapshot, [{ type: 'create_shape', id: item.holderId, shapeType: 'frame', parentId: anchor?.parentId || pageId, x: startX + (i % columns) * (width + gap), y: startY + Math.floor(i / columns) * (rowHeight + gap), props: { w: width, h, name: 'AI 图片', color: 'blue' }, meta: { cowartAiImageHolder: true, hicanvasGeneration: status } }])
@@ -147,7 +147,7 @@ export function createImageJobs(workspace, models, { generate = requestImages, c
     await ready
     await workspace.requireConversation(id)
     const job = jobs.get(jobId)
-    if (!job || job.conversationId !== id) throw httpError('找不到这个对话的生成任务。', 404)
+    if (!job || job.conversationId !== id) throw httpError('找不到这个画板的生成任务。', 404)
     return { ...job, items: job.items.map(({ references: _refs, ...item }) => item), finished: job.items.every(item => !['queued', 'running'].includes(item.status)) }
   }
   return { submit, get }

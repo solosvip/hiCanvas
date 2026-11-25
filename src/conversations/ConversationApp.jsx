@@ -11,6 +11,6 @@ export function ConversationApp() {
     return () => { active = false }
   }, [])
   if (error) return <main className="cowart-status" role="alert">{error}<button onClick={() => location.reload()} type="button">重试</button></main>
-  if (!ready) return <main className="cowart-status" role="status">正在打开对话…</main>
+  if (!ready) return <main className="cowart-status" role="status">正在打开画板…</main>
   return <App />
 }

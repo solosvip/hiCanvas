@@ -7,12 +7,12 @@
 ## 操作步骤
 
 1. 若收到画板请求通知，用 `get_canvas_requests` 领取指定 `requestId`。读取返回的图片内容、提示词及 `context` 中的目标 ID；已有后台生图任务时只查询该任务，不再提交一次。
-2. 用 `get_canvas` 取得最新 `revision` 和原图信息。用 `read_image` 查看本对话图片；需要参考资源时用 `read_cowart_page_asset`。
+2. 用 `get_canvas` 取得最新 `revision` 和原图信息。用 `read_image` 查看本画板图片；需要参考资源时用 `read_cowart_page_asset`。
 3. 每张标注截图对应一张新稿。提示词说明要应用的标注，保留未要求变化的主体、构图、比例和风格；去掉箭头、批注文字、选框、控制柄和工具栏，只输出干净成图。
 4. 用 `list_image_models` 选用户指定或当前默认模型。将截图和必要原图放入各项 `references`，明确填写原图比例 `aspectRatio`，支持精确像素时再填 `size`。用 `submit_image_batch` 一次提交全部修改任务。
-5. 使用原图所在 `pageId`，显示宽高保持原图比例。不把原图 ID 传为顶层或各项 `anchorShapeId`，让画板在页面已有内容右侧建立新网格，避免覆盖相邻原图。用户指定位置时先确认整组范围空闲，再传 `x`、`y`。
+5. 显示宽高保持原图比例。不把原图 ID 传为顶层或各项 `anchorShapeId`，让画板在画板已有内容右侧建立新网格，避免覆盖相邻原图。用户指定位置时先确认整组范围空闲，再传 `x`、`y`。
 6. 已成功写回的结果不再插入。只有已保存但未插入的图片才用 `insert_cowart_image`，传最新版本、原图 `anchorShapeId`、`placement: "right"`、`matchAnchor: true`、`margin: 40`；原图在框内时选外层框作旁置锚点。
-7. 返回 `jobId` 和目标页面，说明已提交。用户查结果或领取的请求需收尾时，用 `get_generation_job` 查看各项；未结束保持处理中，全部目标结果实际写回后再核对原图与标注保留、新图无标注痕迹，并完成领取的请求。
+7. 返回 `jobId` 和目标画板，说明已提交。用户查结果或领取的请求需收尾时，用 `get_generation_job` 查看各项；未结束保持处理中，全部目标结果实际写回后再核对原图与标注保留、新图无标注痕迹，并完成领取的请求。
 
 ## 约束
 
