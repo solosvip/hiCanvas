@@ -1,6 +1,6 @@
 {
   "name": "hicanvas",
-  "version": "0.0.28",
+  "version": "0.0.31",
   "private": true,
   "description": "Standalone canvas based on Cowart. Conversation isolation, custom image providers and MCP.",
   "type": "module",
