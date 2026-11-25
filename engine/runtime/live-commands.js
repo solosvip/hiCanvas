@@ -4,6 +4,7 @@ import { CanvasEditError } from '../errors.js'
 import { commandHandlers } from '../commands/index.js'
 import { validateRelationships } from '../relationships.js'
 import { netChanges } from './changes.js'
+import { reconcileGroups, previousRecords } from '../group-consistency.js'
 
 /**
  * Store.atomic 只负责批处理；这里在同一批次内明确倒放失败帧。
@@ -31,6 +32,7 @@ export function executeLiveCommands(store, pageId, commands) {
         if (!handler) throw new CanvasEditError('未知的画板操作。')
         results.push(handler(commandStore, command) ?? null)
       }
+      reconcileGroups(commandStore, journal.flatMap(previousRecords))
       validateRelationships(store, pageId)
     } catch (error) {
       stop()
