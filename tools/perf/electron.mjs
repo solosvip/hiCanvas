@@ -3,8 +3,10 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
-import { benchmarkViewport, isolatedDirectories, parseOptions, scratchPath, summarizeFrames } from './config.mjs'
-import * as probe from './page-probe.mjs'
+import os from 'node:os'
+import { benchmarkViewport, isolatedDirectories, parseOptions, scratchPath, summarizeFrames, phaseChanged } from './config.mjs'
+import { pageObserver, cameraReaderScript } from './observers.mjs'
+import { startFrames, stopFrames } from './frame-probe.mjs'
 
 console.log('Electron: validating isolated paths')
 const directories = await isolatedDirectories()
@@ -14,7 +16,13 @@ await scratchPath(manifest.resultPath)
 await scratchPath(manifest.outputDir)
 const base = new URL(manifest.baseUrl)
 parseOptions(['--port', base.port, '--duration-ms', String(manifest.durationMs)])
-if (base.origin !== `http://127.0.0.1:${base.port}` || manifest.cases.some(fixture => new URL(fixture.url).origin !== base.origin)) throw new Error('测量清单必须只指向本机专用服务。')
+const origins = manifest.origins || [base.origin]
+for (const origin of origins) {
+  const url = new URL(origin)
+  parseOptions(['--port', url.port])
+  if (url.origin !== `http://127.0.0.1:${url.port}` || url.origin !== origin) throw new Error('测量清单必须只指向本机专用服务。')
+}
+if (manifest.cases.some(fixture => !origins.includes(new URL(fixture.url).origin))) throw new Error('测量清单含未登记的服务。')
 app.setName('hiCanvas performance harness')
 app.setPath('userData', directories.HICANVAS_DESKTOP_CONFIG_DIR)
 app.setPath('sessionData', directories.HICANVAS_DESKTOP_CONFIG_DIR)
@@ -23,7 +31,7 @@ for (const flag of ['disable-background-timer-throttling', 'disable-renderer-bac
 // Each sample gets a fresh window/session without quitting between samples.
 app.on('window-all-closed', () => {})
 
-let window
+let window, probe
 const samples = [], blockedHosts = new Set(), consoleErrors = []
 const evaluate = (fn, arg) => window.webContents.executeJavaScript(`(${fn.toString()})(${JSON.stringify(arg)})`)
 const input = event => window.webContents.sendInputEvent(event)
@@ -44,6 +52,7 @@ async function measurePhase(name, fixture, paints) {
   await delay(250)
   await evaluate(probe.resetCamera, { camera: fixture.camera })
   const before = await evaluate(probe.inspectState, fixture)
+  if (['x', 'y', 'z'].some(key => Math.abs(before.camera[key] - fixture.camera[key]) > 1e-8)) throw new Error('阶段起始视角未正确重置。')
   const center = { x: benchmarkViewport.width / 2, y: benchmarkViewport.height / 2 }
   const point = name === 'drag' ? before.point : center
   move(point.x, point.y)
@@ -52,7 +61,7 @@ async function measurePhase(name, fixture, paints) {
     await assertSelected(fixture.targetId)
   }
   const start = performance.now()
-  await evaluate(probe.startFrames)
+  await evaluate(startFrames)
   if (name !== 'zoom') button('mouseDown', point, name === 'pan' ? 'middle' : 'left')
   let inputs = 0, nextInput = start, lastWheel = 0
   while (performance.now() - start < manifest.durationMs) {
@@ -72,12 +81,9 @@ async function measurePhase(name, fixture, paints) {
     await delay(Math.max(1, nextInput - performance.now()))
   }
   if (name !== 'zoom') button('mouseUp', { x: point.x + 100, y: point.y + 70 }, name === 'pan' ? 'middle' : 'left')
-  const frames = await evaluate(probe.stopFrames)
+  const frames = await evaluate(stopFrames)
   const end = performance.now(), after = await evaluate(probe.inspectState, fixture)
-  const changed = name === 'pan' ? Math.hypot(after.camera.x - before.camera.x, after.camera.y - before.camera.y) > 1
-    : name === 'zoom' ? Math.abs(after.camera.z - before.camera.z) > .001
-      : Math.hypot(after.shape.x - before.shape.x, after.shape.y - before.shape.y) > 1
-  if (!changed) throw new Error(`${name} 输入没有改变预期画板状态，拒绝输出空转 FPS。`)
+  if (!phaseChanged(name, before, after, frames.zoomRange)) throw new Error(`${name} 输入没有改变预期画板状态，拒绝输出空转 FPS。`)
   const result = { raf: summarizeFrames(frames.times, frames.start, frames.end), paint: summarizeFrames(paints, start, end), zoomRange: frames.zoomRange, inputEvents: inputs, before, after }
   if (result.raf.frames < 2 || result.paint.frames < 2) throw new Error(`${name} 无有效渲染帧。`)
   return result
@@ -87,7 +93,9 @@ async function run() {
   app.dock?.hide()
   try {
     for (const [i, fixture] of manifest.cases.entries()) {
-      console.log(`Measuring ${fixture.count} elements, repeat ${fixture.repeat}`)
+      probe = pageObserver(fixture.renderer)
+      console.log(`Measuring ${fixture.renderer}, ${fixture.count} elements, repeat ${fixture.repeat}`)
+      const startedAt = new Date().toISOString(), loadBefore = os.loadavg()
       const paints = []
       window = new BrowserWindow({ show: false, ...benchmarkViewport, useContentSize: true, webPreferences: { offscreen: true, backgroundThrottling: false, contextIsolation: true, sandbox: true, nodeIntegration: false, partition: `perf-${process.pid}-${i}` } })
       window.webContents.setFrameRate(60)
@@ -97,7 +105,7 @@ async function run() {
       session.setPermissionCheckHandler(() => false)
       session.webRequest.onBeforeRequest((details, callback) => {
         const url = new URL(details.url)
-        const allowed = url.origin === manifest.baseUrl || ['data:', 'blob:'].includes(url.protocol)
+        const allowed = url.origin === new URL(fixture.url).origin || ['data:', 'blob:'].includes(url.protocol) || url.protocol === 'ws:' && url.host === new URL(fixture.url).host
         if (!allowed) blockedHosts.add(url.host)
         callback({ cancel: !allowed })
       })
@@ -108,18 +116,18 @@ async function run() {
       const navigationStart = performance.now()
       await window.loadURL(fixture.url)
       const ready = await evaluate(probe.waitUntilReady, fixture)
-      move(ready.point.x, ready.point.y)
-      button('mouseDown', ready.point); button('mouseUp', ready.point)
-      await assertSelected(fixture.targetId)
-      const openMs = performance.now() - navigationStart
-      console.log(`Interactive after ${Math.round(openMs)} ms`)
-      const phases = {}
-      for (const name of ['pan', 'zoom', 'drag']) phases[name] = await measurePhase(name, { ...fixture, camera: ready.camera }, paints)
-      if (fixture.repeat === 1) {
-        const screenshot = await window.webContents.capturePage()
-        await writeFile(join(manifest.outputDir, `${fixture.count}-elements.png`), screenshot.toPNG())
+      if (probe.requiresSelection) {
+        move(ready.point.x, ready.point.y)
+        button('mouseDown', ready.point); button('mouseUp', ready.point)
+        await assertSelected(fixture.targetId)
       }
-      samples.push({ count: fixture.count, repeat: fixture.repeat, counts: fixture.counts, assetCount: fixture.assetCount, openMs, ready, phases })
+      const openMs = performance.now() - navigationStart
+      await window.webContents.executeJavaScript(cameraReaderScript(probe))
+      console.log(`Ready after ${Math.round(openMs)} ms`)
+      if (fixture.repeat === 1) await writeFile(join(manifest.outputDir, `${fixture.renderer}-${fixture.count}-elements.png`), (await window.webContents.capturePage()).toPNG())
+      const phases = {}
+      for (const name of ['pan', 'zoom', 'drag']) phases[name] = name === 'drag' && !probe.canDrag ? { applicable: false, reason: '新版尚无编辑能力。' } : await measurePhase(name, { ...fixture, camera: ready.camera }, paints)
+      samples.push({ renderer: fixture.renderer, count: fixture.count, repeat: fixture.repeat, counts: fixture.counts, assetCount: fixture.assetCount, openMs, ready, phases, startedAt, finishedAt: new Date().toISOString(), loadBefore, loadAfter: os.loadavg() })
       await writeFile(manifest.resultPath, JSON.stringify({ samples, runtime: process.versions, gpu: app.getGPUFeatureStatus(), blockedHosts: [...blockedHosts], consoleErrors }, null, 2))
       window.destroy(); window = undefined
     }

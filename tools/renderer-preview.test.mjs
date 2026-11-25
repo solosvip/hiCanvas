@@ -3,6 +3,30 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createFixture } from './perf/fixture.mjs'
 import { createRendererFixture, startRendererPreview } from './renderer-preview.mjs'
+import { attachPreviewInput } from './renderer-preview/input.js'
+
+test('中键拖动按缩放换算视角位移，松开停止；重置视角验证参数且不暴露可变引用', () => {
+  const host = new EventTarget()
+  let camera = { x: 10, y: 20, z: 2 }
+  const controls = attachPreviewInput(host, { getCamera: () => ({ ...camera }), setCamera: value => { camera = { ...value } } })
+  const pointer = (type, point) => host.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, button: 1, ...point }))
+  pointer('pointerdown', { clientX: 100, clientY: 200 })
+  pointer('pointermove', { clientX: 180, clientY: 240 })
+  assert.deepEqual(camera, { x: 50, y: 40, z: 2 })
+  pointer('pointerup', { clientX: 180, clientY: 240 })
+  pointer('pointermove', { clientX: 500, clientY: 600 })
+  assert.deepEqual(camera, { x: 50, y: 40, z: 2 })
+  const reset = { x: -3, y: 5, z: .25 }
+  controls.resetCamera(reset); reset.x = 999
+  assert.deepEqual(camera, { x: -3, y: 5, z: .25 })
+  const observed = controls.getCamera()
+  assert.deepEqual(observed, camera)
+  observed.x = 999
+  assert.deepEqual(controls.getCamera(), { x: -3, y: 5, z: .25 })
+  for (const invalid of [null, {}, { x: 0, y: 0, z: 0 }, { x: NaN, y: 0, z: 1 }, { x: 0, y: Infinity, z: 1 }]) assert.throws(() => controls.resetCamera(invalid), /视角/)
+  assert.deepEqual(camera, { x: -3, y: 5, z: .25 })
+  controls.dispose()
+})
 
 test('三档合成规则完整保留 #36 几何类型、semi 填充、数量和相机', () => {
   for (const count of [500, 2000, 5000]) {

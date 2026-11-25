@@ -8,6 +8,17 @@ const check = (condition, message) => { if (!condition) throw new Error(message)
 // Imported only by the automated browser harness; the preview observation hook
 // never exposes this probe, its Store, or any write capability.
 export async function runLifecycleProbe() {
+  const hook = window.__HICANVAS_RENDERER_PREVIEW__, originalCamera = hook.getState().camera
+  check(JSON.stringify(hook.getCamera()) === JSON.stringify(originalCamera), '只读视角接口与观察状态不一致')
+  const detached = hook.getCamera(); detached.x = 999
+  check(hook.getCamera().x === originalCamera.x, '只读视角接口保留了可变引用')
+  const reset = { x: -3, y: 5, z: .25 }
+  hook.resetCamera(reset); await settle()
+  check(JSON.stringify(hook.getState().camera) === JSON.stringify(reset), '测量重置视角未反映到只读观察接口')
+  let invalidRejected = false
+  try { hook.resetCamera({ x: 0, y: 0, z: 0 }) } catch { invalidRejected = true }
+  check(invalidRejected, '测量重置允许了非法视角')
+  hook.resetCamera(originalCamera); await settle()
   const fixture = await (await fetch('/__renderer_fixture?count=500')).json()
   const raw = createCanvasStore()
   raw.loadStoreSnapshot(fixture.snapshot)
