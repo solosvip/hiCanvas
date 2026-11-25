@@ -21,13 +21,16 @@ test('旧多页合成一个画布，保留嵌套、旋转、图层和原始快�
   const original = await workspace.read(id)
   const snapshot = structuredClone(original.snapshot)
   const page = Object.values(snapshot.store).find(r => r.typeName === 'page')
-  snapshot.store['page:second'] = { ...page, id: 'page:second', name: '第二个旧页面', index: 'a2' }
   applyCanvasOperations(snapshot, [
     { type: 'create_shape', id: 'shape:first', shapeType: 'geo', x: 20, y: 30, props: { w: 600, h: 400 } },
-    { type: 'create_shape', id: 'shape:slides', shapeType: 'frame', parentId: 'page:second', x: -100, y: 200, rotation: 0.3, meta: { cowartAiSlides: true } },
+    { type: 'create_shape', id: 'shape:slides', shapeType: 'frame', x: -100, y: 200, rotation: 0.3, meta: { cowartAiSlides: true } },
     { type: 'create_shape', id: 'shape:slide', shapeType: 'embed', parentId: 'shape:slides', x: 12, y: 12, props: { url: 'https://example.com/slide' } },
-    { type: 'create_shape', id: 'shape:overlay', shapeType: 'geo', parentId: 'page:second', x: 100, y: 300 }
+    { type: 'create_shape', id: 'shape:overlay', shapeType: 'geo', x: 100, y: 300 }
   ])
+  // 直接构造旧版多页存档；新版编辑命令不允许创建这种状态。
+  snapshot.store['page:second'] = { ...page, id: 'page:second', name: '第二个旧页面', index: 'a2' }
+  snapshot.store['shape:slides'].parentId = 'page:second'
+  snapshot.store['shape:overlay'].parentId = 'page:second'
   const oldState = { revision: original.revision, snapshot }
   const path = join(root, 'conversations', id, 'state.json')
   await writeFile(path, JSON.stringify(oldState))
@@ -79,12 +82,13 @@ test('旧页含向左延伸的折线和嵌套旋转，迁移后与前页内容�
   const original = await workspace.read(id)
   const snapshot = structuredClone(original.snapshot), store = snapshot.store
   const page = Object.values(store).find(r => r.typeName === 'page')
-  store['page:line'] = { ...page, id: 'page:line', name: '旧线条', index: 'a2' }
   applyCanvasOperations(snapshot, [
     { type: 'create_shape', id: 'shape:block', shapeType: 'geo', props: { w: 600, h: 400 } },
-    { type: 'create_shape', id: 'shape:group', shapeType: 'group', parentId: 'page:line', rotation: 0.2 },
+    { type: 'create_shape', id: 'shape:group', shapeType: 'group', rotation: 0.2 },
     { type: 'create_shape', id: 'shape:line', shapeType: 'geo', parentId: 'shape:group', rotation: 0.3 }
   ])
+  store['page:line'] = { ...page, id: 'page:line', name: '旧线条', index: 'a2' }
+  store['shape:group'].parentId = 'page:line'
   store['shape:line'].type = 'line'
   store['shape:line'].props = { color: 'black', dash: 'solid', size: 'm', spline: 'line', scale: 1, points: { a1: { id: 'a1', index: 'a1', x: -2000, y: 0 }, a2: { id: 'a2', index: 'a2', x: 0, y: 100 } } }
   await writeFile(join(root, 'conversations', id, 'state.json'), JSON.stringify({ revision: original.revision, snapshot }))
@@ -112,12 +116,13 @@ test('编码笔迹的镜像缩放与大便签也纳入迁移范围，不把后�
   const original = await workspace.read(id)
   const snapshot = structuredClone(original.snapshot), store = snapshot.store
   const page = Object.values(store).find(r => r.typeName === 'page')
-  store['page:next'] = { ...page, id: 'page:next', name: '其他作品', index: 'a2' }
   applyCanvasOperations(snapshot, [
     { type: 'create_shape', id: 'shape:draw', shapeType: 'geo' },
     { type: 'create_shape', id: 'shape:note', shapeType: 'geo', x: 6500 },
-    { type: 'create_shape', id: 'shape:next', shapeType: 'geo', parentId: 'page:next', props: { w: 512, h: 512 } }
+    { type: 'create_shape', id: 'shape:next', shapeType: 'geo', props: { w: 512, h: 512 } }
   ])
+  store['page:next'] = { ...page, id: 'page:next', name: '其他作品', index: 'a2' }
+  store['shape:next'].parentId = 'page:next'
   store['shape:draw'].type = 'draw'
   store['shape:draw'].props = { color: 'black', fill: 'none', dash: 'draw', size: 'm', isComplete: true, isClosed: false, isPen: false, scale: 1, scaleX: -2, scaleY: 3, segments: [{ type: 'free', path: b64Vecs.encodePoints([{ x: 0, y: 0, z: 0.5 }, { x: -3000, y: 100, z: 0.5 }]) }] }
   const { richText, color, size, font, scale, labelColor, align, verticalAlign } = store['shape:note'].props
