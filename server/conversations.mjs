@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path'
 import { createCanvasStorage, canvasDir as defaultRoot, readJsonFile, writeJsonAtomic } from './storage.mjs'
 import { httpError, withFileLock } from './file-lock.mjs'
 import { mergeLegacyPages, restoreSingleCanvasView, singlePageId } from './single-canvas.mjs'
+import { createCanvasHistory } from './canvas-history.mjs'
 
 function readOnly(value) {
   for (const child of Object.values(value)) if (child && typeof child === 'object') readOnly(child)
@@ -14,6 +15,7 @@ function readOnly(value) {
 }
 
 export function createConversations(root = defaultRoot) {
+  const history = createCanvasHistory()
   root = resolve(root)
   const directory = join(root, 'conversations')
   const indexFile = join(directory, 'index.json')
@@ -160,7 +162,10 @@ export function createConversations(root = defaultRoot) {
         updated: Object.fromEntries(Object.entries(edit.changes.updated).filter(([key, [before]]) => !isEqual(before, snapshot.store[key])).map(([key, [before]]) => [key, [before, snapshot.store[key]]])),
         removed: edit.changes.removed,
       })
+      // 与版本检查共用画板锁；写盘失败时，不能提前记录或消耗历史。
+      const acceptHistory = edit.acceptHistory || (changes && history.record(id, actor, changes))
       await writeJsonAtomic(stateFile(id), result)
+      acceptHistory?.()
       return { ...result, ...(changes && { changes, results: edit.results }), previousRevision: current.revision, conversationId: id, storage: 'conversation', ok: true }
     })
   }
@@ -185,6 +190,8 @@ export function createConversations(root = defaultRoot) {
     submitCommands(id, expectedRevision, actor, createCommands) {
       return commit(id, expectedRevision, actor, async snapshot => executeCanvasCommands(snapshot, await createCommands(snapshot)))
     },
+    undo(id, expectedRevision, actor) { return commit(id, expectedRevision, actor, snapshot => history.undo(id, actor, snapshot)) },
+    redo(id, expectedRevision, actor) { return commit(id, expectedRevision, actor, snapshot => history.redo(id, actor, snapshot)) },
     // ADR 0006：仅供 PUT /api/canvas，换上新编辑器后删除的临时例外。
     replaceLegacySnapshot(id, expectedRevision, snapshot) {
       return commit(id, expectedRevision, 'legacy-ui', () => ({ snapshot }))
@@ -210,6 +217,7 @@ export function createConversations(root = defaultRoot) {
           conversation.deletedAt = now()
           await writeJsonAtomic(indexFile, data)
         }
+        history.forget(id)
         const next = data.conversations.filter(c => !c.deletedAt).toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
         return { ok: true, conversationId: id, nextConversationId: next?.id || null }
       })))

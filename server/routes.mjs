@@ -74,6 +74,14 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
         return sendJson(res, 200, result)
       }
       if (path === '/api/canvas' && req.method === 'GET') return sendJson(res, 200, await workspace.read(id))
+      if (['/api/canvas/undo', '/api/canvas/redo'].includes(path) && req.method === 'POST') {
+        const body = await jsonBody(req)
+        // 本机接口不验证身份；会话应使用随机生成的标识，且必须显式提供。
+        const undoActor = Object.hasOwn(body, 'actor') ? body.actor : req.headers['x-hicanvas-actor']
+        const result = await workspace[path.endsWith('/undo') ? 'undo' : 'redo'](id, body.expectedRevision, undoActor)
+        events.broadcast(result)
+        return sendJson(res, 200, result)
+      }
       if ((path === '/api/canvas' && req.method === 'PUT') || (path === '/api/canvas/operations' && req.method === 'POST')) {
         const body = await jsonBody(req)
         const { results: _results, ...result } = path === '/api/canvas'
