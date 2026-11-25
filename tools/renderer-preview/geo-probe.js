@@ -37,7 +37,8 @@ export async function runGeoProbe() {
       store.put([{ ...label, props: { ...label.props, color } }])
       const element = await update({ color })
       check(element.querySelector('[data-geo-outline]').getAttribute('stroke') === strokes[i], '描边颜色与取色证据不符')
-      check(host.querySelector(`[data-shape-id="${label.id}"] g`).getAttribute('fill') === strokes[i], '文字颜色与取色证据不符')
+      const rgb = strokes[i].slice(1).match(/../g).map(value => parseInt(value, 16)).join(', ')
+      check(getComputedStyle(host.querySelector(`[data-shape-id="${label.id}"]`).firstElementChild).color === `rgb(${rgb})`, '文字颜色与取色证据不符')
     }
     const fills = { none: 'none', semi: '#fcfffe', solid: '#dce1f8', fill: '#4465e9', pattern: null, 'lined-fill': null }
     for (const [fill, expected] of Object.entries(fills)) {

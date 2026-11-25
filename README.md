@@ -223,6 +223,8 @@ npm run perf:baseline -- --renderer both --port 43326 --preview-port 43328 --loa
 
 分别记录 rAF 与实际离屏绘制 FPS、各轮原值、中位数、帧间隔、逐样本系统负载和环境。离屏绘制含图像回读开销、最高 60 FPS，不能等同于前台屏幕帧率；新旧骨架对照只是早期信号，不判定切换门槛。输出在 `.scratch/perf-results/run-*/` 的 JSON、每版三档截图与日志中，合成资料结束时清理。页面差异只在 `tools/perf/` 的观察实现中适配，输入、帧时钟和统计保持共用；性能测量不作为普通 CI 的速度门禁。
 
+需要诊断耗时分布时，可在同一隔离环境加 `HICANVAS_PERF_TRACE=1`，例如 `HICANVAS_PERF_TRACE=1 npm run perf:baseline -- --renderer both --sizes 5000 --runs 1 --port 43326 --preview-port 43328 --load-note "诊断追踪，非验收"`。工具通过 Electron 的 Chromium 追踪与 Performance 域，把各阶段时间线写入同一输出目录的 `*.trace.json`，并在样本 `trace.metricsDelta` 中记录脚本、样式和布局耗时及次数；报告 `metadata.diagnosticTracing` 标明是否开启。时间线中的 `hiCanvas-perf-start/end` 标记限定输入阶段；事件可能嵌套、线程可能并行，耗时不能直接相加。开启追踪会明显拖慢运行，测出的帧率不能用来验收；正式对照须关闭该开关。
+
 本次浏览器验证使用合成图片与文字，实际操作了新建、重命名、切换和刷新恢复画板，确认 MCP 修改实时显示；模拟保存断网时切换被阻止、恢复后可继续切换。图片结果独立显示并能放入画板，其他画板保持空结果；1440 和 390 像素窗口中检查了浮层布局及 Escape 后焦点恢复。另在独立 REX 测试服务和合成接收程序中，实际操作画板按钮→终端通知→模拟 Agent 领取→原框写回，验证网页、影片和幻灯片流程；这不等于验证真实语言模型的内容质量。浏览器走查尚未接入持续执行的界面守卫；数据、并发、MCP 和保存切换逻辑由回归测试保护。
 
 ## 上游与许可
