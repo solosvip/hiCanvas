@@ -48,7 +48,7 @@ test('16 张一次建好 4×4 占位，后台限并发执行；切默认模型�
   assert.equal(new Set(calls.map(c => c.prompt)).size, 16)
   assert.deepEqual([...new Set(calls.map(c => c.model))], ['model-a'])
   assert.ok(maximum <= 3)
-  assert.ok(job.items.every(item => item.status === 'succeeded'))
+  assert.ok(job.items.every(item => item.status === 'succeeded'), JSON.stringify(job.items.map(({ id, status, error }) => ({ id, status, error }))))
   const final = await workspace.read(id)
   assert.ok(final.snapshot.store['shape:user'])
   assert.equal(final.snapshot.store['shape:user'].parentId, pageId)
