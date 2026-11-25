@@ -11,7 +11,7 @@ const output = join(root, '.scratch/renderer-smoke')
 // Resolve an already installed runtime directly. The npm launcher may otherwise
 // download Electron on first execution, which this verification must not do.
 const electronDir = join(root, 'node_modules/electron')
-const executable = join(electronDir, 'dist', (await readFile(join(electronDir, 'path.txt'), 'utf8')).trim())
+const executable = process.env.HICANVAS_TEST_ELECTRON || join(electronDir, 'dist', (await readFile(join(electronDir, 'path.txt'), 'utf8')).trim())
 await access(executable, constants.X_OK)
 await mkdir(output, { recursive: true })
 const runtime = await mkdtemp(join(output, 'runtime-'))
@@ -27,7 +27,7 @@ try {
     child.once('exit', code => { clearTimeout(timer); accept(code) })
   })
   if (code !== 0) throw new Error(`离屏验证失败（${code}），详见 ${join(output, 'result.json')}。`)
-  console.log(`结果和三档截图：${output}`)
+  console.log(`结果、三档画板与两张图鉴截图：${output}`)
 } finally {
   try { await preview?.close() } finally { await rm(runtime, { recursive: true, force: true }) }
 }

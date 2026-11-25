@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { createFixture } from './perf/fixture.mjs'
 import { createRendererFixture, startRendererPreview } from './renderer-preview.mjs'
 
-test('三档合成规则保留 #36 数量、构成和相机，只把不在首批的几何类型与填充转为支持值', () => {
+test('三档合成规则完整保留 #36 几何类型、semi 填充、数量和相机', () => {
   for (const count of [500, 2000, 5000]) {
     const fixture = createRendererFixture(count), baseline = createFixture(count)
     assert.deepEqual(fixture.counts, baseline.counts)
@@ -15,11 +15,7 @@ test('三档合成规则保留 #36 数量、构成和相机，只把不在首批
       // Fractional indices include random jitter; only their relative order is
       // part of the fixture contract, not the exact generated strings.
       const comparable = record.typeName === 'shape' ? { ...record, index: before.index } : record
-      if (record.typeName === 'shape' && record.type === 'geo') {
-        assert.ok(['rectangle', 'ellipse'].includes(record.props.geo))
-        assert.equal(record.props.fill, 'solid')
-        assert.deepEqual({ ...comparable, props: before.props }, before)
-      } else assert.deepEqual(comparable, before)
+      assert.deepEqual(comparable, before)
     }
     const orderedIds = data => Object.values(data.snapshot.store).filter(r => r.typeName === 'shape').sort((a, b) => a.index < b.index ? -1 : 1).map(r => r.id)
     assert.deepEqual(orderedIds(fixture), orderedIds(baseline))

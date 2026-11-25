@@ -1,6 +1,7 @@
 import './style.css'
 import { createCanvasStore } from '../../model/index.js'
 import { mountCanvasRenderer, screenToCanvas } from '../../renderer/index.js'
+import { createGallery } from './gallery.js'
 
 let ready = false, renderer, metadata, failure = null, decodedImages = 0
 const host = document.querySelector('#canvas'), status = document.querySelector('#status')
@@ -8,10 +9,13 @@ const getState = () => Object.freeze({ ready, error: failure, count: metadata?.c
 Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.freeze({ getState }), writable: false, configurable: false })
 
 try {
-  const count = new URLSearchParams(location.search).get('count') || '500'
-  const response = await fetch(`/__renderer_fixture?count=${encodeURIComponent(count)}`)
-  if (!response.ok) throw new Error('合成规模仅支持 500、2000、5000。')
-  metadata = await response.json()
+  const params = new URLSearchParams(location.search), gallery = params.get('gallery')
+  if (gallery) metadata = createGallery(gallery)
+  else {
+    const response = await fetch(`/__renderer_fixture?count=${encodeURIComponent(params.get('count') || '500')}`)
+    if (!response.ok) throw new Error('合成规模仅支持 500、2000、5000。')
+    metadata = await response.json()
+  }
   const store = createCanvasStore()
   store.loadStoreSnapshot(metadata.snapshot)
   renderer = mountCanvasRenderer(host, { store, camera: metadata.viewState.camera, pageId: metadata.viewState.currentPageId })

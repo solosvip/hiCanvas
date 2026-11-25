@@ -7,13 +7,7 @@ import { createFixture } from './perf/fixture.mjs'
 const root = fileURLToPath(new URL('../', import.meta.url))
 export function createRendererFixture(count) {
   if (![500, 2000, 5000].includes(count)) throw new Error('预览只支持 500、2000、5000 个元素。')
-  const fixture = createFixture(count)
-  for (const record of Object.values(fixture.snapshot.store)) {
-    if (record.typeName !== 'shape' || record.type !== 'geo') continue
-    if (!['rectangle', 'ellipse'].includes(record.props.geo)) record.props.geo = 'rectangle'
-    record.props.fill = 'solid'
-  }
-  return fixture
+  return createFixture(count)
 }
 
 export async function startRendererPreview({ port = 0 } = {}) {
