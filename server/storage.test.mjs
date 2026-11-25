@@ -1,17 +1,13 @@
+import '../tools/test-sandbox.mjs'
 import assert from 'node:assert/strict'
-import { after, beforeEach, test } from 'node:test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { beforeEach, test } from 'node:test'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createCanvasStore } from '../model/index.js'
-import { createCanvasStorage } from './storage.mjs'
+import { createCanvasStorage, canvasDir, loadCanvasSnapshot, saveCanvasSnapshot, serveCanvasAsset } from './storage.mjs'
+import { fixture } from './test-helpers.mjs'
 
-const project = await mkdtemp(join(tmpdir(), 'hicanvas-storage-'))
-process.env.HICANVAS_PROJECT_DIR = project
-const { canvasDir, loadCanvasSnapshot, saveCanvasSnapshot, serveCanvasAsset } = await import('./storage.mjs')
 beforeEach(() => rm(canvasDir, { recursive: true, force: true }))
-after(() => rm(project, { recursive: true, force: true }))
-const { fixture } = await import('./test-helpers.mjs')
 
 function snapshot() {
   const store = createCanvasStore()

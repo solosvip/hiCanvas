@@ -1,3 +1,4 @@
+import '../tools/test-sandbox.mjs'
 import test from 'node:test'
 import { placeMedia } from './media-placement.mjs'
 import { applyCanvasOperations } from './canvas-operations.mjs'

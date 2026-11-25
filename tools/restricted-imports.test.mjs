@@ -1,3 +1,4 @@
+import './test-sandbox.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { checkRestrictedImports, moduleReferences } from './restricted-imports.mjs'
