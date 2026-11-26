@@ -40,7 +40,9 @@ export function Geometry({ shape }) {
   const hand = getHandDrawnContour(shape)
   const dashed = ['dashed', 'dotted'].includes(props.dash)
   const edges = !dashed ? [] : contour.continuous ? [contour.outline] : contour.outline.map((point, i) => [point, contour.outline[(i + 1) % contour.outline.length]])
-  return h('svg', { width: bounds.w, height: bounds.h, overflow: 'visible' },
+  // Bound compositing work while leaving room for displaced ink and round caps.
+  const clipMargin = Math.max(stroke.strokeWidth * 4, ...(hand?.outline.map(point => point.width * 2) || []))
+  return h('svg', { width: bounds.w, height: bounds.h, overflow: 'visible', style: { clipPath: `inset(-${clipMargin}px)` } },
     patterned ? h(Pattern, { id, props, paint }) : null,
     h('path', { 'data-geo-outline': '', d: hand?.fillPath || pathOf(contour.outline, true), fill, ...stroke, stroke: hand || dashed ? 'none' : stroke.stroke }),
     hand ? h('path', { 'data-geo-hand-ink': '', d: hand.strokePath, fill: paint.stroke, fillRule: 'nonzero' }) : null,

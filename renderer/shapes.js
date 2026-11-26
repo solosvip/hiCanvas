@@ -47,7 +47,7 @@ const Shape = memo(function Shape({ scene, id, camera }) {
 
 export function CanvasWorld({ scene, camera }) {
   const { x, y, z } = useValue(camera)
-  // Zero depth preserves the 2D camera math while changing the browser's
-  // compositing strategy. Camera changes never touch shape records.
-  return h('div', { 'data-renderer-world': '', style: { position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `scale(${z}) translate3d(${x}px, ${y}px, 0)` } }, h(BackgroundLayer, { scene, drawings }), h(Children, { scene, parentId: scene.pageId, camera }))
+  // A 2D camera lets static siblings share their paint layer. Zero-depth 3D
+  // can promote a shape and overlapping siblings; records stay unchanged.
+  return h('div', { 'data-renderer-world': '', style: { position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `scale(${z}) translate(${x}px, ${y}px)` } }, h(BackgroundLayer, { scene, drawings }), h(Children, { scene, parentId: scene.pageId, camera }))
 }

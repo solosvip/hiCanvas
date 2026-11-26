@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, nativeImage } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -19,6 +19,9 @@ import {channelSmoke} from '../content-host/channel-smoke.mjs'
 import { drawSmoke } from './draw-smoke.mjs'
 import { textEditingSmoke } from './text-editing-smoke.mjs'
 import { connectionSmoke } from './connection-smoke.mjs'
+import { checkShapeCompositing } from './compositing-guard.mjs'
+import { checkCameraGeometry } from './camera-geometry-guard.mjs'
+import { checkOpaqueBorderCut } from './clip-negative-guard.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -211,12 +214,18 @@ async function run() {
       check(initial.renderedShapes === count && initial.imageCount === count / 5 && initial.decodedImages === count / 5, `元素/图片数量不符：${JSON.stringify(initial)}`)
       const snapshot = (await window.webContents.capturePage()).toPNG()
       await writeFile(join(manifest.output, `${count}-elements.png`), snapshot)
+      const cameraGeometry = await checkCameraGeometry(window.webContents, count, { directory: manifest.output, label: `${count}-clip`, failureOnly: true })
+      const opaqueBorderCut = count === 500 ? await checkOpaqueBorderCut(window.webContents, { directory: manifest.output, label: 'opaque-one-css-cut', failureOnly: true }, nativeImage.createFromBuffer) : undefined
       window.webContents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 20, deltaY: 30, canScroll: true })
       const pan = await until(async () => { const value = await state(); return value.camera.x !== initial.camera.x && value })
       window.webContents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: -40, modifiers: ['control'], canScroll: true })
       const zoom = await until(async () => { const value = await state(); return value.camera.z !== pan.camera.z && value })
-      let lifecycle, cameraLayout, text, fonts, textLayout, frameTitles, scalingDispatch
-      if (count === 5000) cameraLayout = { empty: await cameraLayoutProbe(), selected: await cameraLayoutProbe(true) }
+      let lifecycle, cameraLayout, text, fonts, textLayout, frameTitles, scalingDispatch, compositing
+      if (count === 5000) {
+        cameraLayout = { empty: await cameraLayoutProbe(), selected: await cameraLayoutProbe(true) }
+        await evaluate(`window.__HICANVAS_RENDERER_PREVIEW__.resetCamera(${JSON.stringify(initial.camera)});void 0`)
+        compositing = await checkShapeCompositing(window.webContents, count)
+      }
       if (count === 5000) frameTitles = await measureFrameTitlePerformance(window.webContents, manifest.output)
       if (count === 500) {
         scalingDispatch = await evaluate("import('/tools/renderer-preview/scale-render-probe.js').then(module => module.runScaleRenderProbe())")
@@ -229,7 +238,7 @@ async function run() {
       const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
       const minimap = count === 500 ? await minimapSmoke(window, manifest.output) : undefined
       const keyboard = count === 500 ? await keyboardSmoke(window, manifest.output) : undefined
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera, minimap, scalingDispatch, keyboard })
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera, minimap, scalingDispatch, keyboard, compositing, cameraGeometry, opaqueBorderCut })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }
@@ -243,6 +252,7 @@ async function run() {
       check(initial.renderedShapes === initial.count && (gallery === 'embeds' ? initial.counts.embed === 6 && initial.counts.bookmark === 1 : gallery === 'bookmarks' ? initial.counts.bookmark === 9 : gallery === 'external' ? initial.counts.embed === 18 : count === null || initial.counts[type] === count), '图鉴元素未完整绘制')
       if (gallery === 'embeds') await until(() => evaluate("document.querySelector('[data-embed-content=\"shape:embed-web\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-film\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-slide\"]')?.contentDocument?.documentElement?.dataset.instance"))
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
+      const cameraGeometry = await checkCameraGeometry(window.webContents, initial.count, { directory: manifest.output, label: `${gallery}-clip`, failureOnly: true })
       const images = gallery === 'images' ? await imageSmoke(window, manifest.output) : undefined
       const geometry = gallery === 'shapes' ? await evaluate("import('/tools/renderer-preview/geo-probe.js').then(module => module.runGeoProbe())") : undefined
       const handDrawn = gallery === 'draw' ? await evaluate("import('/tools/renderer-preview/hand-drawn-probe.js').then(module => module.runHandDrawnProbe())") : undefined
@@ -259,7 +269,7 @@ async function run() {
         await writeFile(join(manifest.output, `${gallery}-narrow.png`), (await window.webContents.capturePage()).toPNG())
       }
       const connections = gallery === 'bindings' ? await evaluate("import('/tools/renderer-preview/arrow-probe.js').then(module => module.runConnectionProbe())") : undefined
-      samples.push({ gallery, initial, images, geometry, embeds, bookmarks, external, connections, handDrawn, notes, titles, notePaint })
+      samples.push({ gallery, initial, images, geometry, embeds, bookmarks, external, connections, handDrawn, notes, titles, notePaint, cameraGeometry })
 
       window.destroy(); window = undefined
     }
@@ -285,6 +295,7 @@ async function run() {
       check(initial.renderedShapes === initial.count && initial.counts.draw + initial.counts.highlight > 0, '笔迹图鉴未完整绘制')
       const capture = await window.webContents.capturePage()
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), capture.toPNG())
+      const cameraGeometry = await checkCameraGeometry(window.webContents, initial.count, { directory: manifest.output, label: `${gallery}-clip`, failureOnly: true })
       let overlaps
       if (gallery === 'stroke-highlights') {
         const size = capture.getSize(), bytes = capture.toBitmap(), ratio = size.width / 1280
@@ -296,7 +307,7 @@ async function run() {
         check(overlaps.every(rgb => rgb.every((value, i) => Math.abs(value - [87, 188, 181][i]) <= 2)), `荧光笔全局叠色顺序或透明度不符：${JSON.stringify(overlaps)}`)
       }
       const strokes = gallery === 'stroke-styles' ? await evaluate("import('/tools/renderer-preview/stroke-probe.js').then(module => module.runStrokeProbe())") : undefined
-      samples.push({ gallery, initial, strokes, overlaps })
+      samples.push({ gallery, initial, strokes, overlaps, cameraGeometry })
       window.destroy(); window = undefined
     }
     check(errors.length === 0 && blocked.length === 0, `浏览器错误：${errors.join('; ')}；外部请求：${blocked.join('; ')}`)

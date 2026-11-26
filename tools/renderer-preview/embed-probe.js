@@ -40,7 +40,14 @@ export async function runEmbedProbe() {
     check(!external.querySelector('iframe') && external.querySelector('[data-bookmark-url]')?.textContent === 'example.invalid', '未知外部嵌入应退回书签并保留网址')
     check(!bookmark.querySelector('iframe') && bookmark.textContent.includes('合成书签'), '书签没有复用资源元数据')
     await until(() => host.querySelector('[data-shape-id="shape:embed-error"]').textContent.includes('HTML 内容为空'))
-    for (const status of ['queued', 'running', 'failed', 'interrupted', 'pending', 'working', 'waiting', 'saved']) check(host.querySelector(`[data-generation-status="${status}"]`), `生成状态缺失：${status}`)
+    for (const status of ['queued', 'running', 'failed', 'interrupted', 'pending', 'working', 'waiting', 'saved']) {
+      const overlay = host.querySelector(`[data-generation-status="${status}"]`)
+      check(overlay, `生成状态缺失：${status}`)
+      const frame = overlay.closest('[data-shape-id]'), body = frame.querySelector(':scope > svg')
+      const overlayBox = overlay.getBoundingClientRect(), bodyBox = body.getBoundingClientRect()
+      check(bodyBox.width > 0 && bodyBox.height > 0 && overlayBox.width >= bodyBox.width && overlayBox.height >= bodyBox.height, `生成状态没有铺满画框：${status}`)
+      check(Math.abs(overlayBox.left - bodyBox.left) < .01 && Math.abs(overlayBox.top - bodyBox.top) < .01, `生成状态偏离画框：${status}`)
+    }
     check(host.querySelector('[data-generation-status="failed"]').textContent.includes('合成错误'), '生成失败详情未展示')
     reads.clear()
     renderer.setCamera({ x: -20000, y: -20000, z: .2 }); await settle()
@@ -86,6 +93,6 @@ export async function runEmbedProbe() {
     renderer.unmount(); await settle()
     check(pending.signal.aborted && listeners.size === 0 && host.children.length === 0, '卸载没有取消加载或释放订阅及 DOM')
     reads.clear(); raw.put([{ ...first, x: 200 }]); await settle(); check(reads.size === 0, '卸载后仍读取记录')
-    return { htmlKinds: 3, inheritedSandbox: true, knownSameOriginRisk: true, placeholders: true, generationStates: 8, cameraAndOffscreenKeepInstance: true, singleRecordUpdate: true, geometryAndHit: true, contentRevision: true, staleRequestIgnored: true, abortAndUnmount: true }
+    return { htmlKinds: 3, inheritedSandbox: true, knownSameOriginRisk: true, placeholders: true, generationStates: 8, generationStateBounds: 8, cameraAndOffscreenKeepInstance: true, singleRecordUpdate: true, geometryAndHit: true, contentRevision: true, staleRequestIgnored: true, abortAndUnmount: true }
   } finally { if (originalFetch) window.fetch = originalFetch; renderer.unmount(); host.remove() }
 }
