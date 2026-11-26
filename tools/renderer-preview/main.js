@@ -2,7 +2,7 @@ import './style.css'
 import { handleCornerHitSize, handleEdgeHitSize, handleRotationOffset, handleRotationRadius } from '../../src/styles/tokens.js'
 import { react } from '@tldraw/state'
 import { createEditorSession, createCanvasInteraction } from '../../engine/index.js'
-import { mountCanvasRenderer, prepareCanvasFonts } from '../../renderer/index.js'
+import { mountCanvasRenderer, prepareCanvasFonts, loadGeneratedFrame } from '../../renderer/index.js'
 import { createGallery } from './gallery.js'
 import { createConnectionGallery } from './arrow-gallery.js'
 import { createStrokeGallery, addStrokeLoad } from './stroke-fixtures.js'
@@ -57,7 +57,7 @@ try {
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
   interaction = createCanvasInteraction({ session, camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
-  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId })
+  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame })
   disposers.push(() => renderer.unmount())
   const instructions = `${metadata.count} 个合成元素 · 点选／Shift 加减选 · 空白拖框 · 拖动移动 · 角点／边线缩放 · 角外旋转 · Shift 等比／15° · Alt 中心缩放 · H 手形／空格平移 · Z 缩放 · ⇧0/1/2 · ⌘/Ctrl Z 撤销 · Esc 取消${metadata.persistent ? ' · 松手保存' : ' · 临时预览，刷新还原'}`
   const showError = error => { status.textContent = `操作失败：${error.message}` }

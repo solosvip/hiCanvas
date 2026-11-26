@@ -4,6 +4,7 @@ import { access, mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promise
 import { constants } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { runContentHostSmoke } from './content-host-smoke.mjs'
 import { startRendererPreview } from './renderer-preview.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -17,6 +18,7 @@ await mkdir(output, { recursive: true })
 const runtime = await mkdtemp(join(output, 'runtime-'))
 let preview
 try {
+  await runContentHostSmoke()
   preview = await startRendererPreview()
   const manifest = join(runtime, 'manifest.json')
   await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(runtime, 'profile'), output, result: join(output, 'result.json') }))

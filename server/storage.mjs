@@ -1,3 +1,4 @@
+import { sandboxActiveAsset } from './content-assets.mjs'
 import { isCanvasSnapshot, sanitizeCanvasSnapshot } from '../model/index.js'
 // Cowart 38bdafef 的本地存储实现；MIT，© 2026 Twox。
 import { randomUUID } from 'node:crypto'
@@ -346,6 +347,7 @@ async function serveCanvasAsset(req, res, next) {
     }
     res.statusCode = 200
     res.setHeader('content-type', mimeTypes.get(extname(filePath).toLowerCase()) ?? 'application/octet-stream')
+    sandboxActiveAsset(res, mimeTypes.get(extname(filePath).toLowerCase()) ?? 'application/octet-stream')
     res.setHeader('content-length', String(fileStat.size))
     res.setHeader('cache-control', 'no-cache')
     createReadStream(filePath).pipe(res)

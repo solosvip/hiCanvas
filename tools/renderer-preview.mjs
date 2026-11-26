@@ -34,6 +34,7 @@ export async function startRendererPreview({ port = 0 } = {}) {
         } catch { response.writeHead(400); response.end() }
         return
       }
+      if (url.pathname === '/api/health' && request.method === 'GET') { response.setHeader('content-type','application/json'); response.end(JSON.stringify({contentHost:{enabled:false}})); return }
       if (url.pathname === '/') request.url = `/tools/renderer-preview/index.html${url.search}`
       if (url.pathname !== '/__renderer_fixture') return next()
       if (request.method !== 'GET') { response.writeHead(405); response.end(); return }

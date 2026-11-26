@@ -11,12 +11,14 @@ import { CanvasEditError } from '../engine/index.js'
 import { createCanvasMedia } from './canvas-media.mjs'
 import { createAgentRequests } from './agent-requests.mjs'
 import { saveExport } from './exports.mjs'
+import { createContentRoutes } from './content-routes.mjs'
 
-export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir } = {}) {
+export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir, contentHostEnabled } = {}) {
   const events = getCanvasEvents(workspace)
   const media = createCanvasMedia(workspace)
   const requests = createAgentRequests(workspace, agentOptions)
-  return async (req, res, next) => {
+  const content = createContentRoutes(workspace, contentHostEnabled)
+  const middleware = async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost')
     const path = url.pathname
     const actor = req.headers['x-hicanvas-actor'] || 'http'
@@ -24,7 +26,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
     if (path.startsWith('/api/image')) return next()
     try {
       requireLocalRead(req)
-      if (path === '/api/health' && req.method === 'GET') return sendJson(res, 200, { name: 'hiCanvas', protocol: 2, canvasMode: 'single', workspace: createHash('sha256').update(workspace.root).digest('hex'), settingsWorkspace: workspaceIdentity(settingsDir || imageSettingsDirectory()) })
+      if (path === '/api/health' && req.method === 'GET') return sendJson(res, 200, { name: 'hiCanvas', protocol: 2, canvasMode: 'single', workspace: createHash('sha256').update(workspace.root).digest('hex'), settingsWorkspace: workspaceIdentity(settingsDir || imageSettingsDirectory()), contentHost: await content.info() })
       const scopedAsset = path.match(/^\/c\/([^/]+)\/(assets|page-assets)\//)
       if (scopedAsset || /^\/(?:page-assets|assets)\//.test(path)) {
         if (req.method !== 'GET' && req.method !== 'HEAD') throw httpError('方法不支持。', 405)
@@ -41,6 +43,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
         return events.subscribe(id, req, res)
       }
       requireLocalRequest(req)
+      if (path === '/api/content-host/instances') return await content.handle(req, res)
       if (path === '/api/conversations' && req.method === 'GET') return sendJson(res, 200, { conversations: await workspace.list() })
       if (path === '/api/conversations/open' && req.method === 'POST') {
         const conversation = await workspace.open(await jsonBody(req))
@@ -112,9 +115,15 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       sendJson(res, status || 500, { error: status ? error.message : '本机资料无法完整读取或保存；已保留原文件，请检查资料目录。', storage: error.storage, revision: error.revision })
     }
   }
+  middleware.close = content.close
+  return middleware
 }
 
 export function canvasStoragePlugin(options = {}) {
-  const configure = server => { server.middlewares.use(createCanvasMiddleware(options)) }
+  const configure = server => {
+    const middleware = createCanvasMiddleware(options)
+    server.middlewares.use(middleware)
+    server.httpServer?.once('close', () => middleware.close())
+  }
   return { name: 'hicanvas-storage', configureServer: configure, configurePreviewServer: configure }
 }

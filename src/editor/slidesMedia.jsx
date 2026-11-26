@@ -1,3 +1,4 @@
+import { loadGeneratedFrame } from '../../renderer/index.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { useEditor } from "tldraw"
 import { useEffect, useRef, useState } from "react"
@@ -41,6 +42,8 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
   const [error, setError] = useState(null)
   useEffect(() => {
     let disposed = false
+    let frame
+    const controller = new AbortController()
     setSource(null)
     setError(null)
     async function loadSource() {
@@ -85,14 +88,24 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
       throw new Error('不支持的 Slides 页面类型')
     }
     loadSource()
-      .then((nextSource) => {
-        if (!disposed) setSource(nextSource)
+      .then(async (nextSource) => {
+        if (disposed) return
+        if (nextSource.kind === 'html' || nextSource.kind === 'html-url') {
+          frame = await loadGeneratedFrame(nextSource.htmlContent, {
+            sourceUrl: cowartHtmlDraftAssetUrlFromVirtualUrl(shape.meta?.cowartHtmlDraftAssetUrl) || cowartHtmlDraftAssetUrlFromVirtualUrl(shape.props.url) || undefined,
+            directUrl: nextSource.kind === 'html-url' ? nextSource.url : undefined, signal: controller.signal
+          })
+          if (disposed) { frame.dispose(); return }
+        }
+        setSource({ ...nextSource, frame })
       })
       .catch((nextError) => {
         if (!disposed) setError(nextError instanceof Error ? nextError.message : '页面加载失败')
       })
     return () => {
       disposed = true
+      controller.abort()
+      frame?.dispose()
     }
   }, [editor, shape.id, shape.props?.assetId, shape.props?.url, shape.meta?.cowartHtmlDraftAssetUrl, shape.meta?.cowartHtmlDraftContentHash])
   useEffect(
@@ -138,8 +151,7 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
         frameBorder="0"
         onLoad={handleHtmlFrameLoad}
         sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
-        src={source.kind === 'html-url' ? source.url : undefined}
-        srcDoc={source.kind === 'html' ? source.htmlContent : undefined}
+        {...source.frame?.attributes}
         tabIndex={-1}
         title={title}
       />

@@ -36,6 +36,16 @@ npm start
 export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
 ```
 
+## 生成网页的隔离开关（迁移阶段）
+
+`HICANVAS_CONTENT_HOST=1 npm start`（开发时改用 `npm run dev`）启用独立内容来源，默认关闭。开启后，网页、影片和 HTML 幻灯片的加载入口把每次挂载登记为一个随机 `*.localhost` 主机；内容宿主只监听 loopback，端口由系统分配，经 `/api/health` 启动信息提供，不写进画板、HTML 或 `connection.json`。保存的 URL 与文档不变。关闭时仍沿用原 srcdoc／data URL；父来源的 HTML、SVG 资源直接打开始终带响应级沙箱。
+
+这是 #112 的加载阶段。影片控制、截图、影片导出、就地编辑和离线 Play.html 还要按 #113–#118 迁移；开启本开关不能视为这些能力已可用，日常使用保持默认关闭。架构与取舍见 [ADR0012](docs/adr/0012-isolated-generated-content.md)。第三方公网脚本允许运行；字体、ESM 与媒体仍遵守资源方 CORS。
+
+内容服务只接受已登记的精确主机名，按当前画板文档中的静态 HTML／CSS 引用发布资源快照，不暴露画板、生图、MCP、任意路径或请求转发。CSS 引用继续展开；动态拼接的本地请求和未列出的资源返回拒绝或未找到，不回退到整个资源目录。HTML 上限 5 MiB，单素材 20 MiB，每份文档最多 128 个素材、总计 32 MiB；宿主最多 64 个实例、128 MiB，并限制同时准备的登记。租约 30 分钟，挂载期间自动续期，卸载即时撤销；异常断连最多保留到租约到期。
+
+`npm test` 包含宿主、资源授权及卸载回归。`npm run renderer:smoke` 先执行真实 Electron 浏览器安全门禁，再运行渲染回归；也可只运行 `node tools/content-host-smoke.mjs`。它使用 `.scratch/` 合成资料和独立后台窗口，关闭／开启各跑一次，检查网页、影片、幻灯片脚本、父窗口／存储／兄弟访问、document.domain、第三来源脚本，以及真实写接口的服务端拒绝计数。证据在 `.scratch/content-host-smoke/`。复用已安装的项目 Electron，不下载浏览器；云端普通 `npm run check` 不自动运行此浏览器门禁。
+
 ## 画板保存在哪里
 
 默认在 `~/Documents/hiCanvas/canvas/`。画板索引在 `conversations/index.json`，各画板的 `state.json` 一起保存画板文档与版本；图片、选择项、视角也归各自画板。保存锁由 Node 24 内置 SQLite 管理，进程异常退出后自动释放，不需安装数据库；画板内容仍保存在 JSON。备份时复制整个 `canvas/` 文件夹。
@@ -206,7 +216,7 @@ npm run renderer:smoke
 
 规则与取舍见 [ADR 0011](docs/adr/0011-text-layout-computed-by-canvas.md)：fontkit 3.0.0、linebreak 2.0.0、unicode-segmenter 0.17.3（Unicode17）均精确锁定；许可证及 Brotli 的 Apache 声明在 `licenses/text-layout-dependencies.txt`。固定 fontkit 与字体的可变字距适配只在 `renderer/text-variable-metrics.js`，升级时须重跑100项独立DOM参考宽度及两端排版回归。字体构建回归验证13份独立WOFF2及散列，桌面服务包同时携带同样原始字节；正式新界面安装包的最终验收仍在入口切换阶段。
 
-渲染挂载入口 `renderer/index.js` 导出 `mountCanvasRenderer(element, { store, camera?, pageId? })`，返回 `setCamera({ x, y, z })`、`getCamera()`、`hitTest({ x, y })`、`unmount()`。传入 `model/` 创建的 Store；调用方管理输入，相机满足 `屏幕坐标 = (画布坐标 + 相机平移) × 缩放`，查询坐标相对于挂载元素左上角，返回顶层形状 ID 或 `null`。挂载和相机变化不修改 Store，卸载释放订阅且不销毁调用方的 Store。支持 20 种几何形状、六种填充、实线／虚线／圆点线、四档线宽与透明度，以及纯文本、图片和带裁剪子形状的框。手绘线型按稳定形状身份生成变宽、圆角和轻微抖动的笔触，填充沿同一边界闭合；几何形状暂不画文字标签。浅色画板配色集中在 `renderer/palette.js`，颜色名取当前 MIT tlschema，数值对照隔离运行的旧版合成画面取色；图案为独立 SVG 实现。正文、箭头标签和便签共用确定的字宽与换行，支持粗体和斜体；便签保留200px纸宽、16px内边距、四档字号、横纵对齐、随文字增高及署名。其余富文本格式和几何形状内文字标签仍待接入。
+渲染挂载入口 `renderer/index.js` 导出 `mountCanvasRenderer(element, { store, camera?, pageId? })`，返回 `setCamera({ x, y, z })`、`getCamera()`、`hitTest({ x, y })`、`unmount()`。可选 `loadGeneratedFrame(html, options)` 由宿主提供生成内容加载能力，返回 `{ attributes, dispose }`；不传时纯内联 HTML 仍用 srcdoc，不探测本机接口。hiCanvas 的公开同名适配器读取启动信息并按开关登记内容实例。传入 `model/` 创建的 Store；调用方管理输入，相机满足 `屏幕坐标 = (画布坐标 + 相机平移) × 缩放`，查询坐标相对于挂载元素左上角，返回顶层形状 ID 或 `null`。挂载和相机变化不修改 Store，卸载释放订阅且不销毁调用方的 Store。支持 20 种几何形状、六种填充、实线／虚线／圆点线、四档线宽与透明度，以及纯文本、图片和带裁剪子形状的框。手绘线型按稳定形状身份生成变宽、圆角和轻微抖动的笔触，填充沿同一边界闭合；几何形状暂不画文字标签。浅色画板配色集中在 `renderer/palette.js`，颜色名取当前 MIT tlschema，数值对照隔离运行的旧版合成画面取色；图案为独立 SVG 实现。正文、箭头标签和便签共用确定的字宽与换行，支持粗体和斜体；便签保留200px纸宽、16px内边距、四档字号、横纵对齐、随文字增高及署名。其余富文本格式和几何形状内文字标签仍待接入。
 
 无界面几何入口 `renderer/geometry.js` 可直接在 Node 使用，不依赖 React 或 DOM：`getShapeContour(shape)` 返回共享闭合轮廓及叉勾装饰线，`getShapeBounds(shape)` 返回局部外框，`getShapePageBounds(snapshot, id)` 返回考虑父子旋转后的画布外框；`shapeToPagePoint`／`pageToShapePoint` 互换局部与画布坐标，`canvasToScreen`／`screenToCanvas` 互换画布与屏幕坐标，`pointInShape` 判断局部点，`hitTestCanvas(snapshot, point, camera?, pageId?)` 查询顶层记录。几何绘制与命中共用轮廓，无填充形状只命中边线和叉勾装饰线；曲线用多边形近似，椭圆／胶囊弦高误差不大于 `max(0.1, 长边/8192)` 画布单位，云形／心形各取 256 点。点中查询尚未接空间索引；文字外框与画面共用纯排版模块；未准备字体时须先执行上述宿主准备步骤。`npm test` 包含几何、边界和合成接口回归；`renderer:smoke` 需已安装的项目 Electron（可用 `HICANVAS_TEST_ELECTRON` 指向已有可执行文件，不会下载运行时），使用自动隔离环境在后台离屏打开三档画板，检查全量图片解码、真实滚轮输入、单记录订阅及卸载，并验证 20 种共享轮廓、六种填充和记录样式更新，结果与三档画板、两张图鉴截图保存到 `.scratch/renderer-smoke/`。截图供检查，不代表人工视觉验收，也不是性能比较报告。
 

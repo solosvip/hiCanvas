@@ -9,7 +9,7 @@ import { CanvasOverlays, checkedOverlays } from './overlays.js'
 
 // The caller owns the Store and input events. Coordinates are CSS pixels
 // relative to element's upper-left corner. This mount never writes to the Store.
-export function mountCanvasRenderer(element, { store, camera, pageId } = {}) {
+export function mountCanvasRenderer(element, { store, camera, pageId, loadGeneratedFrame } = {}) {
   if (!element?.ownerDocument || !store?.getStoreSnapshot) throw new Error('渲染器需要页面元素和模型 Store。')
   const view = atom('renderer camera', checkedCamera(camera)), overlays = atom('renderer overlays', checkedOverlays([]))
   const host = element.ownerDocument.createElement('div')
@@ -17,6 +17,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId } = {}) {
   host.dataset.canvasRenderer = ''
   element.append(host)
   const scene = createScene(store, pageId), root = createRoot(host)
+  scene.loadGeneratedFrame = loadGeneratedFrame
   let active = true
   const unmount = () => {
     if (!active) return
