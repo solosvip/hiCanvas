@@ -4,6 +4,7 @@ import { createScribble } from './scribble.js'
 import { createHandleGesture } from './handle-gesture.js'
 import { hitSelectionHandle, selectionHandleCursor } from './selection-handles.js'
 import { connectionCoordinates } from './connection-coordinates.js'
+import { matchesCanvasShortcut } from './shortcuts.js'
 
 // Screen CSS pixels, independent of zoom. 2026-11-25 对照运行中的旧版逐帧观察。
 const threshold = 4
@@ -19,7 +20,8 @@ export function createSelectionTool(context) {
     if (!gesture) return
     const previous = gesture; gesture = null
     if (session.state.get().isGestureActive && !session.state.get().isSubmitting) session.cancelGesture()
-    change({ mode: 'idle', marquee: null, scribble: null, needsFrame: false, ...(['marquee', 'scribble'].includes(previous.kind) && { selectedIds: previous.before, focusedGroupId: previous.scope }) })
+    if (previous.cloned) previous.restoreDuplicate()
+    change({ mode: 'idle', marquee: null, scribble: null, needsFrame: false, ...(previous.cloned && { selectedIds: previous.selectedIds }), ...(['marquee', 'scribble'].includes(previous.kind) && { selectedIds: previous.before, focusedGroupId: previous.scope }) })
   }
   function captureRecords(starts) {
     const expected = new Map()
@@ -46,6 +48,8 @@ export function createSelectionTool(context) {
       return targets.isSelectable(id)
     }).map(id => { const r = index.getRecord(id); return { id, x: r.x, y: r.y, page: connectionCoordinates(index, id).page({ x: 0, y: 0 }) } })
     gesture.expected = captureRecords(gesture.starts)
+    gesture.selectedIds = [...selectedIds]
+    gesture.restoreDuplicate = context.duplicates.checkpoint()
   }
   function move(input) {
     const state = read(), point = screenToCanvas(input.point, state.camera)
@@ -78,12 +82,31 @@ export function createSelectionTool(context) {
     if (input.shiftKey) delta[Math.abs(delta.x) > Math.abs(delta.y) ? 'y' : 'x'] = 0
     delta = context.noteSnapping.preview(gesture.starts, delta)
     gesture.lastInput = input
-    const commands = gesture.starts.map(start => {
-      const local = index.parentDelta(start.id, delta)
+    // 2026-11-26 isolated legacy native drag: (50,30), Alt down restores the
+    // originals and selects copies at that delta; release returns to moving
+    // originals. Retoggling allocates new IDs, Escape removes all previews,
+    // one undo reverses the whole gesture. Alt-copy (70,40) seeds Mod+D too.
+    const updates = (starts, offset) => starts.map(start => {
+      const local = index.parentDelta(start.id, offset)
       return { type: 'update', id: start.id, changes: { x: start.x + local.x, y: start.y + local.y } }
     })
-    if (commands.length) session.preview(commands)
-    gesture.expected = captureRecords(gesture.starts)
+    if (input.altKey && !gesture.copy) {
+      const preview = session.preview([...updates(gesture.starts, { x: 0, y: 0 }), { type: 'duplicate_shapes', ids: gesture.selectedIds, offset: delta }])
+      const idMap = preview.results.at(-1).idMap
+      gesture.copy = { idMap, starts: gesture.starts.map(start => ({ ...start, id: idMap[start.id] })) }
+      gesture.cloned = true
+      change({ selectedIds: gesture.selectedIds.map(id => idMap[id]) })
+    } else if (!input.altKey && gesture.copy) {
+      session.preview([{ type: 'delete', ids: gesture.copy.starts.map(r => r.id) }, ...updates(gesture.starts, delta)])
+      gesture.copy = null
+      gesture.restoreDuplicate()
+      change({ selectedIds: gesture.selectedIds })
+    } else {
+      const commands = updates(gesture.copy?.starts || gesture.starts, delta)
+      if (commands.length) session.preview(commands)
+    }
+    gesture.delta = delta
+    gesture.expected = captureRecords([...gesture.starts, ...(gesture.copy?.starts || [])])
     change({ mode: 'dragging' })
   }
   function up(input) {
@@ -98,7 +121,10 @@ export function createSelectionTool(context) {
       else if (previous.toggle) change({ selectedIds: read().selectedIds.filter(id => id !== previous.hit) })
     }
     change({ mode: 'idle', marquee: null, scribble: null, needsFrame: false, ...(previous.kind === 'pointing' && !previous.hit && { focusedGroupId: targets.pageId }) })
-    if (previous.kind === 'dragging' && session.state.get().isGestureActive) return session.commitGesture().catch(error => { report(error); throw error })
+    if (previous.kind === 'dragging' && session.state.get().isGestureActive) return session.commitGesture().then(reply => {
+      if (previous.copy) context.duplicates.remember(previous.selectedIds, previous.copy.idMap, previous.delta)
+      return reply
+    }).catch(error => { if (previous.cloned) { previous.restoreDuplicate(); change({ selectedIds: previous.selectedIds }) }; report(error); throw error })
     if (session.state.get().isGestureActive) session.cancelGesture()
     if (previous.kind === 'pointing' && previous.hit && input.clickCount === 2 && index.getRecord(previous.hit)?.type === 'group') {
       context.select('enter')
@@ -108,7 +134,7 @@ export function createSelectionTool(context) {
   }
   return { cancel, get needsFrame() { return Boolean(gesture?.stroke?.needsFrame) }, frame(time) { if (gesture?.stroke) { const scribble = gesture.stroke.age(time); change({ scribble, needsFrame: gesture.stroke.needsFrame }) } }, dispatch(input) {
     if (handles.active) return handles.dispatch(input)
-    if (gesture?.lastInput && ['key_down', 'key_up'].includes(input.type) && ['Control', 'Shift'].includes(input.key)) return move({ ...gesture.lastInput, ...input, type: 'pointer_move', point: gesture.lastInput.point, pointerId: gesture.pointerId })
+    if (gesture?.lastInput && matchesCanvasShortcut('selection-modifiers', input)) return move({ ...gesture.lastInput, ...input, type: 'pointer_move', point: gesture.lastInput.point, pointerId: gesture.pointerId })
     if (input.type === 'pointer_down') return down(input)
     if (input.type === 'pointer_move') return move(input)
     if (input.type === 'pointer_up') return up(input)

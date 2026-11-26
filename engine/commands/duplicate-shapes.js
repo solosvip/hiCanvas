@@ -1,5 +1,6 @@
 import { getIndicesAbove, sortByIndex } from '@tldraw/utils'
 import { CanvasEditError } from '../errors.js'
+import { createConnectionContext, getConnectionGeometry } from '../../renderer/geometry.js'
 
 const DEFAULT_DUPLICATE_OFFSET = 16
 
@@ -32,6 +33,17 @@ export function duplicateShapes(store, { ids, offset = { x: DEFAULT_DUPLICATE_OF
     if (!included.has(child.id)) { included.add(child.id); originals.push(child) }
   }
   const bindings = records.filter(record => record.typeName === 'binding' && included.has(record.fromId) && included.has(record.toId))
+  const detached = records.filter(record => record.typeName === 'binding' && record.type === 'arrow' && included.has(record.fromId) && !included.has(record.toId))
+  const geometry = detached.length && createConnectionContext(records), props = new Map()
+  for (const binding of detached) {
+    const arrow = store.get(binding.fromId)
+    if (arrow?.type !== 'arrow') continue
+    // 2026-11-26 native legacy Mod+D on a bound arrow: copy drops external
+    // bindings but freezes visible tips (250 stored → 236.5 visible), also
+    // when only the other endpoint's target is copied. Internal links remap.
+    const path = getConnectionGeometry({ ...arrow, props: { ...arrow.props, richText: { type: 'doc', content: [{ type: 'paragraph' }] } } }, geometry).path
+    props.set(arrow.id, { ...(props.get(arrow.id) || arrow.props), [binding.props.terminal]: path.at(binding.props.terminal === 'start' ? 0 : 1) })
+  }
   const idMap = Object.fromEntries([...originals, ...bindings].map(record => [record.id, `${record.typeName}:${globalThis.crypto.randomUUID()}`]))
   const rootPositions = new Map()
   for (const parentId of new Set(roots.map(record => record.parentId))) {
@@ -48,9 +60,9 @@ export function duplicateShapes(store, { ids, offset = { x: DEFAULT_DUPLICATE_OF
     // 幻灯片布局器按此归属接回子页；框一起复制时必须改指新框。
     const slidesParentId = idMap[record.meta?.cowartAiSlidesParentShapeId]
     const meta = slidesParentId ? { ...record.meta, cowartAiSlidesParentShapeId: slidesParentId } : record.meta
-    store.put([{ ...record, id: idMap[record.id], parentId: idMap[record.parentId] || record.parentId, meta, ...rootPositions.get(record.id) }])
+    store.put([{ ...record, id: idMap[record.id], parentId: idMap[record.parentId] || record.parentId, meta, ...(props.has(record.id) && { props: props.get(record.id) }), ...rootPositions.get(record.id) }])
   }
-  // 外部绑定不复制；箭头 props 中存储的端点坐标原样保留。
+  // Only bindings wholly inside the copied tree are retained.
   for (const record of bindings) store.put([{ ...record, id: idMap[record.id], fromId: idMap[record.fromId], toId: idMap[record.toId] }])
   return { idMap }
 }

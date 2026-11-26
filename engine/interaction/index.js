@@ -9,6 +9,7 @@ import { createSelectionTargets } from './targets.js'
 import { createSelectionNavigation } from './selection-navigation.js'
 import { createSelectionShortcuts } from './selection-shortcuts.js'
 import { createSelectionActions } from './selection-actions.js'
+import { createDuplicateMemory } from './duplicate-memory.js'
 import { createHandTool } from './camera-pan.js'
 import { createCameraContent } from './camera-content.js'
 import { createCameraNavigation } from './camera-navigation.js'
@@ -55,6 +56,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   let countClicks = createClickCounter()
   const initial = session.store.allRecords(), activePage = pageId || initial.find(r => r.typeName === 'page')?.id
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage, initial)
+  const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
   let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, noteSnapping, selectionKeys, actions, lastTime = -Infinity
@@ -64,6 +66,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const previous = read(), next = { ...previous, ...patch }
     next.focusedGroupId = targets.validScope(next.focusedGroupId)
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))
+    duplicates.selectionChanged(next.selectedIds)
     if (JSON.stringify(next.selectedIds) !== JSON.stringify(previous.selectedIds) && !Object.hasOwn(patch, 'selectionRotation')) next.selectionRotation = null
     if (next.hoveredId && !targets.isSelectable(next.hoveredId)) next.hoveredId = null
     next.camera = Object.freeze(checkedCamera(next.camera))
@@ -98,7 +101,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     creation.toolChanged(id)
     return tool
   }
-  const context = { session, index, targets, selection, handleMetrics: metrics, controlPointSnapping, displayName, read, change, report, measureFrameTitle, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
+  const context = { session, index, targets, selection, duplicates, handleMetrics: metrics, controlPointSnapping, displayName, read, change, report, measureFrameTitle, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
   noteSnapping = createNoteSnapping(context); context.noteSnapping = noteSnapping
   const creation = createCreationControls({ read, change, switchTool: setTool, canUseTool: id => toolIds.includes(id) })
   context.creation = creation
@@ -138,7 +141,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     // History rejection must preserve the active editing gesture. Runtime
     // owns busy/conflict checks; never route its rejection through tool.cancel.
     if (matchesCanvasShortcut('history', input)) {
-      return session[input.shiftKey ? 'redo' : 'undo']().then(result => { change({ lastError: null }); return result }).catch(error => { report(error); throw error })
+      const selected = [...read().selectedIds]
+      return session[input.shiftKey ? 'redo' : 'undo']().then(result => { const ids = duplicates.followHistory(result.changes, selected); change({ lastError: null, ...(ids && { selectedIds: ids }) }); return result }).catch(error => { report(error); throw error })
     }
     if (session.state.get().isSubmitting) return
     // Count only input that reaches the canvas: a rejected click must not

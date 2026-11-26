@@ -7,11 +7,11 @@ const unavailable = reason => ({ status: 'unavailable', reason })
 
 // The only action-to-runtime adapter. Menus and keyboard use the same planner
 // and preview/commit path; held arrow keys merely extend this same transaction.
-export function createSelectionActions({ session, targets, selection, read, change, report, pageId }) {
+export function createSelectionActions({ session, targets, selection, duplicates, read, change, report, pageId }) {
   let held = null, disposed = false
   function context() {
     const state = read()
-    return { records: targets.records, pageId, selectedIds: state.selectedIds, frame: selection.get(state.selectedIds, state.selectionRotation), canRotate: selection.canRotate(state.selectedIds), canScale: selection.capability(state.selectedIds, { mode: 'scale_shape' }).canScale }
+    return { records: targets.records, pageId, selectedIds: state.selectedIds, duplicateOffset: duplicates.offset(state.selectedIds), frame: selection.get(state.selectedIds, state.selectionRotation), canRotate: selection.canRotate(state.selectedIds), canScale: selection.capability(state.selectedIds, { mode: 'scale_shape' }).canScale }
   }
   function reason(allowHeld = false) {
     if (disposed) return 'disposed'
@@ -30,7 +30,7 @@ export function createSelectionActions({ session, targets, selection, read, chan
   function finish(plan, preview, previous) {
     if (!changed(preview.changes)) { session.cancelGesture(); return { status: 'unchanged' } }
     return session.commitGesture().then(reply => {
-      const ids = plan.selectGroupResult ? [preview.results[0]?.groupId].filter(Boolean) : plan.selectedIds
+      const ids = plan.selectDuplicateResult ? duplicates.remember(plan.selectedIds, preview.results[0].idMap, plan.duplicateOffset) : plan.selectGroupResult ? [preview.results[0]?.groupId].filter(Boolean) : plan.selectedIds
       if (!disposed) change({ selectedIds: ids, ...(plan.resetRotation && { selectionRotation: null }), lastError: null })
       return { status: 'applied', reply }
     }).catch(error => { if (!disposed) { change({ selectedIds: previous }); report(error) }; throw error })

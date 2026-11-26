@@ -4,6 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createCanvasSnapshot } from '../model/index.js'
 import { executeCanvasCommands, CanvasEditError, recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction } from '../engine/index.js'
+import { createConnectionContext, getConnectionGeometry } from '../renderer/geometry.js'
 
 const shape = (name, fields = {}) => ({ type: 'create_shape', id: `shape:${name}`, shapeType: 'geo', ...fields })
 function initial(commands) { return executeCanvasCommands(createCanvasSnapshot(), commands).snapshot }
@@ -47,7 +48,8 @@ test('嵌套框及子孙只复制一次，内部绑定指向副本，外部绑�
   assert.deepEqual([records[map['shape:outer']].x, records[map['shape:outer']].y], [160, 270])
   for (const name of ['inner', 'image', 'arrow']) {
     const old = snapshot.store[`shape:${name}`], copied = records[map[old.id]]
-    assert.deepEqual(copied, { ...old, id: map[old.id], parentId: map[old.parentId] })
+    const props = name === 'arrow' ? { ...old.props, start: getConnectionGeometry(old, createConnectionContext(snapshot)).path.at(0) } : old.props
+    assert.deepEqual(copied, { ...old, id: map[old.id], parentId: map[old.parentId], props })
   }
   const copiedBinding = records[map['binding:internal']]
   assert.match(copiedBinding.id, /^binding:[a-f0-9-]{36}$/)
@@ -55,6 +57,23 @@ test('嵌套框及子孙只复制一次，内部绑定指向副本，外部绑�
   assert.deepEqual(Object.values(records).filter(record => record.typeName === 'asset'), [asset])
   assert.deepEqual(Object.keys(result.changes.added).sort(), Object.values(map).sort())
   for (const [id, record] of Object.entries(snapshot.store)) assert.deepEqual(records[id], record)
+})
+
+test('单独／部分复制绑定箭头冻结外部可见端点，内部绑定改指副本，原记录与一次撤销保持完整', () => {
+  const snapshot = initial([
+    shape('a', { x: 100, y: 200, props: { w: 100, h: 80 } }), shape('b', { x: 450, y: 200, props: { w: 100, h: 80 } }),
+    shape('arrow', { shapeType: 'arrow', x: 200, y: 240, props: { start: { x: 0, y: 0 }, end: { x: 250, y: 0 } } }),
+    ...['start', 'end'].map((terminal, i) => ({ type: 'put', record: { id: `binding:${terminal}`, typeName: 'binding', type: 'arrow', fromId: 'shape:arrow', toId: `shape:${i ? 'b' : 'a'}`, props: { terminal, normalizedAnchor: { x: .5, y: .5 }, isExact: false, isPrecise: true, snap: 'none' }, meta: {} } })),
+  ])
+  for (const ids of [['shape:arrow'], ['shape:a', 'shape:arrow'], ['shape:a', 'shape:b', 'shape:arrow']]) {
+    const result = executeCanvasCommands(snapshot, [{ type: 'duplicate_shapes', ids, offset: { x: 70, y: 40 } }]), map = result.results[0].idMap, copy = result.snapshot.store[map['shape:arrow']]
+    assert.deepEqual(copy.props.end, ids.includes('shape:b') ? { x: 250, y: 0 } : { x: 236.5, y: 0 })
+    const copiedBindings = Object.values(result.changes.added).filter(r => r.typeName === 'binding')
+    assert.equal(copiedBindings.length, ids.length - 1)
+    for (const r of copiedBindings) { assert.equal(r.fromId, copy.id); assert.ok(Object.values(map).includes(r.toId)) }
+    assert.deepEqual(undoCanvasTransaction(result.snapshot, recordCanvasTransaction(undefined, 'copy', result.changes), 'copy').snapshot, snapshot)
+    assert.deepEqual(snapshot.store['shape:arrow'].props.end, { x: 250, y: 0 })
+  }
 })
 
 function pose(records, id) {
