@@ -1,6 +1,7 @@
 import { canvasApiUrl, currentConversationId } from './conversations/client.js'
 import { canvasRequestError } from './conversations/canvasLifecycle.js'
 import { reportCowartStartup } from './widgetStartup.js'
+import { htmlContentIdentity } from './htmlEditMerge.js'
 
 const CANVAS_ENDPOINT = '/api/canvas'
 const SELECTION_ENDPOINT = '/api/selection'
@@ -325,16 +326,35 @@ export async function copyCowartImageToClipboard(image) {
   return callCowartServerTool(TOOL_COPY_IMAGE_TO_CLIPBOARD, image)
 }
 
-export async function updateCowartHtmlDraft({ draftShapeId, htmlContent }, { applyResult } = {}) {
+export async function updateCowartHtmlDraft({ draftShapeId, htmlContent }, { applyResult, expectedContent, reconcile } = {}) {
 
   const target = canvasTargetKey()
   return queueCanvasWrite(async () => {
     if (canvasTargetKey() !== target) throw new Error('Cowart canvas target changed before saving the HTML draft.')
-    const baseline = appliedCanvasBaseline(target)
-    const args = { draftShapeId, htmlContent, updateExistingDraft: true, expectedRevision: baseline.revision }
-    const result = hasCowartWidgetBridge()
-      ? await callCowartServerTool(TOOL_INSERT_HTML_DRAFT, args)
-      : await fetchJson('/api/html-draft', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) })
+    let baseline = appliedCanvasBaseline(target),result
+    const write=async()=>{
+      if(expectedContent!==undefined&&await htmlContentIdentity(baseline.snapshot?.store?.[draftShapeId])!==expectedContent)throw Object.assign(new Error('网页内容已变化。'),{storage:'revision-conflict'})
+      if(canvasTargetKey()!==target)throw new Error('Cowart canvas target changed before saving the HTML draft.')
+      if(appliedCanvasState?.target!==target||appliedCanvasState.revision!==baseline.revision)throw Object.assign(new Error('画板版本已变化，网页草稿仍保留。'),{storage:'revision-conflict'})
+      const args={draftShapeId,htmlContent,updateExistingDraft:true,expectedRevision:baseline.revision}
+      return hasCowartWidgetBridge()?callCowartServerTool(TOOL_INSERT_HTML_DRAFT,args):fetchJson('/api/html-draft',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(args)})
+    }
+    try{result=await write()}catch(error){
+      if(!reconcile||error.storage!=='revision-conflict')throw error
+      // Read before merging; never retry by removing the revision precondition.
+      const readingRevision=appliedCanvasState?.revision
+      const latest=hasCowartWidgetBridge()?await callCowartServerTool(TOOL_GET_CANVAS_STATE,{hydrateAssets:false}):await fetchJson(CANVAS_ENDPOINT)
+      if(canvasTargetKey()!==target||!latest?.revision||!latest.snapshot)throw new Error('画板已切换或无法读取最新内容，网页草稿仍保留。')
+      if(appliedCanvasState?.revision!==readingRevision&&appliedCanvasState?.revision!==latest.revision)throw new Error('读取期间画板再次变化，网页草稿仍保留，请重试。')
+      const assertCurrent=()=>{
+        if(canvasTargetKey()!==target||appliedCanvasState?.revision!==readingRevision&&appliedCanvasState?.revision!==latest.revision)throw new Error('合并期间画板已变化，网页草稿仍保留，请重试。')
+      }
+      if(await reconcile(latest.snapshot,baseline.snapshot,assertCurrent)!==true)throw error
+      assertCurrent()
+      baseline=appliedCanvasState={target,revision:latest.revision,snapshot:latest.snapshot}
+      cachedCanvasState=null
+      result=await write() // one bounded retry; another conflict stays visible
+    }
     if (
       canvasTargetKey() !== target || appliedCanvasState?.target !== target ||
       appliedCanvasState.revision !== baseline.revision

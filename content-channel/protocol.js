@@ -1,18 +1,22 @@
 import {filmFrameSize,validFilmAudio,validPcm,validVideoSources,filmStageOrder,filmAudioStageOrder} from './film-export-protocol.js'
 import {captureSize,validPixels} from './capture-protocol.js'
+import {editRevision,validEditState,validEditSnapshot} from './edit-protocol.js'
 export const PROTOCOL_VERSION=1
 export const MAX_MESSAGE_BYTES=4096
 export const MAX_MESSAGES_PER_SECOND=60
 export const MAX_REPLY_MESSAGES_PER_SECOND=120
 export const MAX_PENDING_REQUESTS=32
 export const REQUEST_TIMEOUT=3000
-export const CHILD_ASSETS=Object.freeze(['bootstrap.js','child.js','protocol.js','film-controller.js','film-time.js','capture-protocol.js','capture.js','film-export-protocol.js','film-export.js'])
+export const CHILD_ASSETS=Object.freeze(['bootstrap.js','child.js','protocol.js','film-controller.js','film-time.js','capture-protocol.js','capture.js','film-export-protocol.js','film-export.js','edit-protocol.js','edit.js'])
 
 const plain=value=>value!==null&&typeof value==='object'&&[Object.prototype,null].includes(Object.getPrototypeOf(value))
 const exact=(value,keys)=>plain(value)&&Object.keys(value).every(key=>keys.includes(key))
 const identifier=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,80}$/.test(value)
 const finite=value=>typeof value==='number'&&Number.isFinite(value)
 export function validCommand(command,value){
+  if(['edit-start','edit-snapshot'].includes(command))return value===undefined
+  if(command==='edit-stop')return value===undefined||value===false
+  if(command==='edit-ack')return editRevision(value)
   if(['play','pause'].includes(command))return value===undefined
   if(command==='seek')return finite(value)&&value>=0&&value<=86400
   if(command==='capture')return captureSize(value)!==null
@@ -32,12 +36,15 @@ export function validMessage(value,instance,generation){
   if(value.protocol!==PROTOCOL_VERSION||value.instance!==instance||!identifier(value.generation)||generation!==undefined&&value.generation!==generation)return false
   const base=['protocol','instance','generation','type']
   if(value.type==='ready')return exact(value,[...base,'legacy'])&&(value.legacy===undefined||typeof value.legacy==='boolean')
-  if(['close','pause','legacy-poll'].includes(value.type))return exact(value,base)
+  if(['close','pause','legacy-poll','edit-exit'].includes(value.type))return exact(value,base)
   if(value.type==='legacy-status')return exact(value,[...base,'value'])&&validLegacyStatus(value.value)
   if(value.type==='connect')return exact(value,[...base,'options'])&&exact(value.options,['duration','muted','film'])&&finite(value.options.duration)&&value.options.duration>0&&value.options.duration<=86400&&typeof value.options.muted==='boolean'&&typeof value.options.film==='boolean'
   if(value.type==='request')return exact(value,[...base,'id','command','value'])&&identifier(value.id)&&validCommand(value.command,value.value)
   if(['cancel','capture-end'].includes(value.type))return exact(value,[...base,'id'])&&identifier(value.id)
   if(value.type==='status')return exact(value,[...base,'value'])&&validStatus(value.value)
+  if(value.type==='edit-status')return exact(value,[...base,'value'])&&validEditState(value.value)
+  if(value.type==='edit-state-result')return exact(value,[...base,'id','value'])&&identifier(value.id)&&validEditState(value.value)
+  if(value.type==='edit-snapshot-result')return exact(value,[...base,'id','value'])&&identifier(value.id)&&validEditSnapshot(value.value,instance)
   if(value.type==='film-audio-result')return exact(value,[...base,'id','videoSources','value'])&&identifier(value.id)&&validVideoSources(value.videoSources)&&validPcm(value.value)
   if(value.type==='film-audio-stage')return exact(value,[...base,'id','stage'])&&identifier(value.id)&&filmAudioStageOrder(value.stage)>=0
   if(value.type==='film-stage')return exact(value,[...base,'id','frame','stage','media'])&&identifier(value.id)&&Number.isInteger(value.frame)&&value.frame>=0&&value.frame<3600&&filmStageOrder(value.media===undefined?{stage:value.stage}:{stage:value.stage,media:value.media},64)>=0

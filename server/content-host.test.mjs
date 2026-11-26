@@ -55,7 +55,7 @@ test('实例到期不可读取或复活，资源和总量受限，管理能力�
 })
 test('登记受实例数和宿主总字节限制，撤销后容量可复用',async t=>{
   const parentOrigin='http://127.0.0.1:43218'
-  const count=createContentHost({maxInstances:1}),bytes=createContentHost({maxTotalBytes:8})
+  const count=createContentHost({maxInstances:1}),bytes=createContentHost({maxTotalBytes:16})
   t.after(()=>count.close());t.after(()=>bytes.close())
   const one=await count.register({html:'one',parentOrigin})
   await assert.rejects(count.register({html:'two',parentOrigin}),e=>e.status===413)
@@ -63,6 +63,23 @@ test('登记受实例数和宿主总字节限制，撤销后容量可复用',asy
   assert.ok((await count.register({html:'two',parentOrigin})).url)
   await bytes.register({html:'12345',parentOrigin})
   await assert.rejects(bytes.register({html:'6789',parentOrigin}),e=>e.status===413)
+})
+
+test('编辑原文是每实例固定纯文本，保留资源原址且计入总内存',async t=>{
+  const parentOrigin='http://127.0.0.1:43218',html='<img src="http://cowart.local/assets/sample.png">'
+  const host=createContentHost({prepare:async text=>({path:'/document.html',files:new Map([['/document.html',{bytes:Buffer.from(text.replace('http://cowart.local','')),type:'text/html'}]])})})
+  t.after(()=>host.close())
+  const one=await host.register({html,parentOrigin}),two=await host.register({html:'two',parentOrigin})
+  const path='/.hicanvas-channel/'+one.id+'/edit-source.txt'
+  const original=await request(new URL(path,one.url))
+  assert.equal(original.text,html)
+  assert.match(original.headers['content-type'],/^text\/plain/)
+  assert.equal(original.headers['x-content-type-options'],'nosniff')
+  assert.equal((await request(new URL(path,two.url))).status,404)
+  const limited=createContentHost({maxTotalBytes:9});t.after(()=>limited.close())
+  await assert.rejects(limited.register({html:'12345',parentOrigin}),e=>e.status===413)
+  host.revoke(one.id,one.revokeToken)
+  assert.equal((await request(new URL(path,one.url))).status,403)
 })
 
 test('成功续租可跨过原到期点，新的到期时间仍会回收',async t=>{

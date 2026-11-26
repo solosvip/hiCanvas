@@ -1,5 +1,6 @@
 import {armDeadline} from './film-deadline.js'
-import {binaryCommand,filmFrameSize,releaseBinary,filmStageOrder,filmFrameBudget,filmAudioStageOrder,filmAudioStepBudget,filmAudioBudget,MAX_FILM_TASK_TIMEOUT} from './film-export-protocol.js'
+import {editCommand,editStateCommand,largeResultCommand,releaseEditSnapshot} from './edit-protocol.js'
+import {filmFrameSize,releaseBinary,filmStageOrder,filmFrameBudget,filmAudioStageOrder,filmAudioStepBudget,filmAudioBudget,MAX_FILM_TASK_TIMEOUT} from './film-export-protocol.js'
 import {CAPTURE_TIMEOUT,captureSize} from './capture-protocol.js'
 import {PROTOCOL_VERSION,MAX_MESSAGE_BYTES,MAX_PENDING_REQUESTS,MAX_REPLY_MESSAGES_PER_SECOND,REQUEST_TIMEOUT,messageSize,validMessage,validCommand,validLegacyStatus,createRateLimit} from './protocol.js'
 
@@ -9,7 +10,7 @@ export const getContentChannel=iframe=>channels.get(iframe)||null
 export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=false,film=false}){
   const host=iframe.ownerDocument.defaultView,target=new URL(url),origin=target.origin
   if(!/^[a-f0-9]{48}$/.test(instanceId)||target.protocol!=='http:'||target.username||target.password||target.hostname!==instanceId+'.localhost'||!target.port)throw new Error('内容实例来源无效。')
-  const subscribers=new Set(),pending=new Map(),captureJobs=new Map(),retired=new Map(),invalidators=new Set()
+  const subscribers=new Set(),editSubscribers=new Set(),pending=new Map(),captureJobs=new Map(),retired=new Map(),invalidators=new Set()
   let session=null,disposed=false,sequence=0,lastStatus=null
   const notify=status=>{lastStatus={...status};for(const subscriber of subscribers)subscriber({...status})}
   const offline=error=>notify({duration,currentTime:0,playing:false,muted,ready:false,error:error.message})
@@ -37,6 +38,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
   function invalidate(error=new Error('内容实例已失效。')){
     const previous=session;session=null
     for(const reset of invalidators)reset()
+    for(const subscriber of editSubscribers)subscriber({error})
     if(previous){clearTimeout(previous.timer);previous.reject(error);try{previous.port.postMessage({...previous.base,type:'close'})}catch{/* Detached. */}retire(previous)}
     for(const task of [...pending.values()])task.finish(error,undefined,false)
     if(previous&&!disposed)offline(error)
@@ -64,6 +66,16 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
       }
       // Binary pixels have a separate strict budget; every other message keeps
       // the 4 KiB ceiling. An invalid matching reply fails explicitly.
+      if(['edit-snapshot-result','edit-state-result'].includes(data?.type)){
+        const task=pending.get(data.id),snapshot=data.type==='edit-snapshot-result'
+        const matches=task&&(snapshot?task.command==='edit-snapshot':editStateCommand(task.command))&&data.instance===instanceId&&data.generation===generation
+        if(!matches){active.allowIncoming();if(snapshot)releaseEditSnapshot(data.value);return}
+        if((!snapshot&&messageSize(data)>MAX_MESSAGE_BYTES)||!validMessage(data,instanceId,generation)){
+          if(snapshot)releaseEditSnapshot(data.value)
+          task.fail(new Error('网页编辑数据无效、超过5 MiB或含运行时残留。'));return
+        }
+        task.finish(null,data.value);return
+      }
       if(['film-stage','film-audio-stage'].includes(data?.type)){
         const task=pending.get(data.id)
         const matches=task&&task.command===(data.type==='film-stage'?'film-frame':'film-audio')&&data.instance===instanceId&&data.generation===generation
@@ -94,14 +106,16 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
       // has exhausted the ordinary ingress bucket (including on retired Ports).
       const bounded=messageSize(data)<=MAX_MESSAGE_BYTES&&validMessage(data,instanceId,generation)
       if(data?.type==='capture-end'&&bounded&&captureJobs.get(data.id)===active){releaseCapture(data.id);return}
-      if(data?.type==='response'&&bounded&&!data.ok&&binaryCommand(pending.get(data.id)?.command)){pending.get(data.id).finish(new Error(data.error),undefined,false);return}
+      if(data?.type==='response'&&bounded&&!data.ok&&(largeResultCommand(pending.get(data.id)?.command)||editCommand(pending.get(data.id)?.command))){pending.get(data.id).finish(new Error(data.error),undefined,false);return}
       if(!active.allowIncoming()){releaseBinary(data?.value);return}
       if(!bounded)return
       if(data.type==='ready'){clearTimeout(active.timer);active.resolve();if(data.legacy&&!active.legacy){active.legacy=true;active.port.postMessage({...base,type:'legacy-poll'})}return}
       if(data.type==='capture-end'){releaseCapture(data.id);return}
       if(data.type==='close'){invalidate();return}
       if(data.type==='status'){notify(data.value);return}
-      if(data.type==='response'){const task=pending.get(data.id);if(task&&(!data.ok||!binaryCommand(task.command)))task.finish(data.ok?null:new Error(data.error),data.value,!binaryCommand(task.command))}
+      if(data.type==='edit-status'){for(const subscriber of editSubscribers)subscriber({...data.value});return}
+      if(data.type==='edit-exit'){for(const subscriber of editSubscribers)subscriber({exitRequested:true});return}
+      if(data.type==='response'){const task=pending.get(data.id);if(task&&(!data.ok||!largeResultCommand(task.command)&&!editStateCommand(task.command)))task.finish(data.ok?null:new Error(data.error),data.value,!largeResultCommand(task.command))}
     }
     active.port.onmessageerror=()=>{if(session===active)invalidate()}
     active.port.start()
@@ -121,7 +135,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
     })
     signal?.throwIfAborted()
     if(session!==active)throw new Error('内容实例已失效。')
-    const capturing=binaryCommand(command),exportConfig=active.exportConfig
+    const capturing=largeResultCommand(command),exportConfig=active.exportConfig
     if(command==='film-frame'&&!exportConfig)throw new Error('影片导出尚未声明视频源数。')
     if(capturing&&(captureJobs.size>0||(pageCaptures.get(host)||0)>=2)){const error=new Error('截图忙，请稍后重试。');error.code='CHANNEL_BUSY';throw error}
     if(pending.size>=MAX_PENDING_REQUESTS||!active.allowOutgoing()){const error=new Error('内容请求过于频繁。');error.code='CHANNEL_BUSY';throw error}
@@ -177,6 +191,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
   observer?.observe(iframe,{attributes:true,attributeFilter:['src','srcdoc']})
   start()
   const api={request,subscribe(listener){subscribers.add(listener);if(lastStatus)listener({...lastStatus});return ()=>subscribers.delete(listener)},
+    subscribeEditing(listener){editSubscribers.add(listener);return ()=>editSubscribers.delete(listener)},
     attachFilmController({onStatus=()=>{}}={}){
       const unsubscribe=this.subscribe(onStatus)
       let stopped=false,seekTimer=null,queuedSeek,lastSeekAt=-Infinity
@@ -189,7 +204,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
       })
       const flushSeek=()=>{clearTimeout(seekTimer);seekTimer=null;if(stopped||queuedSeek===undefined)return;const value=queuedSeek;queuedSeek=undefined;lastSeekAt=Date.now();send('seek',value)}
       return {command(name,value){
-        if(stopped||binaryCommand(name)||!validCommand(name,value)||disposed)return false
+        if(stopped||!['play','pause','seek','mute'].includes(name)||!validCommand(name,value)||disposed)return false
         if(name==='seek'){
           queuedSeek=value
           if(seekTimer===null){const delay=Math.max(0,50-(Date.now()-lastSeekAt));if(delay)seekTimer=setTimeout(flushSeek,delay);else flushSeek()}
@@ -203,7 +218,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
         if(!disposed&&session)try{session.port.postMessage({...session.base,type:'pause'})}catch{/* Detached. */}
       }}
     },
-    dispose(){if(disposed)return;disposed=true;if(channels.get(iframe)===api)channels.delete(iframe);iframe.removeEventListener('load',loaded);host.removeEventListener('pagehide',pagehide);host.removeEventListener('message',legacyStatus);observer?.disconnect();invalidate();subscribers.clear()},
+    dispose(){if(disposed)return;disposed=true;if(channels.get(iframe)===api)channels.delete(iframe);iframe.removeEventListener('load',loaded);host.removeEventListener('pagehide',pagehide);host.removeEventListener('message',legacyStatus);observer?.disconnect();invalidate();subscribers.clear();editSubscribers.clear()},
   }
   channels.set(iframe,api)
   return api

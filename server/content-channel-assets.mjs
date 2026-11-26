@@ -7,6 +7,7 @@ const directory=new URL('../content-channel/',import.meta.url)
 const compiled=new Map()
 let assets
 const bundles={
+  'edit.js':{files:['edit.js','dom-editor.js','edit-protocol.js']},
   'capture.js':{dependency:'html2canvas',files:['capture.js','capture-realm.js','capture-render.js','capture-clip-fix.js','capture-protocol.js']},
   'film-export.js':{dependency:'mediabunny',files:['film-export.js','film-export-protocol.js','film-frame-ready.js','film-video-frames.js','film-export-clock.js','film-deadline.js','film-time.js'],external:['./capture.js']},
 }
@@ -16,7 +17,7 @@ async function bundledAsset(name,source){
   // Desktop staging publishes only the finished fixed asset. This branch must
   // never resolve esbuild or any source dependency in the installed application.
   if(source.toString('utf8',0,100).startsWith('// hiCanvas '+label+' sha256:'))return source
-  const version=JSON.parse(await readFile(new URL('../node_modules/'+config.dependency+'/package.json',import.meta.url),'utf8')).version
+  const version=config.dependency?JSON.parse(await readFile(new URL('../node_modules/'+config.dependency+'/package.json',import.meta.url),'utf8')).version:''
   const hash=createHash('sha256').update(name).update(version)
   for(const name of config.files)hash.update(name).update(await readFile(new URL(name,directory)))
   const key=hash.digest('hex')

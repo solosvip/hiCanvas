@@ -11,12 +11,13 @@ function readStartup(fetcher){
   })())
   return startupByFetcher.get(fetcher)
 }
-export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUrl,signal,fetcher=globalThis.fetch}={}) {
+export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUrl,originalHtml,signal,fetcher=globalThis.fetch}={}) {
   const legacy={attributes:directUrl?{src:directUrl}:{srcDoc:html},dispose(){}}
   const startup=await readStartup(fetcher)
   signal?.throwIfAborted()
   // Read-only galleries and older hosts have no feature descriptor.
   if(startup.contentHost?.enabled!==true)return legacy
+  if(originalHtml!==undefined)html=originalHtml
   if(directUrl){
     if(!/^data:text\/html(?:;[^,]*)?,/i.test(directUrl))throw new Error('内联网页来源无效。')
     html=await(await fetcher(directUrl,{signal})).text()

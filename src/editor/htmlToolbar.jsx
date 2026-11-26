@@ -165,7 +165,9 @@ function CowartHtmlDraftDomEditButton({ draftShapeId, isEditing }) {
     }
     setStatus('saving')
     try {
-      await cowartHtmlDraftDomEditSessions.get(draftShapeId)?.flush()
+      const session = cowartHtmlDraftDomEditSessions.get(draftShapeId)
+      if (session?.finish) await session.finish()
+      else await session?.flush()
       editor.setEditingShape(null)
       editor.setCurrentTool('select')
     } catch (error) {

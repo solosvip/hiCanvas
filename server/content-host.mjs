@@ -47,12 +47,17 @@ export function createContentHost({now=Date.now,ttl=30*60*1000,maxHtmlBytes=5*10
       const {port}=await info()
       const prepared=await prepare(html,{...context,parentOrigin})
       const assets=await readChannelAssets()
-      const size=[...prepared.files.values()].reduce((sum,file)=>sum+file.bytes.length,0)
+      // Editing restores authored resource spellings inside the content realm.
+      // Its immutable original is instance-local plain text, charged to the
+      // same user-content memory budget; it is never fetched by the parent.
+      const editSource=Buffer.from(html)
+      const size=[...prepared.files.values()].reduce((sum,file)=>sum+file.bytes.length,0)+editSource.length
       sweep()
       if(closed)throw httpError('内容宿主已关闭。',503)
       if(instances.size>=maxInstances||size+usedBytes>maxTotalBytes)throw httpError('内容宿主容量已满。',413)
       const id=randomBytes(24).toString('hex'),hostname=`${id}.localhost:${port}`,revokeToken=randomBytes(24).toString('hex')
       const prefix='/.hicanvas-channel/'+id+'/',files=new Map(prepared.files)
+      files.set(prefix+'edit-source.txt',{bytes:editSource,type:'text/plain; charset=utf-8'})
       for(const [name,bytes] of assets)files.set(prefix+name,{bytes,type:'text/javascript; charset=utf-8'})
       const document=files.get(prepared.path)
       const source=prefix+'bootstrap.js?instance='+id+'&parent='+encodeURIComponent(parentOrigin)
