@@ -233,13 +233,19 @@ npm run renderer:smoke
 
 文字合成图鉴用 `/?gallery=text-editing`，完整格式保留样本用 `/?gallery=text-formatted`：双击文字、几何、箭头标签或画框标题进入编辑，选中后 Enter 也可进入；双击空白直接写字，T 点击自动宽、长拖固定宽。Esc、Mod+Enter 和画布外部点击保存当前会话，画框标题也支持普通 Enter；组字期间不完成。清空普通文字会删除它，清空标签或标题只清字段；新空文字退出不留历史。一次编辑、样式切换和自动大小合为一次画板撤销；编辑内撤销由文本视图处理。保存等待期间只读，失败恢复草稿。这里的 Esc 保存与画笔 Esc 丢弃分别遵循各自事务。
 
-便签合成图鉴用 `/?gallery=note-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `note` 后，N 或工具栏创建固定纸面便签，双击编辑。选中便签四边的「+」在邻位创建并编辑；编辑时 Tab/Shift+Tab 横向续建（尊重 RTL），Mod+Enter/Mod+Shift+Enter 向下/上续建，已有邻居直接复用。源文与一次键盘续建合为一次提交/撤销；下一张便签的输入另算一次。拖动单张便签时，在同层、同角度、同比例便签的相邻位置局部吸附，半径严格小于10 CSS px，Esc 取消移动及指示；全局吸附开关归 #128。
+便签合成图鉴用 `/?gallery=note-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `note` 后，N 或工具栏创建固定纸面便签，双击编辑。选中便签四边的「+」在邻位创建并编辑；编辑时 Tab/Shift+Tab 横向续建（尊重 RTL），Mod+Enter/Mod+Shift+Enter 向下/上续建，已有邻居直接复用。源文与一次键盘续建合为一次提交/撤销；下一张便签的输入另算一次。拖动单张便签时，在同层、同角度、同比例便签的相邻位置局部吸附，半径严格小于10 CSS px，Esc 取消移动及指示；这项既有局部策略不受对象吸附偏好或 Ctrl/Meta 影响。
 
 宿主可传 `displayName: string | null`；第一次实际输入（含空格）才写入首位编辑者，显示首名、提示完整名，清空移除署名。仅查看已有无署名文字不会认领；后续编辑保留已有作者。缺少显示名保持空值，编辑层不查询账号、系统或运行时身份。预览可用 `displayName` 查询参数传合成姓名。登记专用端口并设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_NOTE_PORT=43386 node tools/renderer-preview/note-check.mjs`；原生创建、署名、续建、缩放布局和吸附守卫写入 `.scratch/note-smoke/`，也纳入 `npm run renderer:smoke`。`npm run check` 自动执行便签事务回归。正式应用尚未切换，署名 SVG 导出不在本单。
 
 连接线合成图鉴用 `/?gallery=connection-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `line`、`arrow` 后，可从工具栏创建，L 选择线条（A 继续用于 AI 图片）。拖端点移动或绑定，Alt 精确绑定、Ctrl 忽略绑定；拖中柄调整弧度或折肘，拖线条段间圆点加顶点。拖标签沿现有路径移动，双击继续使用同一文字会话；双击箭头端点在 none/arrow 间切换。线条点击创建后可 Shift 连续点击延伸；Q 保持工具后，拖画的线条也可继续加点。每次手势单次撤销，Esc 取消活动预览。
 
-可选 `controlPointSnapping: boolean` 默认 false，Ctrl 在当前手势中反转它；吸附自身非邻接顶点/线段及其他可见几何控制点和轮廓，指示只在会话覆盖层。它暂不提供 #128 的总开关或偏好系统。停留约 300ms 转精确锚点；控制点吸附半径为8 CSS px，落在旧版原生样本测得的7.62–8.54px区间内，精确阈值未断言。绑定对象移动/缩放后连接跟随，删除时保留可见端点，撤销恢复绑定；独立无界面命令宿主须先按下文准备字体，尤其是删除文字、便签或含文字组的绑定目标时，真实轮廓依赖其排版。
+可选 `controlPointSnapping: boolean` 默认 false，Ctrl 在当前手势中反转它；吸附自身非邻接顶点/线段及其他可见几何控制点和轮廓，指示只在会话覆盖层。该兼容参数用于初始化统一入口的 `controlPoints` 偏好。停留约 300ms 转精确锚点；控制点吸附半径为8 CSS px，落在旧版原生样本测得的7.62–8.54px区间内，精确阈值未断言。绑定对象移动/缩放后连接跟随，删除时保留可见端点，撤销恢复绑定；独立无界面命令宿主须先按下文准备字体，尤其是删除文字、便签或含文字组的绑定目标时，真实轮廓依赖其排版。
+
+对象吸附（#128）：宿主传 `snapping: { enabled: boolean, controlPoints: boolean }`（字段可省，默认均 false；`controlPoints` 省略时沿用兼容参数）。`getSnappingPreferences()` 返回不可变副本，`setSnappingPreferences(patch)` 原子校验并立即重算活动手势；偏好只属于这个交互会话，不写画板、不进撤销。移动/缩放可对齐可见对象的边、中线及等间距，包含8 CSS px边界，随视角反向换算。`snapModifier: 'meta' | 'control'` 由宿主按平台显式选择，默认 Mac 的 Command；按下及释放均立即反转对象偏好。控制点继续由 Ctrl 反转自己的偏好；便签邻位继续优先采用上述局部规则。
+
+提示线由编辑层给出 `snap-guides` 纯数据（线段、锚点、间距刻度），渲染层使用 DESIGN 既有令牌绘制，屏幕线宽不随缩放变化；松手、取消、工具切换时清理。合成预览 `/?gallery=snapping&snapping=1`，另有 `snapCase=gap`、`snapCase=resize`。登记专用端口及全量检查时段后，设置已有 `HICANVAS_TEST_ELECTRON`，运行 `HICANVAS_SNAPPING_PORT=43386 node tools/renderer-preview/snapping-check.mjs`；原生输入与截图存 `.scratch/snapping-smoke/`。逻辑回归并入 `npm run check`；网格归 #171，创建 G01 和新增控制点 G07 接入仍另单，正式界面尚未切换。
+
+#128 性能复用 #96 入口：完成生产构建、登记两个端口后，运行 `HICANVAS_STROKE_SNAPPING=1 node tools/perf/strokes.mjs --sizes 5000 --port 43392 --preview-port 43393 --output .scratch/snapping-perf --load-note '白板独占及实际负载说明'`（同样设置已有 Electron）。三轮新旧交替，原生菜单开启旧版偏好，并在两端拖动前读回开启状态；按拖动 paint 帧率不低于旧版90%判定，失败自动补测两版各一轮并保留初测。其余性能指标仍记录；不带环境开关时原有 #96 四组全指标门禁保持原样。
 
 登记专用端口及已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_CONNECTION_PORT=43386 node tools/renderer-preview/connection-check.mjs`；原生鼠标、键盘及标签文字守卫的结果写入 `.scratch/connection-smoke/`，也纳入完整 `npm run renderer:smoke`。普通 `npm run check` 自动执行连接线的定向事务与几何回归。正式应用尚未切换；旧版标签拖动和端帽双击未取得可靠正例，差异及待集中确认项见功能清单。
 

@@ -5,12 +5,13 @@ import { resizeTransform, rotationTransform } from './selection-transform.js'
 // One runtime transaction for the entire drag. Each frame restores only this
 // gesture's captured targets before issuing an absolute transform; unrelated
 // records stay live. The runtime coalesces intermediate writes into a net diff.
-export function createHandleGesture({ session, index, selection, read, change, report }) {
+export function createHandleGesture({ session, index, selection, snapping, read, change, report }) {
   let gesture = null
   function cancel() {
     if (!gesture) return
     const rotation = gesture.beforeRotation
     gesture = null
+    snapping.clear()
     if (session.state.get().isGestureActive && !session.state.get().isSubmitting) session.cancelGesture()
     change({ mode: 'idle', selectionRotation: rotation })
   }
@@ -27,7 +28,9 @@ export function createHandleGesture({ session, index, selection, read, change, r
     if (!gesture.changed && Math.hypot(input.point.x - gesture.startScreen.x, input.point.y - gesture.startScreen.y) <= 4) return
     const current = selection.expected(gesture.ids)
     if (!session.state.get().isGestureActive || current.size !== gesture.expected.size || [...gesture.expected].some(([id, value]) => current.get(id) !== value)) throw new CanvasEditError('手柄目标已被其他操作更改，本次拖动已取消。', 'conflict')
-    const { ids, handle, frame } = gesture, point = screenToCanvas(input.point, read().camera)
+    const { ids, handle, frame } = gesture
+    gesture.lastInput=input
+    let point = screenToCanvas(input.point, read().camera)
     let selectionRotation = read().selectionRotation
     const commands = gesture.originals.map(record => ({ type: 'put', record }))
     if (handle.kind === 'rotate') {
@@ -37,6 +40,7 @@ export function createHandleGesture({ session, index, selection, read, change, r
     } else {
       const options = { mode: ids.length === 1 && index.getRecord(ids[0]).type !== 'group' ? 'resize_bounds' : 'scale_shape', handle: handle.id }
       const uniform = input.shiftKey || selection.capability(ids, options).lockAspectRatio
+      point=snapping.resize(ids,frame,handle.id,gesture.start,point,{center:input.altKey,uniform},input)
       const transform = resizeTransform(frame, handle.id, gesture.start, point, { center: input.altKey, uniform })
       // Commands operate on page axes. Rotate the selected roots into their
       // selection frame, scale, and rotate them back around the same anchor.
@@ -56,18 +60,18 @@ export function createHandleGesture({ session, index, selection, read, change, r
   function up(input) {
     if (!gesture || input.pointerId !== gesture.pointerId) return
     preview(input)
-    const changed = gesture.changed; gesture = null
+    const changed = gesture.changed; gesture = null; snapping.clear()
     change({ mode: 'idle' })
     if (changed && session.state.get().isGestureActive) return session.commitGesture().catch(error => { report(error); throw error })
     if (session.state.get().isGestureActive) session.cancelGesture()
   }
   return {
-    begin, cancel, get active() { return gesture !== null },
+    begin, cancel, refreshSnapping(){if(gesture?.lastInput)preview(gesture.lastInput)}, get active() { return gesture !== null },
     dispatch(input) {
       if (input.type === 'pointer_move') return preview(input)
       if (input.type === 'pointer_up') return up(input)
       if (input.type === 'pointer_cancel' && input.pointerId === gesture?.pointerId || input.type === 'key_down' && input.key === 'Escape') return cancel()
-      if (gesture && ['key_down', 'key_up'].includes(input.type) && ['Shift', 'Alt'].includes(input.key)) return preview({ ...input, pointerId: gesture.pointerId, point: gesture.point })
+      if (gesture && ['key_down', 'key_up'].includes(input.type) && ['Shift', 'Alt', 'Meta', 'Control'].includes(input.key)) return preview({ ...input, pointerId: gesture.pointerId, point: gesture.point })
     },
   }
 }

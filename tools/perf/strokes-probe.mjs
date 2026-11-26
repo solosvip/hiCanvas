@@ -26,7 +26,7 @@ export function inspectState(fixture){
   const state=hook?.getState(fixture.targetId),shape=editor?editor.getShape(fixture.targetId):state.shape
   const camera=editor?{...editor.getCamera()}:state.camera,selectedIds=editor?editor.getSelectedShapeIds():state.selectedIds
   if(state?.lastError)throw new Error(state.lastError)
-  return {camera,shape:{x:shape.x,y:shape.y,rotation:shape.rotation,props:shape.props},selectedIds,selected:selectedIds.includes(fixture.targetId),point:editor?editor.pageToScreen(fixture.targetPoint):{x:(fixture.targetPoint.x+camera.x)*camera.z,y:(fixture.targetPoint.y+camera.y)*camera.z}}
+  return {camera,snapping:editor?Boolean(editor.user.getUserPreferences().isSnapMode):Boolean(state.snappingPreferences?.enabled),shape:{x:shape.x,y:shape.y,rotation:shape.rotation,props:shape.props},selectedIds,selected:selectedIds.includes(fixture.targetId),point:editor?editor.pageToScreen(fixture.targetPoint):{x:(fixture.targetPoint.x+camera.x)*camera.z,y:(fixture.targetPoint.y+camera.y)*camera.z}}
 }
 export async function resetCamera({camera}){
   if(window.__cowartEditor){window.__cowartEditor.setCamera(camera,{immediate:true,force:true})}

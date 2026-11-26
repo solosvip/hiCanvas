@@ -20,7 +20,9 @@ export const canvasShortcutBindings = Object.freeze([
   binding('selection-cycle', ['tab'], { phase: 'both', mod: false, alt: false }),
   binding('selection-enter', ['enter'], { phase: 'both', mod: false, alt: false, shift: false, when: state => !state.croppingId && state.selectionType === 'group' }),
   binding('selection-all', ['a'], { mod: true, alt: false, shift: false }),
-  binding('selection-modifiers', ['Control', 'Shift', 'Alt'], { phase: 'both', exact: true }),
+  // Modifier presses mid-gesture re-run the move: Shift axis lock, Alt duplicate
+  // (#125), Control/Meta snapping inversion (#128).
+  binding('selection-modifiers', ['Control', 'Meta', 'Shift', 'Alt'], { phase: 'both', exact: true }),
   binding('selection-neighbor', ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'], { mod: true, alt: false, shift: false, when: notPanning }),
   binding('selection-parent', ['arrowup'], { mod: true, alt: false, shift: true, when: notPanning }),
   binding('selection-child', ['arrowdown'], { mod: true, alt: false, shift: true, when: notPanning }),

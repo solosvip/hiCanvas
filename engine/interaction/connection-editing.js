@@ -3,7 +3,6 @@ import { CanvasEditError } from '../errors.js'
 import { clamp, connectionCoordinates, constrainConnectionPoint, distance, linePoints, projectPath } from './connection-coordinates.js'
 import { connectionMiddle, describeConnection } from './connection-handles.js'
 import { captureBindingTargets, createTerminalBinding } from './connection-binding.js'
-import { snapConnectionPoint } from './control-point-snap.js'
 
 // A connection gesture owns only its captured records. Runtime owns the
 // transaction, revision conflict and undo. No routing or label session here.
@@ -12,10 +11,11 @@ import { snapConnectionPoint } from './control-point-snap.js'
 // middle pulled down 100px stores bend=100, without moving its origin.
 export function createConnectionEditing(context) {
   const { session, index, targets, read, change } = context
-  let gesture = null, indicator = null
+  let gesture = null
   function cancel() {
-    const active = gesture; gesture = null; indicator = null
+    const active = gesture; gesture = null
     if (!active) return
+    context.snapping.clear()
     if (session.state.get().isGestureActive && !session.state.get().isSubmitting) session.cancelGesture()
     change({ mode: 'idle', handleCursor: null, needsFrame: false })
   }
@@ -28,19 +28,18 @@ export function createConnectionEditing(context) {
     if (!g.moved) return
     const page = screenToCanvas(input.point, read().camera), point = g.coordinates.local(page)
     const props = {}, commands = [], handle = g.handle
-    indicator = null
+    context.snapping.clear()
     if (g.shape.type === 'line') {
       const sorted = linePoints(g.shape), position = sorted.findIndex(p => p.id === handle.id)
       const origin = position > 0 ? sorted[position - 1] : sorted[1]
       const excluded = handle.kind === 'create' ? sorted.filter(p => p.index < handle.id).slice(-1).concat(sorted.filter(p => p.index > handle.id).slice(0, 1)).map(p => p.id) : sorted.filter((p, i) => Math.abs(i - position) <= 1).map(p => p.id)
-      const snapped = snapConnectionPoint(context, g.shape, constrainConnectionPoint(origin, point, input.shiftKey), excluded, input, handle.kind === 'create' ? null : handle.id)
-      props.points = { ...g.shape.props.points, [handle.id]: { id: handle.id, index: handle.index || g.shape.props.points[handle.id].index, ...snapped.point } }
-      indicator = snapped.indicator
+      const snapped = context.snapping.controlPoint(g.shape, constrainConnectionPoint(origin, point, input.shiftKey), excluded, input, handle.kind === 'create' ? null : handle.id)
+      props.points = { ...g.shape.props.points, [handle.id]: { id: handle.id, index: handle.index || g.shape.props.points[handle.id].index, ...snapped } }
     } else if (handle.kind === 'vertex') {
       const opposite = g.geometry.terminals[handle.id === 'start' ? 'end' : 'start']
-      const snapped = snapConnectionPoint(context, g.shape, constrainConnectionPoint(opposite, point, input.shiftKey), [], input)
-      commands.push(...g.binding.commands(g.coordinates.page(snapped.point), input))
-      props[handle.id] = snapped.point; indicator = snapped.indicator
+      const snapped = context.snapping.controlPoint(g.shape, constrainConnectionPoint(opposite, point, input.shiftKey), [], input)
+      commands.push(...g.binding.commands(g.coordinates.page(snapped), input))
+      props[handle.id] = snapped
     } else if (handle.kind === 'bend') {
       const { start, end } = g.geometry.terminals, dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy) || 1
       props.bend = (g.shape.props.bend || 0) + ((point.x - g.local.x) * -dy + (point.y - g.local.y) * dx) / length
@@ -84,7 +83,7 @@ export function createConnectionEditing(context) {
   }
   function up(input) {
     preview(input)
-    const current = gesture; gesture = null; indicator = null
+    const current = gesture; gesture = null; context.snapping.clear()
     change({ mode: 'idle', handleCursor: null })
     if (current.moved) return session.commitGesture()
     session.cancelGesture()
@@ -98,7 +97,7 @@ export function createConnectionEditing(context) {
     }
     return context.textEditing.begin(current.shape.id)
   }
-  return { cancel, candidate, applyChanges: changes => gesture?.targetsMatch.apply(changes), describe: state => describeConnection(context, state), indicator: () => indicator,
+  return { cancel, candidate, refreshSnapping:()=>{if(gesture?.lastInput)preview(gesture.lastInput)}, applyChanges: changes => gesture?.targetsMatch.apply(changes), describe: state => describeConnection(context, state),
     get needsFrame() { return Boolean(gesture?.moved && gesture.binding?.needsFrame) },
     handle(input, picked) {
       if (input.type === 'pointer_down' && !gesture) return { handled: start(input, picked) }

@@ -75,7 +75,8 @@ export function createSpatialIndex(initial, pageId) {
     let polygon = pagePolygon(id, padding)
     for (const ancestor of chain(id).slice(1)) if (ancestor.type === 'frame') polygon = clipPolygon(polygon, pagePolygon(ancestor.id))
     const keys = cellsFor(box)
-    entries.set(id, { box, keys, polygon })
+    const visibleBounds = union(polygon.map(point => ({ x: point.x, y: point.y, w: 0, h: 0 })))
+    entries.set(id, { box, keys, polygon, visibleBounds })
     if (!keys) oversized.add(id)
     else for (const key of keys) {
       if (!cells.has(key)) cells.set(key, new Set())
@@ -152,6 +153,9 @@ export function createSpatialIndex(initial, pageId) {
   for (const record of initial) { records[record.id] = record; link(record, true) }
   for (const record of initial) if (record.typeName === 'shape') reindex(record.id)
   return Object.freeze({ applyChanges, hitTest, hitsAtPoint, query, getBounds: id => { const box = getBounds(id); return box && { ...box } }, getRecord: id => records[id],
+    // Cached with the clipped polygon, so snapping can reject hidden anchors
+    // without querying every anchor or recomputing frame clipping per pointer.
+    getVisibleBounds: id => { const box = visible(id) && entries.get(id)?.visibleBounds; return box ? { ...box } : null },
     isPointVisible: (id, point) => visible(id) && visiblePoint(id, point),
     // Read-only diagnostics count refreshed entries, excluding initial build.
     getUpdateStats: () => Object.freeze({ updatedIds: Object.freeze([...lastUpdatedIds]), removedIds: Object.freeze([...lastRemovedIds]), totalUpdates }),
