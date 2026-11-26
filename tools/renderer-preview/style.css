@@ -13,6 +13,7 @@ html, body { margin: var(--spacing-none); overflow: hidden; background: var(--co
 #canvas[data-cursor='grab'] { cursor: grab; }
 #canvas[data-cursor='grabbing'] { cursor: grabbing; }
 #canvas[data-cursor='zoom-in'] { cursor: zoom-in; }
+#canvas[data-cursor='crosshair'] { cursor: crosshair; }
 #navigation button[data-action='return-content'] { position: absolute; bottom: calc(100% + var(--spacing-sm)); left: var(--spacing-none); }
 .minimap-panel { position: absolute; bottom: calc(100% + var(--spacing-sm)); left: var(--spacing-none); padding: var(--spacing-sm); border-radius: var(--radius-sm); background: var(--color-minimap-background); }
 .hicanvas-minimap-canvas { display: block; width: var(--spacing-minimap-width); height: var(--spacing-minimap-height); border-radius: var(--radius-xs); touch-action: none; cursor: grab; }
