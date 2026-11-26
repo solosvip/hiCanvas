@@ -222,6 +222,12 @@ npm run renderer:smoke
 
 文字合成图鉴用 `/?gallery=text-editing`，完整格式保留样本用 `/?gallery=text-formatted`：双击文字、几何、箭头标签或画框标题进入编辑，选中后 Enter 也可进入；双击空白直接写字，T 点击自动宽、长拖固定宽。Esc、Mod+Enter 和画布外部点击保存当前会话，画框标题也支持普通 Enter；组字期间不完成。清空普通文字会删除它，清空标签或标题只清字段；新空文字退出不留历史。一次编辑、样式切换和自动大小合为一次画板撤销；编辑内撤销由文本视图处理。保存等待期间只读，失败恢复草稿。这里的 Esc 保存与画笔 Esc 丢弃分别遵循各自事务。
 
+连接线合成图鉴用 `/?gallery=connection-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `line`、`arrow` 后，可从工具栏创建，L 选择线条（A 继续用于 AI 图片）。拖端点移动或绑定，Alt 精确绑定、Ctrl 忽略绑定；拖中柄调整弧度或折肘，拖线条段间圆点加顶点。拖标签沿现有路径移动，双击继续使用同一文字会话；双击箭头端点在 none/arrow 间切换。线条点击创建后可 Shift 连续点击延伸；Q 保持工具后，拖画的线条也可继续加点。每次手势单次撤销，Esc 取消活动预览。
+
+可选 `controlPointSnapping: boolean` 默认 false，Ctrl 在当前手势中反转它；吸附自身非邻接顶点/线段及其他可见几何控制点和轮廓，指示只在会话覆盖层。它暂不提供 #128 的总开关或偏好系统。停留约 300ms 转精确锚点；控制点吸附半径为8 CSS px，落在旧版原生样本测得的7.62–8.54px区间内，精确阈值未断言。绑定对象移动/缩放后连接跟随，删除时保留可见端点，撤销恢复绑定；独立无界面命令宿主须先按下文准备字体，尤其是删除文字、便签或含文字组的绑定目标时，真实轮廓依赖其排版。
+
+登记专用端口及已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_CONNECTION_PORT=43386 node tools/renderer-preview/connection-check.mjs`；原生鼠标、键盘及标签文字守卫的结果写入 `.scratch/connection-smoke/`，也纳入完整 `npm run renderer:smoke`。普通 `npm run check` 自动执行连接线的定向事务与几何回归。正式应用尚未切换；旧版标签拖动和端帽双击未取得可靠正例，差异及待集中确认项见功能清单。
+
 宿主通过 `interaction.editText({type:'begin',id})`、`update`（`content,selection?`）、`selection`、`finish`、`cancel` 管理会话；`style`（`id,changes`）只接受适用的 `size/font/textAlign/align/verticalAlign`，`auto-size` 接受 `id,enabled`。订阅 `state.textEditing`，交给 `renderer.setTextEditing(description)`；挂载渲染器时提供 `textEditing.onChange/onSelection/onInputContext/onError` 回调。`onChange` 单向调用编辑层，TipTap 内容和选区是输入权威，视图仅进入时初始化，不随预览回灌。标题写 `name`，其余写 `richText`。远端改位置或尺寸时只叠文字并携新版本重试一次；远端改原文或删除目标时保留草稿，`conflict` 给出纯数据状态，停止自动提交。`isSaving` 表示提交中。正式界面尚未切换，冲突选择界面由后续产品接入。
 
 登记文字验证端口并设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_TEXT_PORT=43386 node tools/renderer-preview/text-check.mjs`，结果在 `.scratch/text-smoke/`。完整 MIT TipTap schema 保留已有节点、标记和属性，依赖许可证见 [文字编辑依赖声明](licenses/text-editor-dependencies.txt)；格式工具栏、格式快捷键、富文本精确排版、链接、列表和编辑中粘贴归 #150，画布文本粘贴归 #136。实际 macOS 输入法候选窗及系统剪贴板需集中人工验证。

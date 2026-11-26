@@ -17,6 +17,10 @@ function targetOutline(context, target, visiting = new Set()) {
   return { bounds: b, points: [{ x: b.x, y: b.y }, { x: b.x + b.w, y: b.y }, { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }] }
 }
 
+// Editing normalizes anchors against exactly the same local box as drawing,
+// including groups whose box is derived from their descendants.
+export function getConnectionTargetBounds(target, context) { return targetOutline(context, target)?.bounds || null }
+
 export function boundTerminal(shape, terminal, context) {
   const binding = context.bindingsFrom(shape.id).find(b => b.props.terminal === terminal)
   const target = binding && context.getRecord(binding.toId)

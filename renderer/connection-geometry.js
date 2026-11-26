@@ -14,10 +14,11 @@ const inBox = (p, b, tolerance = 0) => p.x >= b.x - tolerance && p.x <= b.x + b.
 // contacts sit on the target contour; body terminals preserve observed spacing.
 export function getConnectionGeometry(shape, context) {
   const props = shape.props, width = connectionWidth(props)
-  let path, contacts = null, heads = [], label = null
+  let path, contacts = null, terminals = null, heads = [], label = null
   if (shape.type === 'line') path = linePath(props)
   else {
     const reader = connectionContext(context), start = boundTerminal(shape, 'start', reader), end = boundTerminal(shape, 'end', reader)
+    terminals = { start: start.point, end: end.point }
     const full = props.kind === 'elbow'
       ? boundElbowPath(start, end, props)
       : arcPath(start.point, end.point, props.bend || 0)
@@ -36,7 +37,7 @@ export function getConnectionGeometry(shape, context) {
     label = connectionLabel(props, path)
   }
   const bounds = pointBounds([...path.points, ...heads.flatMap(h => h.points), ...(label ? corners(label.bounds) : [])])
-  return { type: shape.type, path, width, contacts, heads, label, bounds,
+  return { type: shape.type, path, width, contacts, terminals, heads, label, bounds,
     contour: { outline: [...path.points, ...heads.flatMap(h => h.points), ...(label ? corners(label.bounds) : [])], decorations: [], ellipse: null },
     hit(point, tolerance = 0) {
       if (label && inBox(point, label.bounds, tolerance)) return true

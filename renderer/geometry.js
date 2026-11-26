@@ -20,6 +20,7 @@ export { textLayout, layoutText } from './text.js'
 export { getShapeTextLayout } from './text-editing-layout.js'
 export { getShapeBounds, getShapeContour } from './bounds.js'
 export { getConnectionGeometry } from './connection-geometry.js'
+export { getConnectionTargetBounds } from './connection-binding.js'
 export { createConnectionContext, getBoundArrowIds } from './connection-records.js'
 export { getHandDrawnContour } from './hand-drawn.js'
 

@@ -116,13 +116,18 @@ function assertRestoredIndices(store, changes, allowed) {
 
 function invert(snapshot, changes) {
   assertCurrent(snapshot?.store, changes)
-  // 先恢复记录，再整体删除，关系只在整次事务结束时校验。
+  // Remove explicit bindings before replaying exact arrow records. Otherwise
+  // deleting their targets would re-freeze terminals and alter replayed values.
+  const ids = Object.keys(changes.added), bindings = ids.filter(id => snapshot.store[id]?.typeName === 'binding')
+  // Restore shapes before deleting containers, so surviving children escape
+  // cascade deletion. Relations are validated only after the whole batch.
   const commands = [
+    ...(bindings.length ? [{ type: 'delete', ids: bindings }] : []),
     ...Object.values(changes.removed).map(record => ({ type: 'put', record })),
     ...Object.values(changes.updated).map(([record]) => ({ type: 'put', record })),
   ]
-  const ids = Object.keys(changes.added)
-  if (ids.length) commands.push({ type: 'delete', ids })
+  const remaining = ids.filter(id => !bindings.includes(id))
+  if (remaining.length) commands.push({ type: 'delete', ids: remaining })
   const result = executeCanvasTransaction(snapshot, commands)
   const allowed = new Set(changedIds(changes))
   if (changedIds(result.changes).some(id => !allowed.has(id))) invalid('倒放事务会连带修改或删除其他事务的记录。')

@@ -28,6 +28,8 @@ import { creationToolIds } from './creation-presets.js'
 import { createTextEditing } from './text-editing.js'
 import { createTextTool } from './create-text.js'
 import { createTextInput } from './text-input.js'
+import { createArrowTool, createLineTool } from './create-connection.js'
+import { createConnectionEditing } from './connection-editing.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -36,20 +38,21 @@ import { createTextInput } from './text-input.js'
 // setter on focus/composition changes. Only canvas-owned keys reach tools.
 // Products choose allowed tools from this registry; tool state never enters the
 // document Store. Future tools get the same normalized input and context.
-export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, draw: createDrawTool, highlight: createHighlightTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
+export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
 
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
 // Hosts may supply design tokens; the engine validates and copies the values.
-export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle }) {
+export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false }) {
   if (!session?.store || !toolIds.length || toolIds.some(id => !Object.hasOwn(canvasToolRegistry, id))) throw new Error('交互模块需要运行时和已登记工具。')
   const metrics = checkedHandleMetrics(handleMetrics)
+  if (typeof controlPointSnapping !== 'boolean') throw new Error('控制点吸附需要布尔值。')
   let countClicks = createClickCounter()
   const initial = session.store.allRecords(), activePage = pageId || initial.find(r => r.typeName === 'page')?.id
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage, initial)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
-  let disposed = false, tool, navigation, minimap, keyboard, cropTool, selectionKeys, lastTime = -Infinity
+  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, selectionKeys, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -61,12 +64,15 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     next.camera = Object.freeze(checkedCamera(next.camera))
     next.contentOffscreen = content.offscreen(next.camera, next.viewport)
     next.minimap = minimap?.describe(next) || null
-    next.needsFrame = Boolean(next.needsFrame || tool?.needsFrame)
+    next.needsFrame = Boolean(next.needsFrame || tool?.needsFrame || connectionEditing?.needsFrame)
     next.scribble = next.scribble && Object.freeze({ ...next.scribble, bounds: Object.freeze({ ...next.scribble.bounds }), points: Object.freeze(next.scribble.points.map(p => Object.freeze({ ...p }))) })
     next.marquee = next.marquee && Object.freeze({ ...next.marquee })
     if (next.croppingId && !targets.isSelectable(next.croppingId)) { next.croppingId = null; next.mode = 'idle'; next.handleCursor = null }
     next.cropZoom = next.croppingId ? cropTool?.zoom(next.croppingId) || 0 : 0
     const selected = next.textEditing ? null : next.croppingId ? cropTool?.describe(next) : describeSelection(selection, next.selectedIds, next.selectionRotation), overlays = selected ? [selected] : []
+    const connection = !next.textEditing && !next.croppingId && connectionEditing?.describe(next)
+    if (connection) overlays.push(connection)
+    if (connectionEditing?.indicator()) overlays.push(connectionEditing.indicator())
     if (next.marquee) overlays.push({ kind: 'marquee', bounds: next.marquee })
     if (next.scribble) overlays.push(next.scribble)
     next.overlays = Object.freeze(overlays.map(o => Object.freeze({ ...o, bounds: Object.freeze({ ...o.bounds }), ...(o.handles && { handles: Object.freeze(o.handles.map(h => Object.freeze(h))) }) })))
@@ -76,7 +82,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function cancelTool() {
     // Context loss cancels real and comma pointers together. Recreate the
     // shared counter so neither a previous click nor an unreleased press leaks.
-    countClicks = createClickCounter(); selectionKeys?.cancel(); tool?.cancel()
+    countClicks = createClickCounter(); selectionKeys?.cancel(); connectionEditing?.cancel(); tool?.cancel()
   }
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
@@ -84,7 +90,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     creation.toolChanged(id)
     return tool
   }
-  const context = { session, index, targets, selection, handleMetrics: metrics, read, change, report, measureFrameTitle, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
+  const context = { session, index, targets, selection, handleMetrics: metrics, controlPointSnapping, read, change, report, measureFrameTitle, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
   const creation = createCreationControls({ read, change, switchTool: setTool, canUseTool: id => toolIds.includes(id) })
   context.creation = creation
   cropTool = createImageCrop(context)
@@ -94,6 +100,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const prepareText = () => { cancelTool(); cropTool.cancel(); navigation.cancel() }
   const textEditing = createTextEditing({ ...context, prepare: prepareText, inputContext: value => keyboard.context(value) })
   context.textEditing = textEditing
+  connectionEditing = createConnectionEditing(context)
   const textInput = createTextInput({ ...context, prepare: prepareText, replay: dispatchCore, canCreate: () => toolIds.includes('text') }, textEditing)
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
@@ -109,6 +116,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const checkBasis = !session.state.get().isGestureActive && read().selectionRotation !== null
     const before = checkBasis && selection.expected(read().selectedIds)
     index.applyChanges(changes); targets.apply(changes); content.apply(changes); selection.apply(changes)
+    connectionEditing.applyChanges(changes); tool?.applyChanges?.(changes)
     const after = checkBasis && selection.expected(read().selectedIds)
     const affected = checkBasis && [...Object.keys(changes.added), ...Object.keys(changes.updated), ...Object.keys(changes.removed)].some(id => before.has(id) || after.has(id))
     change(!session.state.get().isGestureActive && affected ? { selectionRotation: null } : {})
@@ -129,6 +137,14 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     // click sequence too, before a later ordinary click can become click #2.
     if (input.type === 'key_down' && input.key === 'Escape') countClicks = createClickCounter()
     if (minimap.handle(input)) { navigation.finishFrame(); return input.type.startsWith('key_') ? true : undefined }
+    const connectionTarget = connectionEditing.candidate(input)
+    if (connectionTarget) {
+      // Keep camera ownership/edge replay before connection previews, while
+      // consuming endpoint double-clicks before the shared text input path.
+      const routed = navigation.handle(input)
+      const connected = routed.handled && !routed.replay && input.type !== 'frame' ? { handled: true } : connectionEditing.handle(routed.replay || input, connectionTarget)
+      if (connected.handled) { navigation.finishFrame(); return connected.result ?? (input.type.startsWith('key_') ? true : undefined) }
+    }
     const edited = textInput.handle(input)
     if (edited.handled) { navigation.finishFrame(); return edited.result ?? true }
     // Idle Escape still belongs to the active creation tool (leave it), while
