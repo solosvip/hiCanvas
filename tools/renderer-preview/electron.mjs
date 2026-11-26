@@ -103,7 +103,10 @@ function createWindow(key) {
 }
 
 async function run() {
-  if(!contentPort)contentPort=(await(await fetch(origin+'/api/health')).json()).contentHost?.port
+  // Only the full renderer preview hosts isolated content and answers
+  // /api/health. The interaction previews behind the native *-check entries
+  // refuse it (403, empty body); they have no content port to allow.
+  if (!contentPort) { const health = await fetch(origin + '/api/health'); if (health.ok) contentPort = (await health.json()).contentHost?.port }
   try {
     app.dock?.hide()
     if (manifest.notesOnly) {
