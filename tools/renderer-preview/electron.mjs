@@ -252,7 +252,16 @@ async function run() {
       check(initial.renderedShapes === initial.count && (gallery === 'embeds' ? initial.counts.embed === 6 && initial.counts.bookmark === 1 : gallery === 'bookmarks' ? initial.counts.bookmark === 9 : gallery === 'external' ? initial.counts.embed === 18 : count === null || initial.counts[type] === count), '图鉴元素未完整绘制')
       if (gallery === 'embeds') await until(() => evaluate("document.querySelector('[data-embed-content=\"shape:embed-web\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-film\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-slide\"]')?.contentDocument?.documentElement?.dataset.instance"))
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
+      // The images gallery holds an animated GIF whose frames change between the
+      // clip pixel captures. Pause it with the gallery's own reduce-motion control
+      // for this check only, then resume so imageSmoke still sees it play.
+      const pauseImages = async paused => {
+        check(await evaluate(`(() => { const box = document.querySelector('[data-image-action="reduce-motion"]'); if (box.checked !== ${paused}) box.click(); return box.checked })()`) === paused, '图片图鉴的减少动画开关没有切换')
+        if (paused) await until(() => evaluate(`Boolean(document.querySelector('[data-image-static="ready"]'))`))
+      }
+      if (gallery === 'images') await pauseImages(true)
       const cameraGeometry = await checkCameraGeometry(window.webContents, initial.count, { directory: manifest.output, label: `${gallery}-clip`, failureOnly: true })
+      if (gallery === 'images') await pauseImages(false)
       const images = gallery === 'images' ? await imageSmoke(window, manifest.output) : undefined
       const geometry = gallery === 'shapes' ? await evaluate("import('/tools/renderer-preview/geo-probe.js').then(module => module.runGeoProbe())") : undefined
       const handDrawn = gallery === 'draw' ? await evaluate("import('/tools/renderer-preview/hand-drawn-probe.js').then(module => module.runHandDrawnProbe())") : undefined
