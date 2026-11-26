@@ -22,6 +22,7 @@ export function attachNavigationUi(host, interaction, onError, navigate) {
   }
   doc.body.append(toolbar)
   return {
+    element: toolbar,
     update(state) {
       for (const action of ['hand', 'select']) buttons.get(action).setAttribute('aria-pressed', String(state.toolId === action))
       buttons.get('edge-scrolling').setAttribute('aria-pressed', String(state.edgeScrolling))

@@ -57,6 +57,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   host.addEventListener('wheel', wheel, { passive: false }); resize()
   return {
     wake,
+    dispatch: send,
     navigate(action, anchor, time) {
       // Buttons and rAF share this host clock. A rAF timestamp can precede an
       // event dispatched earlier in that frame; normalize both in one place.

@@ -78,6 +78,7 @@ export function createCameraNavigation({ session, read, change, content, cancelT
     return { handled: false }
   }
   return { handle, navigate, cancel, pan: pan.pan, cancelPan: pan.cancel,
+    centerOn(point, time) { const camera = read().camera, v = viewport(); motion.animate({ ...camera, x: v.w / (2 * camera.z) - point.x, y: v.h / (2 * camera.z) - point.y }, time) },
     reset: () => { cancel(); lastFrame = null },
     finishFrame() {
       const edge = edgeActive() && (() => { const p = edgePointer.point, v = viewport(); return p.x < 32 || p.y < 32 || p.x > v.w - 32 || p.y > v.h - 32 })()

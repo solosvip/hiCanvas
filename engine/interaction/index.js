@@ -9,6 +9,7 @@ import { createHandTool } from './camera-pan.js'
 import { createCameraContent } from './camera-content.js'
 import { createCameraNavigation } from './camera-navigation.js'
 import { checkedViewport } from './camera-math.js'
+import { createMinimapInteraction } from './minimap.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -27,7 +28,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, overlays: Object.freeze([]), lastError: null }))
-  let disposed = false, tool, navigation, lastTime = -Infinity
+  let disposed = false, tool, navigation, minimap, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -37,6 +38,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (next.hoveredId && !targets.isSelectable(next.hoveredId)) next.hoveredId = null
     next.camera = Object.freeze(checkedCamera(next.camera))
     next.contentOffscreen = content.offscreen(next.camera, next.viewport)
+    next.minimap = minimap?.describe(next) || null
     next.marquee = next.marquee && Object.freeze({ ...next.marquee })
     const selected = describeSelection(selection, next.selectedIds, next.selectionRotation), overlays = selected ? [selected] : []
     if (next.marquee) overlays.push({ kind: 'marquee', bounds: next.marquee })
@@ -46,10 +48,11 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function report(error) { change({ lastError: Object.freeze({ code: error.code || 'interaction', message: error.message }) }) }
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
-    navigation?.cancel(); tool?.cancel(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
+    minimap?.cancel(); navigation?.cancel(); tool?.cancel(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
   }
   const context = { session, index, targets, selection, handleMetrics: metrics, read, change, report }
   navigation = createCameraNavigation({ session, read, change, content, cancelTool: () => tool.cancel(), setTool: id => { if (!toolIds.includes(id)) return false; setTool(id); return true }, inputDevice, invertZoom, reduceMotion })
+  minimap = createMinimapInteraction({ session, read, change, content, navigation })
   context.navigation = navigation
   tool = canvasToolRegistry[read().toolId](context)
   const stop = session.store.addHistoryInterceptor(({ changes }) => {
@@ -66,13 +69,14 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     state: Object.freeze({ get: read }),
     setTool(id) { assertActive(); setTool(id) },
     setEdgeScrolling(enabled) { assertActive(); change({ edgeScrolling: Boolean(enabled) }); navigation.finishFrame() },
-    setViewport(value) { assertActive(); navigation.setViewport(value) },
+    setViewport(value) { assertActive(); minimap.cancel(); navigation.setViewport(value) },
+    setMinimap(value) { assertActive(); minimap.setSize(value) },
     navigate(action, point = null, time = Math.max(0, lastTime)) {
       assertActive()
       if (!Number.isFinite(time) || time < 0) throw new Error('输入时间需要非负有限毫秒。')
-      lastTime = Math.max(lastTime, time); navigation.navigate(action, point, lastTime); navigation.finishFrame()
+      lastTime = Math.max(lastTime, time); minimap.cancel(); navigation.navigate(action, point, lastTime); navigation.finishFrame()
     },
-    setCamera(value) { assertActive(); if (!value) throw new Error('相机需要有限坐标和正数缩放。'); const checked = checkedCamera(value); navigation.reset(); tool.cancel(); change({ camera: checked }) },
+    setCamera(value) { assertActive(); if (!value) throw new Error('相机需要有限坐标和正数缩放。'); const checked = checkedCamera(value); minimap.cancel(); navigation.reset(); tool.cancel(); change({ camera: checked }) },
     dispatch(value) {
       assertActive()
       const input = normalizeInput(value)
@@ -85,12 +89,13 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       }
       if (session.state.get().isSubmitting) return
       try {
+        if (minimap.handle(input)) { navigation.finishFrame(); return }
         const routed = navigation.handle(input)
         const result = routed.replay ? tool.dispatch(routed.replay) : routed.handled ? undefined : tool.dispatch(input)
         navigation.finishFrame()
         return result
-      } catch (error) { navigation.cancel(); tool.cancel(); report(error); throw error }
+      } catch (error) { minimap.cancel(); navigation.cancel(); tool.cancel(); report(error); throw error }
     },
-    dispose() { if (disposed) return; navigation.cancel(); tool.cancel(); stop(); disposed = true },
+    dispose() { if (disposed) return; minimap.cancel(); navigation.cancel(); tool.cancel(); stop(); disposed = true },
   })
 }

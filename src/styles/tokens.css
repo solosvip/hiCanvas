@@ -3,6 +3,9 @@
   --color-primary: #2f80ed;
   --color-overlay-brush-stroke: #0000001a;
   --color-overlay-brush-fill: #0000000a;
+  --color-minimap-background: #edf0f2;
+  --color-minimap-shape: #6e7477;
+  --color-minimap-viewport: #0000001a;
   --color-secondary: #596170;
   --color-tertiary: #0ea5e9;
   --color-neutral: #f7f5ef;
@@ -32,6 +35,9 @@
   --spacing-overlay-edge-hit: 8px;
   --spacing-overlay-rotate-offset: 7px;
   --spacing-overlay-rotate-radius: 6px;
+  --spacing-minimap-width: 152px;
+  --spacing-minimap-height: 88px;
+  --spacing-minimap-breakpoint: 840px;
   --spacing-none: 0px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;

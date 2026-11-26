@@ -123,3 +123,4 @@ export function getShapePageBounds(snapshot, shapeId, context = snapshot) {
 }
 
 export { createSpatialIndex } from './spatial-index.js'
+export { getMinimapLayout, minimapToPagePoint, pageToMinimapPoint, hitMinimapViewport } from './minimap-geometry.js'

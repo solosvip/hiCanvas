@@ -5,6 +5,9 @@ colors:
   primary: "#2f80ed"
   overlay-brush-stroke: "#0000001a"
   overlay-brush-fill: "#0000000a"
+  minimap-background: "#edf0f2"
+  minimap-shape: "#6e7477"
+  minimap-viewport: "#0000001a"
   secondary: "#596170"
   tertiary: "#0ea5e9"
   neutral: "#f7f5ef"
@@ -33,6 +36,9 @@ spacing:
   overlay-edge-hit: 8px
   overlay-rotate-offset: 7px
   overlay-rotate-radius: 6px
+  minimap-width: 152px
+  minimap-height: 88px
+  minimap-breakpoint: 840px
   none: 0px
   xs: 4px
   sm: 8px
@@ -89,6 +95,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 保留 Cowart/tldraw 的圆角、图标与标注箭头。标注箭头的默认曲率、文本位置与连续标注交互保持不变。
 
 ## Components
+
+小地图沿用隔离旧版的运行画面：152×88 CSS 像素，灰色矩形代表形状（选中用主色），约 10% 黑色的圆角视口填充盖在形状上，背景为冷灰；不重复绘制照片或文字。地图按钮控制展开／收起，窗口宽度不超过 840px 时隐藏（2026-11-26 逐像素调整旧版窗口，840px 隐藏、841px 显示），恢复宽窗口后保留展开偏好。尺寸和配色置信度高，圆角约 4px，沿用 xs 令牌。取景是内容与视口并集、完整等比居中，不添加缩略图内边距。
 
 2026-11-25 对照运行中的旧版测量，沿用既有观感，不是新设计：选择框使用主色、屏幕线宽约 2px；框选矩形使用约 10% 黑色描边、约 4% 黑色填充，屏幕线宽约 1px；覆盖层线宽不随画布缩放变化。规范没有线宽分组，画布覆盖层的线宽作为尺寸放在 spacing 里，名字以 overlay- 开头；只用于覆盖层，不用于间距。
 
