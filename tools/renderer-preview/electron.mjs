@@ -2,6 +2,8 @@ import { app, BrowserWindow } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { selectionSmoke } from './selection-smoke.mjs'
+import { measureSelectionPointer } from './selection-perf.mjs'
 
 const manifest = JSON.parse(await readFile(process.argv.at(-1), 'utf8'))
 const origin = new URL(manifest.url).origin
@@ -21,8 +23,13 @@ async function until(predicate) {
   throw new Error('等待渲染器就绪超时。')
 }
 const check = (condition, message) => { if (!condition) throw new Error(message) }
-async function cameraLayoutProbe() {
+async function cameraLayoutProbe(selected = false) {
   const contents = window.webContents
+  await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.resetCamera({x:100,y:100,z:1});void 0')
+  await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+  const x = selected ? 140 : 50, y = selected ? 140 : 50
+  for (const type of ['mouseDown', 'mouseUp']) contents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1 })
+  await until(async () => (await state()).selectedIds.length === Number(selected))
   contents.debugger.attach('1.3')
   try {
     await contents.debugger.sendCommand('Performance.enable')
@@ -47,7 +54,7 @@ async function cameraLayoutProbe() {
     check(moved.x !== pan.x && moved.y !== pan.y, '布局回归检查的真实中键没有改变平移')
     const after = await metrics(), layouts = after.LayoutCount - before.LayoutCount
     check(layouts === 0, `相机平移缩放触发了 ${layouts} 次布局；静态内容不应逐帧重排`)
-    return { cameraLayouts: layouts }
+    return { selected, cameraLayouts: layouts }
   } finally { contents.debugger.detach() }
 }
 function createWindow(key) {
@@ -66,6 +73,19 @@ function createWindow(key) {
 async function run() {
   try {
     app.dock?.hide()
+    if (manifest.selectionOnly) {
+      window = createWindow('selection')
+      await window.loadURL(`${manifest.url}/?count=500`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ selection: await selectionSmoke(window, manifest.output, { persistent: true }) })
+      window.destroy(); window = createWindow('selection-perf')
+      await window.loadURL(`${manifest.url}/?count=5000`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ count: 5000, pointer: await measureSelectionPointer(window) })
+      check(!errors.length && !blocked.length, `浏览器错误／外部请求：${JSON.stringify({ errors, blocked })}`)
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2))
+      window.destroy(); app.exit(0); return
+    }
     for (const count of [500, 2000, 5000]) {
       window = createWindow(count)
       await window.loadURL(`${manifest.url}/?count=${count}`)
@@ -78,12 +98,13 @@ async function run() {
       window.webContents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: -40, modifiers: ['control'], canScroll: true })
       const zoom = await until(async () => { const value = await state(); return value.camera.z !== pan.camera.z && value })
       let lifecycle, cameraLayout, text
-      if (count === 5000) cameraLayout = await cameraLayoutProbe()
+      if (count === 5000) cameraLayout = { empty: await cameraLayoutProbe(), selected: await cameraLayoutProbe(true) }
       if (count === 500) {
         lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
         text = await evaluate("import('/tools/renderer-preview/text-probe.js').then(module => module.runTextProbe())")
       }
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text })
+      const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, selection })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }

@@ -186,7 +186,7 @@ git config core.hooksPath .githooks
 
 提交前跑快检查，CI 跑完整入口。仓库为公开仓库，GitHub Actions 使用云端 Ubuntu 检查机运行完整入口。本地检查通过后仍需核对 PR 的远程检查结果。
 
-新渲染层的只读开发预览单独启动，不启动画板服务，也不加载真实资料。先登记专用端口，再运行：
+新渲染层的合成开发预览单独启动，不加载真实资料。原 `npm run renderer:preview` 仅在内存里临时编辑，刷新还原。先登记专用端口，再运行：
 
 ```sh
 npm run renderer:preview -- --port 43330
@@ -195,6 +195,8 @@ npm run renderer:preview -- --port 43330
 npm run renderer:check
 npm run renderer:smoke
 ```
+
+需要验证松手保存和刷新恢复时，先登记另一个专用端口，再运行 `node tools/renderer-preview/service.mjs --port 43368`，打开 `http://127.0.0.1:43368/?count=500`（也支持 2000、5000）。这个独立宿主只监听 `127.0.0.1`，只用本工作区 `.scratch/interaction-preview/` 下的合成资料；支持点选、Shift 加减选、空白拖框、拖动移动和 Esc 取消，松手整次保存，刷新恢复位置。撤销和重做统一由后续 #82 接入。
 
 预览入口是 `tools/renderer-preview/index.html`，独立 Vite 配置只扫描这个入口；正式构建仍从根 `index.html` 进入，桌面只复制正式 `dist/`，因此预览页不进入应用产物。合成规则复用性能基线的坐标、相机、尺寸、60% 几何／20% 文本／20% 图片构成及 16 张本地 PNG；保留三角形、菱形和 semi 填充，不再转换为矩形和实心。滚轮平移、Ctrl+滚轮或触控板捏合缩放只实现在预览页。只读观察接口 `window.__HICANVAS_RENDERER_PREVIEW__.getState()` 返回 `ready`、`error`、`camera`、`count`、`counts`、`renderedShapes`、`imageCount`、`decodedImages` 的副本，不暴露存储或修改接口；`ready` 等到全部形状、字体和图片解码完成后置为真，供后续测量工具读取。
 

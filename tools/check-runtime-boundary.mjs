@@ -33,10 +33,10 @@ function checkHostAccess(source, path) {
   walk(parse(source, { sourceType: 'module', plugins: ['jsx'] }).program)
 }
 
-export async function checkRuntimeBoundary({ root = projectRoot } = {}) {
+export async function checkRuntimeBoundary({ root = projectRoot, entryPoints = ['engine/runtime/index.js', 'engine/interaction/index.js'] } = {}) {
   root = await realpath(root)
   const result = await build({
-    absWorkingDir: root, entryPoints: ['engine/runtime/index.js'], bundle: true, write: false, metafile: true, platform: 'browser', format: 'esm', logLevel: 'silent',
+    absWorkingDir: root, entryPoints, outdir: '.scratch/runtime-boundary', bundle: true, write: false, metafile: true, platform: 'browser', format: 'esm', logLevel: 'silent',
     plugins: [{ name: 'runtime-boundary', setup(builder) {
       builder.onResolve({ filter: /.*/ }, args => {
         const specifier = args.path
