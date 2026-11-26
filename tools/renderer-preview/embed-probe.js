@@ -24,7 +24,7 @@ export async function runEmbedProbe() {
   const host = document.createElement('div'); host.style.position = 'fixed'; host.style.inset = '0'; document.body.append(host)
   const before = JSON.stringify(raw.getStoreSnapshot()), renderer = mountCanvasRenderer(host, { store, pageId: fixture.viewState.currentPageId })
   const iframe = id => host.querySelector(`[data-embed-content="${id}"]`)
-  const instance = node => node?.contentDocument?.documentElement.dataset.instance
+  const instance = node => node?.contentDocument?.documentElement?.dataset.instance
   const webId = 'shape:embed-web', filmId = 'shape:embed-film'
   let pending, originalFetch
   try {
@@ -37,7 +37,7 @@ export async function runEmbedProbe() {
     check(web.contentDocument.querySelector('h1')?.textContent === '网页', '中文 HTML 没有显示')
     check(iframe('shape:embed-slide').closest('[data-frame-clip]'), '幻灯片页未在画框内裁剪')
     const external = host.querySelector('[data-shape-id="shape:embed-external"]'), bookmark = host.querySelector('[data-shape-id="shape:embed-bookmark"]')
-    check(!external.querySelector('iframe') && external.textContent.includes('外部嵌入'), '外部嵌入不应打开网址')
+    check(!external.querySelector('iframe') && external.querySelector('[data-bookmark-url]')?.textContent === 'example.invalid', '未知外部嵌入应退回书签并保留网址')
     check(!bookmark.querySelector('iframe') && bookmark.textContent.includes('合成书签'), '书签没有复用资源元数据')
     await until(() => host.querySelector('[data-shape-id="shape:embed-error"]').textContent.includes('HTML 内容为空'))
     for (const status of ['queued', 'running', 'failed', 'interrupted', 'pending', 'working', 'waiting', 'saved']) check(host.querySelector(`[data-generation-status="${status}"]`), `生成状态缺失：${status}`)
