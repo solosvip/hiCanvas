@@ -27,6 +27,12 @@ typography:
 spacing:
   overlay-selection-stroke: 2px
   overlay-brush-stroke: 1px
+  overlay-handle-size: 10px
+  overlay-handle-stroke: 2px
+  overlay-handle-hit: 12px
+  overlay-edge-hit: 8px
+  overlay-rotate-offset: 7px
+  overlay-rotate-radius: 6px
   none: 0px
   xs: 4px
   sm: 8px
@@ -85,6 +91,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 ## Components
 
 2026-11-25 对照运行中的旧版测量，沿用既有观感，不是新设计：选择框使用主色、屏幕线宽约 2px；框选矩形使用约 10% 黑色描边、约 4% 黑色填充，屏幕线宽约 1px；覆盖层线宽不随画布缩放变化。规范没有线宽分组，画布覆盖层的线宽作为尺寸放在 spacing 里，名字以 overlay- 开头；只用于覆盖层，不用于间距。
+
+2026-11-25 在隔离旧版 tldraw 5.1.1 合成画板中，以原生鼠标和 overlay canvas 截图像素测量：四角手柄外径 10px（含 2px 主色边框、白色内部），角点命中范围中心左右上下各 6px，边线命中范围各 4px；旋转区域不画图标，位于每个角向外两个方向各 7px 处、半径约 6px。像素尺寸置信度高，旋转命中圆来自鼠标光标网格观察、置信度中。尺寸及命中范围均为屏幕 CSS 像素，不随视角缩放变化；overlay- 前缀的 spacing 只用于覆盖层尺寸和输入命中，不用于页面间距。
 
 基础画板、拖动手柄、标注工具、颜色与样式面板、图片工具栏、AI 框及生成面板、HTML 编辑工具栏、Slides 工具栏与演示层均复用上游组件。默认、悬停、焦点、选中、禁用、加载、错误状态沿用已有实现。
 

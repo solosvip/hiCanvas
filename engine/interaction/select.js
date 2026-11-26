@@ -1,13 +1,18 @@
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { CanvasEditError } from '../errors.js'
+import { createHandleGesture } from './handle-gesture.js'
+import { hitSelectionHandle, selectionHandleCursor } from './selection-handles.js'
 
 // Screen CSS pixels, independent of zoom. 2026-11-25 对照运行中的旧版逐帧观察。
 const threshold = 4
 const boxBetween = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) })
 
-export function createSelectionTool({ session, index, targets, read, change, report }) {
+export function createSelectionTool(context) {
+  const { session, index, targets, handleMetrics, read, change, report } = context
+  const handles = createHandleGesture(context)
   let gesture = null
   function cancel() {
+    handles.cancel()
     if (!gesture) return
     const previous = gesture; gesture = null
     if (session.state.get().isGestureActive && !session.state.get().isSubmitting) session.cancelGesture()
@@ -19,8 +24,10 @@ export function createSelectionTool({ session, index, targets, read, change, rep
     return expected
   }
   function down(input) {
-    if (gesture || session.state.get().isSubmitting || input.button !== 0) return
+    if (gesture || handles.active || session.state.get().isSubmitting || input.button !== 0) return
     const state = read(), start = screenToCanvas(input.point, state.camera)
+    const overlay = state.overlays.find(o => o.kind === 'selection'), handle = hitSelectionHandle(overlay, start, state.camera.z, handleMetrics)
+    if (handle) return handles.begin(input, handle, { ...overlay.bounds, rotation: overlay.rotation })
     const hit = targets.hitTest(start, 4 / state.camera.z), before = state.selectedIds
     session.beginGesture()
     gesture = { kind: 'pointing', pointerId: input.pointerId, startScreen: input.point, start, before, hit, toggle: input.shiftKey && before.includes(hit), additive: input.shiftKey }
@@ -39,7 +46,10 @@ export function createSelectionTool({ session, index, targets, read, change, rep
   }
   function move(input) {
     const state = read(), point = screenToCanvas(input.point, state.camera)
-    if (!gesture) { change({ hoveredId: targets.hitTest(point, 4 / state.camera.z) }); return }
+    if (!gesture) {
+      const overlay = state.overlays.find(o => o.kind === 'selection'), handle = hitSelectionHandle(overlay, point, state.camera.z, handleMetrics)
+      change({ hoveredId: handle ? null : targets.hitTest(point, 4 / state.camera.z), handleCursor: selectionHandleCursor(handle, overlay?.rotation || 0) }); return
+    }
     if (input.pointerId !== gesture.pointerId) return
     if (gesture.kind === 'pointing' && Math.hypot(input.point.x - gesture.startScreen.x, input.point.y - gesture.startScreen.y) <= threshold) return
     if (!gesture.hit) {
@@ -76,6 +86,7 @@ export function createSelectionTool({ session, index, targets, read, change, rep
     if (session.state.get().isGestureActive) session.cancelGesture()
   }
   return { cancel, dispatch(input) {
+    if (handles.active) return handles.dispatch(input)
     if (input.type === 'pointer_down') return down(input)
     if (input.type === 'pointer_move') return move(input)
     if (input.type === 'pointer_up') return up(input)

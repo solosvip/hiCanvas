@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { measureFrameTitlePerformance } from './frame-title-performance.mjs'
+import { handleSmoke } from './handle-smoke.mjs'
 import { cameraSmoke } from './camera-smoke.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
@@ -82,6 +83,14 @@ function createWindow(key) {
 async function run() {
   try {
     app.dock?.hide()
+    if (manifest.handlesOnly) {
+      window = createWindow('handles')
+      await window.loadURL(`${manifest.url}/?count=500`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ handles: await handleSmoke(window, manifest.output), cameraLayout: await cameraLayoutProbe(true) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.cameraOnly) {
       window = createWindow('camera')
       await window.loadURL(`${manifest.url}/?count=500`)
@@ -94,7 +103,8 @@ async function run() {
       window = createWindow('selection')
       await window.loadURL(`${manifest.url}/?count=500`)
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ selection: await selectionSmoke(window, manifest.output, { persistent: true }) })
+      // Handles undo their edits before the existing selection workflow starts.
+      samples.push({ handles: await handleSmoke(window, manifest.output), selection: await selectionSmoke(window, manifest.output, { persistent: true }) })
       window.destroy(); window = createWindow('selection-perf')
       await window.loadURL(`${manifest.url}/?count=5000`)
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
