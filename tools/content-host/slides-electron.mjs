@@ -13,7 +13,10 @@ app.on('window-all-closed',()=>{})
 async function run(){
   app.dock?.hide()
   const window=new BrowserWindow({show:false,width:1280,height:850,useContentSize:true,webPreferences:{offscreen:true,sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false,partition:'slides-'+process.pid}})
-  const contents=window.webContents,checks=[],observations={clicks:[],keys:[],nativeInputs:[]},blocked=[],errors=[]
+  const contents=window.webContents,checks=[],observations={clicks:[],keys:[],nativeInputs:[]},blocked=[],errors=[],uncaught=[]
+  contents.debugger.on('message',(_event,method,params,sessionId)=>{
+    if(method==='Runtime.exceptionThrown')uncaught.push({source:'Runtime.exceptionThrown',sessionId,...params.exceptionDetails})
+  })
   contents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false))
   contents.setWindowOpenHandler(()=>({action:'deny'}))
   contents.session.webRequest.onBeforeRequest((details,callback)=>{
@@ -23,6 +26,9 @@ async function run(){
   })
   contents.on('console-message',detail=>{
     if(detail.level==='error')errors.push(detail.message.slice(0,500))
+    // Electron forwards console messages from child frames too, including
+    // OOPIFs that do not belong to the main Runtime debugging session.
+    if(detail.level==='error'&&/^Uncaught\b/.test(detail.message))uncaught.push({source:'console-message',message:detail.message,lineNumber:detail.lineNumber,sourceId:detail.sourceId})
     if(detail.message.startsWith('__SLIDES_INPUT__'))observations.nativeInputs.push(JSON.parse(detail.message.slice('__SLIDES_INPUT__'.length)))
   })
   const evaluate=code=>contents.executeJavaScript(code)
@@ -77,6 +83,10 @@ async function run(){
     await contents.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key,code:key===' '?'Space':key,windowsVirtualKeyCode:vk},inputSession);await delay(60)
   }
   try{
+    // sendCommand can await the first navigation. Initialize on a blank page
+    // so Runtime is enabled before any application script or iframe loads.
+    await window.loadURL('about:blank');await debug()
+    await contents.debugger.sendCommand('Runtime.enable')
     await window.loadURL(manifest.url)
     if(!offline){await until(()=>evaluate('!!window.__cowartEditor&&!!window.slidesProbe'));await evaluate('window.slidesProbe.setup('+JSON.stringify(manifest.slidesId)+')');await button('播放');await until(()=>evaluate('window.slidesProbe.state().presenting'))}
     await ready();check('三页演示从第一页开始',await count()==='1 / 3')
@@ -142,12 +152,14 @@ async function run(){
       check('导出菜单组件的可访问名称列出需联网资源',observations.exportNotice.label.startsWith('导出完成；')&&observations.exportNotice.label.includes(syntheticCdnUrl))
     }
     check(offline?'断服后只尝试原外部引用、没有本机请求':'应用只尝试声明的外部引用',blocked.every(url=>url===syntheticCdnUrl))
-    await writeFile(manifest.result,JSON.stringify({checks,observations,errors,blocked,runtime:process.versions},null,2)+'\n')
+    await delay(100)
+    check('整轮幻灯片零未接住异常',uncaught.length===0)
+    await writeFile(manifest.result,JSON.stringify({checks,observations,errors,uncaught,blocked,runtime:process.versions},null,2)+'\n')
     window.destroy();app.exit(0)
   }catch(error){
     observations.failure=await evaluate('({url:location.href,count:'+countExpression+',iframe:'+frameExpression+'?.outerHTML.slice(0,300)})').catch(()=>null)
     observations.frames=await Promise.all(contents.mainFrame.frames.map(async frame=>({url:frame.url,name:frame.name,value:await frameEvaluate(frame,'({name:window.name,number:window.slideNumber,loaded:window.slideLoaded,html:document.body.innerHTML.slice(0,100)})').catch(error=>({error:error.message}))})))
-    await writeFile(manifest.result,JSON.stringify({checks,observations,errors,blocked,error:error.stack},null,2)+'\n')
+    await writeFile(manifest.result,JSON.stringify({checks,observations,errors,uncaught,blocked,error:error.stack},null,2)+'\n')
     await writeFile(join(manifest.output,'failed-'+(offline?'offline':'app')+'-isolated.png'),(await contents.capturePage()).toPNG())
     console.error(error);window.destroy();app.exit(1)
   }

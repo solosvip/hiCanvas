@@ -7,14 +7,34 @@ import { hasCowartWidgetBridge, readCowartPageAsset } from "../cowartClient.js"
 import { hydrateCowartHtmlDraftLocalImages, isCowartHtmlDraftDataUrl, cowartHtmlDraftAssetUrlFromVirtualUrl, blobFromBase64 } from './assets.jsx'
 import { isCowartHtmlDraftEmbedShape, isImageShape } from './holderMeta.jsx'
 const isInteractiveHtmlClick=isInteractiveSlideClick
+function createSlidesFrameLoadHandler(frame) {
+  let unsubscribe
+  let disposed = false
+  return {
+    onLoad(event, onNavigate) {
+      // A retired iframe can deliver load after its effect has released it.
+      // Check before touching subscriptions owned by this page.
+      if (disposed || frame.disposed) return
+      unsubscribe?.()
+      unsubscribe = null
+      const channel = frame.bind(event.currentTarget, { slides: !!onNavigate })
+      if (onNavigate) unsubscribe = channel.subscribeNavigation(onNavigate)
+    },
+    dispose() {
+      disposed = true
+      unsubscribe?.()
+      unsubscribe = null
+    }
+  }
+}
 function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
   const editor = useEditor()
-  const iframeClickCleanupRef = useRef(null)
   const [source, setSource] = useState(null)
   const [error, setError] = useState(null)
   useEffect(() => {
     let disposed = false
     let frame
+    let frameLoad
     const controller = new AbortController()
     setSource(null)
     setError(null)
@@ -68,8 +88,9 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
             directUrl: nextSource.kind === 'html-url' ? nextSource.url : undefined, signal: controller.signal
           })
           if (disposed) { frame.dispose(); return }
+          frameLoad = createSlidesFrameLoadHandler(frame)
         }
-        setSource({ ...nextSource, frame })
+        setSource({ ...nextSource, frame, frameLoad })
       })
       .catch((nextError) => {
         if (!disposed) setError(nextError instanceof Error ? nextError.message : '页面加载失败')
@@ -77,22 +98,10 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
     return () => {
       disposed = true
       controller.abort()
+      frameLoad?.dispose()
       frame?.dispose()
     }
   }, [editor, shape.id, shape.props?.assetId, shape.props?.url, shape.meta?.cowartHtmlDraftAssetUrl, shape.meta?.cowartHtmlDraftContentHash])
-  useEffect(
-    () => () => {
-      iframeClickCleanupRef.current?.()
-      iframeClickCleanupRef.current = null
-    },
-    []
-  )
-  function handleHtmlFrameLoad(event) {
-    iframeClickCleanupRef.current?.()
-    iframeClickCleanupRef.current = null
-    const channel=source.frame.bind(event.currentTarget,{slides:!!onUnhandledHtmlClick})
-    if(onUnhandledHtmlClick)iframeClickCleanupRef.current=channel.subscribeNavigation(direction=>onUnhandledHtmlClick(direction))
-  }
 
   if (source?.kind === 'image') {
     return <img alt={title} className="cowart-slides-media" draggable={false} src={source.url} />
@@ -102,7 +111,7 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
       <iframe
         className="cowart-slides-media"
         frameBorder="0"
-        onLoad={handleHtmlFrameLoad}
+        onLoad={event => source.frameLoad.onLoad(event, onUnhandledHtmlClick)}
         sandbox=""
         {...source.frame?.attributes}
         tabIndex={-1}
@@ -162,4 +171,4 @@ function CowartSlidesScaledMedia({ className = '', onUnhandledHtmlClick, shape, 
     </span>
   )
 }
-export { isInteractiveHtmlClick, CowartSlidesMedia, CowartSlidesScaledMedia }
+export { isInteractiveHtmlClick, CowartSlidesMedia, CowartSlidesScaledMedia, createSlidesFrameLoadHandler }
