@@ -25,8 +25,9 @@ try {
   const code = await new Promise((accept, reject) => {
     child = spawn(executable, [resolve(root, 'tools/renderer-preview/electron.mjs'), manifest], { cwd: root, env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined }, stdio: 'inherit' })
     childClosed = new Promise(resolve => child.once('close', resolve))
-    // Each merged gallery adds settled native captures; a loaded machine pushed
-    // the full run past 120 s (#139). Keep every assertion, allow the run to finish.
+    // Each merged gallery adds settled native captures (#139), and the full
+    // geometry/color-response ABA checks add more (#104); a loaded machine pushed
+    // the run past 120 s. Keep every assertion, allow the complete run to finish.
     let timedOut = false
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, 240000)
     child.once('error', error => { clearTimeout(timer); reject(error) })
