@@ -1,7 +1,7 @@
 import './test-sandbox.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkRendererBoundary } from './check-renderer-boundary.mjs'
@@ -15,6 +15,31 @@ test('真实渲染入口可浏览器打包，几何入口独立且没有 React/D
   assert.ok(pure.some(path => path.includes('node_modules/linebreak/')))
   assert.ok(pure.some(path => path.includes('node_modules/unicode-segmenter/')))
   assert.deepEqual(pure.filter(path => /node_modules\/(?:react|react-dom)\//.test(path)), [])
+})
+
+test('渲染经模型公开入口读取内部数据，模型不能反向导入渲染且渲染不能直达模型内部', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'renderer-model-boundary-'))
+  const actual = join(base, 'actual'), root = join(base, 'linked-project')
+  await mkdir(actual)
+  await symlink(actual, root, process.platform === 'win32' ? 'junction' : 'dir')
+  try {
+    await mkdir(join(root, 'renderer')); await mkdir(join(root, 'model'))
+    await writeFile(join(root, 'renderer/index.js'), "export * from '../model/index.js'\n")
+    await writeFile(join(root, 'model/index.js'), "export * from './services.js'\n")
+    await writeFile(join(root, 'model/services.js'), 'export const constraint = 200\n')
+    const inputs = await checkRendererBoundary({ root })
+    assert.ok(inputs.includes('model/services.js'))
+    await writeFile(join(root, 'renderer/index.js'), "export * from '../model/services.js'\n")
+    await assert.rejects(checkRendererBoundary({ root }), /越界/)
+    await writeFile(join(root, 'renderer/index.js'), "export * from '../model/index.js'\n")
+    await writeFile(join(root, 'renderer/drawing.js'), 'export const drawing = 1\n')
+    await writeFile(join(root, 'model/services.js'), "export * from '../renderer/drawing.js'\n")
+    await assert.rejects(checkRendererBoundary({ root }), /越界/)
+    for (const specifier of ['react', 'unlisted-package']) {
+      await writeFile(join(root, 'model/services.js'), `export * from '${specifier}'\n`)
+      await assert.rejects(checkRendererBoundary({ root }), /未允许的依赖/)
+    }
+  } finally { await rm(base, { recursive: true, force: true }) }
 })
 
 test('临时插入直接与间接违规引用都报红，删除探针后恢复；拦截发生在读取受限包之前', async () => {

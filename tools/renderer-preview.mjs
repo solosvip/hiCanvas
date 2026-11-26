@@ -2,6 +2,7 @@ import { createServer } from 'vite'
 import { createServer as createHttpServer } from 'node:http'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readFile } from 'node:fs/promises'
 import { createFixture } from './perf/fixture.mjs'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { requireLocalRequest, jsonBody } from '../server/local-request.mjs'
@@ -12,7 +13,7 @@ export function createRendererFixture(count, { dash = 'solid' } = {}) {
   return createFixture(count, undefined, undefined, { dash })
 }
 
-export async function startRendererPreview({ port = 0 } = {}) {
+export async function startRendererPreview({ port = 0, geometryFixtures = false } = {}) {
   if (port !== 0 && (!Number.isInteger(port) || port < 43300 || port > 65535)) throw new Error('预览端口须在 43300–65535，测试可使用系统分配端口。')
   const fixtures = new Map()
   let server
@@ -47,6 +48,13 @@ export async function startRendererPreview({ port = 0 } = {}) {
       response.setHeader('Cache-Control', 'no-store')
       response.end(fixtures.get(key))
     })
+  }, async load(id) {
+    // Test-only geometry registration: prove that a geometry provider alone
+    // never opts a new type into drawing. Production modules remain untouched.
+    if (!geometryFixtures || id !== resolve(root, 'renderer/bounds.js')) return
+    const source = await readFile(id, 'utf8'), anchor = 'const geometryByType = Object.freeze({'
+    if (!source.includes(anchor)) throw new Error('合成几何注册入口已变化，请更新绘制分派守卫。')
+    return source.replace(anchor, anchor + '\n  synthetic_geometry_only: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },')
   } }] }) } catch (error) { http.close(); throw error }
   return { url: `http://127.0.0.1:${http.address().port}`, async close() {
     await server.close()

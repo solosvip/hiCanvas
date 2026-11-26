@@ -1,7 +1,7 @@
 import { isEqual } from '@tldraw/utils'
 import { getShapePageBounds, shapeToPagePoint } from '../renderer/geometry.js'
 import { CanvasEditError } from './errors.js'
-import { layoutContext } from './layout-context.js'
+import { hasLayoutBounds, layoutContext } from './layout-context.js'
 import { pageDeltaToParentDelta } from './shape-coordinates.js'
 
 export const fullTurn = Math.PI * 2
@@ -16,10 +16,10 @@ export function checkedPoint(point) {
   return point
 }
 
-export function transformTargets(store, ids, { expandGroups = false, includeGroupFrameContents = false } = {}) {
-  const context = layoutContext(store, ids), { records, items } = context
+export function transformTargets(store, ids, { expandGroups = false, includeGroupFrameContents = false, allowDegenerateConnections = false } = {}) {
+  const context = layoutContext(store, ids, undefined, { allowDegenerateConnections }), { records, items } = context
   const snapshot = { store: records }, roots = items.map(item => item.shape)
-  if (!expandGroups) return { snapshot, shapes: roots, context }
+  if (!expandGroups) return { snapshot, shapes: roots, context, roots }
   const children = new Map()
   for (const shape of Object.values(records)) if (shape.typeName === 'shape') {
     if (!children.has(shape.parentId)) children.set(shape.parentId, [])
@@ -37,10 +37,10 @@ export function transformTargets(store, ids, { expandGroups = false, includeGrou
     }
     if (shape.type !== 'group') {
       const bounds = getShapePageBounds(snapshot, shape.id)
-      if (bounds && [bounds.x, bounds.y, bounds.w, bounds.h].every(Number.isFinite) && bounds.w > 0 && bounds.h > 0) expanded.push({ shape, bounds })
+      if (hasLayoutBounds(bounds, shape, allowDegenerateConnections)) expanded.push({ shape, bounds })
     }
   }
-  return { snapshot, shapes: expanded.map(item => item.shape), context: { ...context, items: expanded } }
+  return { snapshot, shapes: expanded.map(item => item.shape), context: { ...context, items: expanded }, roots }
 }
 
 export function placeShapeAtPagePoint(snapshot, shape, point) {

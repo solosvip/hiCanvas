@@ -71,7 +71,8 @@ export function createSelectionFrame(initial, index) {
     },
     capability(ids, options) {
       const leaves = expanded(ids), capabilities = leaves.map(r => getShapeScalingCapabilities(r, options))
-      return { canScale: Boolean(leaves.length && capabilities.every(c => c.canScale)), lockAspectRatio: capabilities.some(c => c.lockAspectRatio) }
+      const selected = roots(ids)
+      return { canScale: Boolean(leaves.length && capabilities.every(c => c.canScale)), lockAspectRatio: capabilities.some(c => c.lockAspectRatio), hideResizeHandles: selected.length === 1 && records[selected[0]]?.type !== 'group' && Boolean(capabilities[0]?.hideResizeHandles) }
     },
     capture(ids) {
       // Scaling stops at a frame. Its descendants retain their local records

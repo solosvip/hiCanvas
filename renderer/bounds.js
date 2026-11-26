@@ -21,6 +21,7 @@ const geometryByType = Object.freeze({
   note: { hit: legacyHit, bounds: noteSize, contour: shape => box(noteSize(shape)) },
   text: { hit: legacyHit, bounds: textSize, contour: shape => box(textSize(shape)) },
   image: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },
+  video: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },
   frame: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },
   draw: { hit: pointInStroke, bounds: shape => getStrokeGeometry(shape)?.bounds, contour: getStrokeGeometry },
   highlight: { hit: pointInStroke, bounds: shape => getStrokeGeometry(shape)?.bounds, contour: getStrokeGeometry },

@@ -1,5 +1,6 @@
 import { Store } from '@tldraw/store'
 import { createTLSchema } from '@tldraw/tlschema'
+export { getEmbedService, getEmbedServiceConstraints } from './embed-services.js'
 
 // 界面与服务端共用的快照入口；只依赖 MIT 数据层，保留旧格式和校验行为。
 export function createCanvasStore() {

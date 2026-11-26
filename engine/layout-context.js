@@ -5,8 +5,14 @@ import { getShapeAncestors, pageDeltaToParentDelta } from './shape-coordinates.j
 
 export const LAYOUT_EPSILON = 1e-9
 
+export function hasLayoutBounds(bounds, shape, allowDegenerateConnections = false) {
+  return Boolean(bounds && [bounds.x, bounds.y, bounds.w, bounds.h].every(Number.isFinite)
+    && (bounds.w > 0 && bounds.h > 0 || allowDegenerateConnections && ['line', 'arrow'].includes(shape.type)
+      && bounds.w >= 0 && bounds.h >= 0 && (bounds.w > 0 || bounds.h > 0)))
+}
+
 // 共用目标校验与父链查询；交互式排版额外排除锁定、被选祖先下的形状。
-export function layoutContext(store, ids, eligible = () => true) {
+export function layoutContext(store, ids, eligible = () => true, { allowDegenerateConnections = false } = {}) {
   const shapes = getTargetShapes(store, ids)
   const records = Object.fromEntries(store.allRecords().map(record => [record.id, record]))
   const selected = new Set(shapes.map(shape => shape.id))
@@ -15,7 +21,7 @@ export function layoutContext(store, ids, eligible = () => true) {
     const ancestors = getShapeAncestors(records, shape.parentId)
     if (shape.isLocked || ancestors.some(parent => parent.isLocked || selected.has(parent.id)) || !eligible(shape)) continue
     const bounds = getShapePageBounds({ store: records }, shape.id)
-    if (bounds && [bounds.x, bounds.y, bounds.w, bounds.h].every(Number.isFinite) && bounds.w > 0 && bounds.h > 0) items.push({ shape, bounds })
+    if (hasLayoutBounds(bounds, shape, allowDegenerateConnections)) items.push({ shape, bounds })
   }
   const left = Math.min(...items.map(item => item.bounds.x)), top = Math.min(...items.map(item => item.bounds.y))
   const right = Math.max(...items.map(item => item.bounds.x + item.bounds.w)), bottom = Math.max(...items.map(item => item.bounds.y + item.bounds.h))
