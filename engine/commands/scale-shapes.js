@@ -14,7 +14,7 @@ export function scaleShapes(store, { ids, origin, scale, lockAspectRatio, mode =
   if (!scale || ![scale.x, scale.y].every(value => Number.isFinite(value) && value !== 0)) throw new CanvasEditError('横纵缩放倍率需要有限非零数值。')
   if (lockAspectRatio !== undefined && typeof lockAspectRatio !== 'boolean') throw new CanvasEditError('锁定比例需要布尔值。')
   if (!['scale_shape', 'resize_bounds'].includes(mode) || !handles.includes(handle)) throw new CanvasEditError('缩放模式或边框手柄无效。')
-  const { snapshot, shapes } = transformTargets(store, ids)
+  const { snapshot, shapes } = transformTargets(store, ids, { expandGroups: true })
   return putTransformedShapes(store, shapes.map(shape => {
     const rule = getShapeScalingRule(shape)
     if (scale.x === 1 && scale.y === 1 && mode === 'scale_shape') return shape

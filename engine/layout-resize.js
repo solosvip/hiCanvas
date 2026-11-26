@@ -1,7 +1,7 @@
 import { getShapeAncestors } from './shape-coordinates.js'
 import { canStretchShape, stretchShapeProps } from './shape-scaling.js'
 
-export const canLayoutResize = canStretchShape
+export const canLayoutResize = shape => shape.type === 'group' || canStretchShape(shape)
 export const pageRotation = (records, shape) => shape.rotation + getShapeAncestors(records, shape.parentId).reduce((sum, parent) => sum + parent.rotation, 0)
 
 export function stretchLayoutShape(records, item, axis, factor) {
@@ -9,6 +9,7 @@ export function stretchLayoutShape(records, item, axis, factor) {
   const horizontal = Math.abs(Math.sin(angle)) < 1e-9, vertical = Math.abs(Math.cos(angle)) < 1e-9
   // 非正交朝向不表达斜切，照旧版保留原样；它仍参与命令的数量和范围计算。
   if (!horizontal && !vertical) return null
+  if (item.shape.type === 'group') return item.shape
   const sx = (horizontal && axis === 'x') || (vertical && axis === 'y') ? factor : 1
   const sy = (horizontal && axis === 'y') || (vertical && axis === 'x') ? factor : 1
   return { ...item.shape, props: stretchShapeProps(item.shape, { x: sx, y: sy }) }

@@ -316,15 +316,16 @@ test('统一类型表保留拉伸的原有尺寸语义，图片不锁比例、�
   assert.deepEqual(result.snapshot.store[id('child')], initial.store[id('child')])
 })
 
-test('组的整体变换留给 #75：组被跳过，子孙同选不单独改；单选组内形状仍可缩放', () => {
+test('组缩放展开后代，父子同选只变换一次；单选组内形状仍可缩放', () => {
   const initial = seed(create('G', { shapeType: 'group', props: {}, x: 100, y: 200, rotation: Math.PI / 2 }), create('A', { parentId: id('G'), x: 10, y: 20 }), create('B', { x: 300, y: 400 }))
   const command = { type: 'scale_shapes', origin: { x: 0, y: 0 }, scale: { x: 2, y: 2 } }
-  const skipped = run(initial, { ...command, ids: [id('G'), id('A')] })
-  assert.deepEqual(skipped.snapshot, initial)
-  assert.deepEqual(skipped.results, [{ shapeIds: [] }])
+  const grouped = run(initial, { ...command, ids: [id('G'), id('A')] })
+  assert.deepEqual(grouped.results, [{ shapeIds: [id('A')] }])
+  point(shapeToPagePoint(grouped.snapshot, id('A'), { x: 0, y: 0 }), { x: 160, y: 420 })
+  assert.equal(grouped.snapshot.store[id('A')].props.w, 200)
   const mixed = run(initial, { ...command, ids: [id('G'), id('A'), id('B')] })
-  assert.deepEqual(mixed.results, [{ shapeIds: [id('B')] }])
-  assert.deepEqual(mixed.snapshot.store[id('A')], initial.store[id('A')])
+  assert.deepEqual(mixed.results, [{ shapeIds: [id('A'), id('B')] }])
+  assert.deepEqual(mixed.snapshot.store[id('A')], grouped.snapshot.store[id('A')])
   const child = run(initial, { ...command, ids: [id('A')] })
   point(shapeToPagePoint(child.snapshot, id('A'), { x: 0, y: 0 }), { x: 160, y: 420 })
   assert.equal(child.snapshot.store[id('A')].props.w, 200)

@@ -1,5 +1,5 @@
 import { isEqual } from '@tldraw/utils'
-import { shapeToPagePoint } from '../renderer/geometry.js'
+import { getShapePageBounds, shapeToPagePoint } from '../renderer/geometry.js'
 import { CanvasEditError } from './errors.js'
 import { layoutContext } from './layout-context.js'
 import { pageDeltaToParentDelta } from './shape-coordinates.js'
@@ -16,11 +16,31 @@ export function checkedPoint(point) {
   return point
 }
 
-// 组没有自己的尺寸，整体旋转缩放的规则留给 #75：先把组整体跳过，组和子孙同选时子孙也不单独改；
-// 组内形状单独选中时照常变换。
-export function transformTargets(store, ids) {
-  const { records, items } = layoutContext(store, ids, shape => shape.type !== 'group')
-  return { snapshot: { store: records }, shapes: items.map(item => item.shape) }
+export function transformTargets(store, ids, { expandGroups = false, includeGroupFrameContents = false } = {}) {
+  const context = layoutContext(store, ids), { records, items } = context
+  const snapshot = { store: records }, roots = items.map(item => item.shape)
+  if (!expandGroups) return { snapshot, shapes: roots, context }
+  const children = new Map()
+  for (const shape of Object.values(records)) if (shape.typeName === 'shape') {
+    if (!children.has(shape.parentId)) children.set(shape.parentId, [])
+    children.get(shape.parentId).push(shape)
+  }
+  const pending = [...roots].reverse().map(shape => ({ shape, insideGroup: false })), expanded = [], visited = new Set()
+  while (pending.length) {
+    const { shape, insideGroup } = pending.pop()
+    if (visited.has(shape.id)) continue
+    visited.add(shape.id)
+    // 锁定与父子同选在顶层目标筛选；已选父容器的内部记录随整体变换，
+    // 与移动/旋转父容器相同。缩放在画框处停止；组镜像须继续反射框内内容。
+    if (shape.type === 'group' || (insideGroup && includeGroupFrameContents)) {
+      pending.push(...[...(children.get(shape.id) || [])].reverse().map(child => ({ shape: child, insideGroup: true })))
+    }
+    if (shape.type !== 'group') {
+      const bounds = getShapePageBounds(snapshot, shape.id)
+      if (bounds && [bounds.x, bounds.y, bounds.w, bounds.h].every(Number.isFinite) && bounds.w > 0 && bounds.h > 0) expanded.push({ shape, bounds })
+    }
+  }
+  return { snapshot, shapes: expanded.map(item => item.shape), context: { ...context, items: expanded } }
 }
 
 export function placeShapeAtPagePoint(snapshot, shape, point) {

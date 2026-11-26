@@ -1,6 +1,7 @@
 import { CanvasEditError } from '../errors.js'
 import { layoutContext, placeLayoutShape, finishLayout, orderedLayoutItems, LAYOUT_EPSILON } from '../layout-context.js'
-import { canLayoutResize, stretchLayoutShape, mirrorLayoutShape } from '../layout-resize.js'
+import { canLayoutResize, stretchLayoutShape, mirrorLayoutShape, pageRotation } from '../layout-resize.js'
+import { transformTargets } from '../shape-transform.js'
 
 function checkedAxis(axis) {
   if (axis !== 'x' && axis !== 'y') throw new CanvasEditError('排版方向需要是 x 或 y。')
@@ -31,7 +32,11 @@ export function stretchShapes(store, { ids, axis }) {
     const factor = context.bounds[size] / item.bounds[size]
     const next = stretchLayoutShape(context.records, item, axis, Math.abs(factor - 1) < LAYOUT_EPSILON ? 1 : factor)
     if (!next) continue
-    placeLayoutShape(context, item, axis === 'x' ? context.bounds.x : item.bounds.x, axis === 'y' ? context.bounds.y : item.bounds.y, next)
+    // 旧版四个合成样本对应回归关键词“旧版样本落点”（两横两竖，含负坐标）。
+    // 组起点 = 选择最小值 + (选择长度 - 组长度) / 2，内容尺寸不变；
+    // 例如 20…140 的组与 400…450 混选，组移到 175…295。
+    const start = context.bounds[axis] + (item.shape.type === 'group' ? (context.bounds[size] - item.bounds[size]) / 2 : 0)
+    placeLayoutShape(context, item, axis === 'x' ? start : item.bounds.x, axis === 'y' ? start : item.bounds.y, next)
   }
   return finishLayout(context)
 }
@@ -77,10 +82,16 @@ export function packShapes(store, { ids, gap = 16 }) {
 }
 
 export function flipShapes(store, { ids, axis }) {
-  const size = checkedAxis(axis), context = layoutContext(store, ids)
+  const size = checkedAxis(axis), { context } = transformTargets(store, ids, { expandGroups: true, includeGroupFrameContents: true })
+  const placed = { ...context, records: { ...context.records } }
   for (const item of context.items) {
     const reflected = 2 * context.bounds[axis] + context.bounds[size] - item.bounds[axis] - item.bounds[size]
-    placeLayoutShape(context, item, axis === 'x' ? reflected : item.bounds.x, axis === 'y' ? reflected : item.bounds.y, mirrorLayoutShape(context.records, item.shape, axis))
+    const next = mirrorLayoutShape(context.records, item.shape, axis)
+    // 父框先反射后，子形状要用新父链写回局部姿态；目标页面位置始终取原记录。
+    next.rotation -= pageRotation(placed.records, item.shape) - pageRotation(context.records, item.shape)
+    const count = placed.updates.length
+    placeLayoutShape(placed, item, axis === 'x' ? reflected : item.bounds.x, axis === 'y' ? reflected : item.bounds.y, next)
+    if (placed.updates.length > count) placed.records[item.shape.id] = placed.updates.at(-1)
   }
   return finishLayout(context)
 }
