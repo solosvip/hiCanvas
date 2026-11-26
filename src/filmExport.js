@@ -1,5 +1,6 @@
+import {openFilmExportSession} from './filmExportSession.js'
 import { AudioBufferSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, canEncodeAudio, canEncodeVideo } from 'mediabunny'
-import { renderHtmlDraftDocument } from './htmlDraftCapture.js'
+import { renderHtmlDraftDocument, installLegacyAudioExport } from '../content-channel/index.js'
 import { COWART_FILM_FPS } from './filmTimeline.js'
 import { prepareFilmAssets, seekFilmFrame, waitForFilmAPI, waitForFilmTask } from './filmFrameReady.js'
 import { createFilmVideoFrames } from './filmVideoFrames.js'
@@ -9,81 +10,6 @@ export { filmExportDimensions } from './filmExportSize.js'
 
 // Runs only in an isolated export iframe. Existing score-based films can export
 // their Web Audio graph without recording the desktop or playing audible sound.
-function installLegacyAudioExport(duration) {
-  const contexts = []
-  const NativeOffline = window.OfflineAudioContext || window.webkitOfflineAudioContext
-  const rate = 48000
-  const length = Math.ceil(duration * rate)
-  let audioError
-  if (NativeOffline) {
-    window.AudioContext = window.webkitAudioContext = function () {
-      const context = new NativeOffline(2, length, rate)
-      contexts.push(context)
-      return new Proxy(context, {
-        get(target, key) {
-          if (key === 'state') return 'running'
-          if (key === 'resume' || key === 'suspend' || key === 'close') return () => Promise.resolve()
-          const value = Reflect.get(target, key, target)
-          return typeof value === 'function' ? value.bind(target) : value
-        }
-      })
-    }
-  }
-  window.addEventListener('unhandledrejection', (event) => { audioError = event.reason })
-  // Let font/image/library initialization finish on the real browser clock.
-  // Freeze only after readiness; each seek supplies the requested frame time.
-  const nativeNow = window.performance.now.bind(window.performance)
-  const pending = new Map()
-  const channel = new MessageChannel()
-  let nextId = 0
-  let frozen = false, frameTime = 0
-  // Message tasks yield to initialization/audio work, without background RAF
-  // throttling or microtask starvation from legacy playback loops.
-  channel.port1.onmessage = (event) => {
-    const callback = pending.get(event.data)
-    pending.delete(event.data)
-    callback?.(frozen ? frameTime * 1000 : nativeNow())
-  }
-  window.requestAnimationFrame = (callback) => {
-    const id = ++nextId
-    pending.set(id, callback)
-    channel.port2.postMessage(id)
-    return id
-  }
-  window.cancelAnimationFrame = (id) => pending.delete(id)
-  Object.defineProperty(window.performance, 'now', { value: () => frozen ? frameTime * 1000 : nativeNow(), configurable: true })
-  window.__cowartSetExportTime = (time) => {
-    frozen = true
-    frameTime = time
-    pending.clear()
-  }
-  window.__cowartExportPaint = () => new Promise((resolve) => window.requestAnimationFrame(() => {
-    document.documentElement.getBoundingClientRect()
-    resolve()
-  }))
-  window.__cowartDisposeExport = () => { pending.clear(); channel.port1.close(); channel.port2.close() }
-  window.__cowartRenderLegacyAudio = async (film) => {
-    if (!NativeOffline) throw new Error('当前环境不支持离线音频渲染。')
-    await film.pause()
-    await film.seek(0)
-    await film.setMuted(false)
-    await film.play()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    if (audioError) throw audioError
-    if (!contexts.length) throw new Error('影片没有可导出的音轨，请重新生成包含 renderAudio 接口的影片。')
-    const buffers = await Promise.all(contexts.map((context) => context.startRendering()))
-    await film.pause()
-    const result = new AudioBuffer({ numberOfChannels: 2, length, sampleRate: rate })
-    for (const buffer of buffers) {
-      for (let channel = 0; channel < 2; channel++) {
-        const source = buffer.getChannelData(Math.min(channel, buffer.numberOfChannels - 1))
-        const target = result.getChannelData(channel)
-        for (let i = 0; i < length; i++) target[i] += source[i] || 0
-      }
-    }
-    return result
-  }
-}
 
 export function withFilmExportBootstrap(html, duration) {
   const script = `<script>(${installLegacyAudioExport.toString()})(${JSON.stringify(duration)});<\/script>`
@@ -113,31 +39,35 @@ async function createExportFrame(html, width, height, duration, options) {
   }
 }
 
-export async function renderCowartFilmMp4({ html, width, height, duration, onProgress = () => {}, signal, taskTimeout = 15000 }) {
+export async function renderCowartFilmMp4({ html, width, height, duration, onProgress = () => {}, signal, taskTimeout = 15000, sourceUrl }) {
   if (!Number.isFinite(duration) || duration <= 0 || duration > 120) throw new Error('影片时长必须为 1–120 秒。')
   const size = filmExportDimensions(width, height)
   const videoQuality = new Quality({ bitrate: 5_000_000 * COWART_FILM_EXPORT_PIXEL_RATIO ** 2 })
   const audioQuality = new Quality({ bitrate: 192_000 })
-  const options = { signal, timeout: taskTimeout }
+  let options = { signal, timeout: taskTimeout }
   if (!await waitForFilmTask(() => canEncodeVideo('avc', { ...size, frameRate: COWART_FILM_FPS, quality: videoQuality }), options)) {
     throw new Error('当前浏览器不支持 H.264 MP4 编码，请使用支持 WebCodecs 的新版浏览器导出。')
   }
   if (!await waitForFilmTask(() => canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: 48000, quality: audioQuality }), options)) {
     throw new Error('当前浏览器不支持 AAC 音频编码，无法导出带音乐的 MP4。')
   }
-  const checkCanceled = () => { if (signal?.aborted) throw new DOMException('已取消影片导出。', 'AbortError') }
-  let iframe, output, videos
+  const checkCanceled = () => { session?.check(); if (signal?.aborted) throw new DOMException('已取消影片导出。', 'AbortError') }
+  let iframe, output, videos, session, canvas, videoSource, audioSource
   try {
     checkCanceled()
     onProgress(0)
-    iframe = await createExportFrame(html, width, height, duration, options)
-    const film = await waitForFilmAPI(iframe.contentWindow, options)
-    if (!Number.isFinite(film.duration) || Math.abs(film.duration - duration) > 0.000001) {
+    session = await openFilmExportSession({html:withFilmExportBootstrap(html,duration),width,height,duration,sourceUrl},options)
+    if(session)options=session.options
+    else iframe=await createExportFrame(html,width,height,duration,options)
+    const film = session ? null : await waitForFilmAPI(iframe.contentWindow, options)
+    if (!session && (!Number.isFinite(film.duration) || Math.abs(film.duration - duration) > 0.000001)) {
       throw new Error('影片接口时长与画布设置不一致，请更新影片后导出。')
     }
-    await waitForFilmTask(() => film.pause(), options)
-    iframe.contentWindow.__cowartSetExportTime(0)
-    const audio = await waitForFilmTask(() => typeof film.renderAudio === 'function'
+    if(!session){
+      await waitForFilmTask(() => film.pause(), options)
+      iframe.contentWindow.__cowartSetExportTime(0)
+    }
+    const audio = session ? await session.audio() : await waitForFilmTask(() => typeof film.renderAudio === 'function'
       ? film.renderAudio({ sampleRate: 48000, numberOfChannels: 2 })
       : iframe.contentWindow.__cowartRenderLegacyAudio(film), { ...options, label: '影片音轨渲染' })
     if (!audio?.getChannelData || Math.abs(audio.duration - duration) > 0.05) throw new Error('影片音轨无效或时长不匹配。')
@@ -154,15 +84,17 @@ export async function renderCowartFilmMp4({ html, width, height, duration, onPro
     }
     if (!audible) throw new Error('未获得影片音乐或音效，请重新生成包含完整 renderAudio 音轨的影片。')
     checkCanceled()
-    await waitForFilmTask(() => film.pause(), options)
-    await waitForFilmTask(() => film.setMuted(true), options)
-    videos = createFilmVideoFrames({ ...options, pixelRatio: COWART_FILM_EXPORT_PIXEL_RATIO })
-    const canvas = document.createElement('canvas')
+    if(!session){
+      await waitForFilmTask(() => film.pause(), options)
+      await waitForFilmTask(() => film.setMuted(true), options)
+      videos=createFilmVideoFrames({...options,pixelRatio:COWART_FILM_EXPORT_PIXEL_RATIO})
+    }
+    canvas = document.createElement('canvas')
     Object.assign(canvas, size)
     const context = canvas.getContext('2d')
     output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new BufferTarget() })
-    const videoSource = new CanvasSource(canvas, { codec: 'avc', quality: videoQuality })
-    const audioSource = new AudioBufferSource({ codec: 'aac', quality: audioQuality })
+    videoSource = new CanvasSource(canvas, { codec: 'avc', quality: videoQuality })
+    audioSource = new AudioBufferSource({ codec: 'aac', quality: audioQuality })
     output.addVideoTrack(videoSource, { frameRate: COWART_FILM_FPS })
     output.addAudioTrack(audioSource)
     await waitForFilmTask(() => output.start(), { ...options, label: '影片编码启动' })
@@ -171,11 +103,11 @@ export async function renderCowartFilmMp4({ html, width, height, duration, onPro
     const frames = Math.ceil(duration * COWART_FILM_FPS)
     for (let index = 0; index < frames; index++) {
       checkCanceled()
-      const time = await seekFilmFrame(iframe, film, index / COWART_FILM_FPS, options)
-      const videoFrames = await videos.render(iframe.contentDocument)
+      const time = session ? index / COWART_FILM_FPS : await seekFilmFrame(iframe, film, index / COWART_FILM_FPS, options)
+      const videoFrames = session ? new Map() : await videos.render(iframe.contentDocument)
       let frame
       try {
-        frame = await waitForFilmTask(() => renderHtmlDraftDocument(iframe.contentDocument, {
+        frame = session ? await session.frame(index) : await waitForFilmTask(() => renderHtmlDraftDocument(iframe.contentDocument, {
           width, height, pixelRatio: COWART_FILM_EXPORT_PIXEL_RATIO, freezeAtCurrentFrame: true, videoFrames
         }), { ...options, label: '影片帧截图' })
         context.fillStyle = '#fff'
@@ -186,6 +118,7 @@ export async function renderCowartFilmMp4({ html, width, height, duration, onPro
         }), { ...options, label: '影片帧编码' })
       } finally {
         if (frame) frame.width = frame.height = 0
+        if(session)context.clearRect(0,0,canvas.width,canvas.height)
         for (const canvas of videoFrames.values()) canvas.width = canvas.height = 0
       }
       onProgress((index + 1) / frames * 0.95)
@@ -197,9 +130,14 @@ export async function renderCowartFilmMp4({ html, width, height, duration, onPro
     return new Blob([output.target.buffer], { type: 'video/mp4' })
   } catch (error) {
     if (output && output.state !== 'finalized') await output.cancel().catch(() => {})
+    session?.check()
     throw error
   } finally {
     videos?.dispose()
+    try{videoSource?.close()}catch{/* Already closed. */}
+    try{audioSource?.close()}catch{/* Already closed. */}
+    if(canvas)canvas.width=canvas.height=0
+    await session?.dispose()
     try { iframe?.contentWindow.CowartFilm?.pause() } catch { /* Unloaded iframe. */ }
     iframe?.contentWindow.__cowartDisposeExport?.()
     iframe?.remove()

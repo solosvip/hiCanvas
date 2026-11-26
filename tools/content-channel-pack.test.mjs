@@ -14,7 +14,7 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
   t.after(()=>rm(stage,{recursive:true,force:true}))
   await mkdir(join(stage,'runtime'))
   await stageContentChannelAssets(stage)
-  assert.deepEqual((await readdir(join(stage,'content-channel'))).sort(),['bootstrap.js','capture-protocol.js','capture.js','child.js','film-controller.js','film-time.js','protocol.js'])
+  assert.deepEqual((await readdir(join(stage,'content-channel'))).sort(),['bootstrap.js','capture-protocol.js','capture.js','child.js','film-controller.js','film-export-protocol.js','film-export.js','film-time.js','protocol.js'])
   await build({entryPoints:[fileURLToPath(new URL('../server/content-host.mjs',import.meta.url))],outfile:join(stage,'runtime/host.mjs'),bundle:true,platform:'node',format:'esm',external:['esbuild'],logLevel:'silent'})
   // Fresh Node process also proves the packaged module is independent of the
   // source process' module cache. The generated script has a fixed literal import.
@@ -30,7 +30,7 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
       const url=new URL(instance.url);
       const get=path=>new Promise((resolve,reject)=>{http.get({hostname:'127.0.0.1',port:url.port,path,headers:{host:url.host}},res=>{let text='';res.on('data',part=>{text+=part});res.on('end',()=>resolve({status:res.statusCode,text}))}).once('error',reject)});
       const page=await get(url.pathname),bootstrap=page.text.match(/src="([^"]+)"/)[1];
-      console.log(JSON.stringify({script:await get(bootstrap),capture:await get('/.hicanvas-channel/'+instance.id+'/capture.js'),privateStatus:(await get('/.hicanvas-channel/'+instance.id+'/parent.js')).status}));
+      console.log(JSON.stringify({script:await get(bootstrap),capture:await get('/.hicanvas-channel/'+instance.id+'/capture.js'),film:await get('/.hicanvas-channel/'+instance.id+'/film-export.js'),privateStatus:(await get('/.hicanvas-channel/'+instance.id+'/parent.js')).status}));
     }finally{await host.close()}
   `
   const {stdout}=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{timeout:10000})
@@ -44,4 +44,10 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
   assert.equal(result.capture.text,source.toString('utf8'))
   assert.equal(await readFile(join(stage,'content-channel/capture.js'),'utf8'),source.toString('utf8'))
   assert.match(result.capture.text,/hiCanvas capture-bundle sha256:[a-f0-9]{64}/)
+  const film=new Map(await readChannelAssets()).get('film-export.js').toString('utf8')
+  assert.equal(result.film.status,200);assert.equal(result.film.text,film)
+  assert.equal(await readFile(join(stage,'content-channel/film-export.js'),'utf8'),film)
+  assert.match(film,/hiCanvas film-export-bundle sha256:[a-f0-9]{64}/)
+  assert.ok(/MPL-2\.0|Mozilla Public[\s*]*License/.test(film),'打包结果必须保留MPL许可声明')
+  assert.match(film,/from[ ]*["']\.\/capture\.js["']/)
 })

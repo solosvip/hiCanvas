@@ -10,6 +10,7 @@ const dataPackages = /^@tldraw\/(?:store|tlschema|state|state-react|utils|valida
 const textPackages = /^(?:fontkit|linebreak|unicode-segmenter)(?:\/|$)/
 const reactPackages = /^(?:react|react-dom)(?:\/|$)/
 const captureImports={
+  'film-video-frames.js':['mediabunny'],
   'capture-render.js':['html2canvas/dist/lib/dom/document-cloner.js'],
   'capture-clip-fix.js':['html2canvas/dist/lib/index.js','html2canvas/dist/lib/render/stacking-context.js','html2canvas/dist/lib/render/effects.js','html2canvas/dist/lib/render/bound-curves.js','html2canvas/dist/lib/render/path.js'],
 }
@@ -85,7 +86,10 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
       })
     } }]
   })
-  for (const path of Object.keys(result.metafile.inputs)) {
+  for (const [path,metadata] of Object.entries(result.metafile.inputs)) {
+    // Mediabunny's browser map disables this Node adapter. Esbuild records an
+    // empty virtual input, not a Node dependency; admit only that exact stub.
+    if(path==='(disabled):node_modules/mediabunny/dist/modules/src/node.js'&&metadata.bytes===0&&metadata.imports.length===0)continue
     if (!/^(?:renderer|model|content-channel|node_modules)\//.test(path)) throw new Error(`渲染依赖图越界：${path}`)
     if (geometry && /(?:^|\/)node_modules\/(?:react|react-dom)\//.test(path)) throw new Error(`几何依赖图带入 React：${path}`)
   }

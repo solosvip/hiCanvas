@@ -46,7 +46,7 @@ test('共用通道只经公开入口使用，内部不得反向依赖旧界面�
     await writeFile(join(root,'content-channel/index.js'),"export * from './protocol.js'")
     await writeFile(join(root,'content-channel/protocol.js'),'export const protocol=1')
     await checkRendererBoundary({root})
-    for(const dependency of ['../src/filmPlayback.js','../renderer/index.js','../engine/index.js','node:fs','react','tldraw','html2canvas/dist/lib/index.js']){
+    for(const dependency of ['../src/filmPlayback.js','../renderer/index.js','../engine/index.js','node:fs','react','tldraw','html2canvas/dist/lib/index.js','mediabunny']){
       await writeFile(join(root,'content-channel/protocol.js'),`import ${JSON.stringify(dependency)}`)
       await assert.rejects(checkRendererBoundary({root}),/内容通道越界/,dependency)
     }
@@ -58,6 +58,11 @@ test('共用通道只经公开入口使用，内部不得反向依赖旧界面�
       await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
     }
     await writeFile(join(root,'content-channel/capture-clip-fix.js'),'export const capture=1')
+    for(const dependency of ['mediabunny/internal','node:fs','react','tldraw']){
+      await writeFile(join(root,'content-channel/film-video-frames.js'),`import ${JSON.stringify(dependency)}`)
+      await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
+    }
+    await writeFile(join(root,'content-channel/film-video-frames.js'),'export const video=1')
     await mkdir(join(root,'content-channel/nested'))
     await writeFile(join(root,'content-channel/nested/hidden.js'),"import 'react'")
     await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
@@ -118,4 +123,18 @@ test('临时插入直接与间接违规引用都报红，删除探针后恢复�
     await checkRendererBoundary({ root })
     await checkRendererBoundary({ root, geometry: true })
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('仅认mediabunny已登记的禁用Node空模块，其他disabled路径仍越界',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'disabled-boundary-'))
+  try{
+    for(const directory of ['renderer','content-channel','node_modules/mediabunny'])await mkdir(join(root,directory),{recursive:true})
+    await writeFile(join(root,'renderer/index.js'),"export * from '../content-channel/index.js'")
+    await writeFile(join(root,'content-channel/index.js'),"export * from './film-video-frames.js'")
+    await writeFile(join(root,'content-channel/film-video-frames.js'),"export * from 'mediabunny'")
+    await writeFile(join(root,'node_modules/mediabunny/package.json'),JSON.stringify({name:'mediabunny',main:'index.js',browser:{'./other.js':false}}))
+    await writeFile(join(root,'node_modules/mediabunny/index.js'),"import './other.js';export const sample=1")
+    await writeFile(join(root,'node_modules/mediabunny/other.js'),'export const nodeAdapter=1')
+    await assert.rejects(checkRendererBoundary({root}),/渲染依赖图越界：\(disabled\):node_modules\/mediabunny\/other\.js/)
+  }finally{await rm(root,{recursive:true,force:true})}
 })
