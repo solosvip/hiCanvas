@@ -41,13 +41,16 @@ export async function runConnectionProbe() {
   let subscriptions = 0
   const intercept = store.addHistoryInterceptor.bind(store)
   store.addHistoryInterceptor = fn => { subscriptions++; const stop = intercept(fn); return () => { subscriptions--; stop() } }
+  // Every mounted renderer also owns one text-editing view observer (#132);
+  // connections on one Store must still share a single observer between them.
+  const shared = mounted => subscriptions - mounted
   const host = document.createElement('div'); document.body.append(host)
   const renderers = [], hosts = [host], observers = [], changes = [0, 0, 0, 0]
   const mount = (element, options) => { const renderer = mountCanvasRenderer(element, options); renderers.push(renderer); return renderer }
   const body = i => host.querySelector(`[data-shape-id="shape:bound-${i}"] [data-connection-body]`)
   try {
     const renderer = mount(host, { store, pageId: fixture.viewState.currentPageId }); await settled()
-    check(subscriptions === 1, '同一画板的连接线未共享订阅')
+    check(shared(1) === 1, '同一画板的连接线未共享订阅')
     const before = changes.map((_, i) => body(i).getAttribute('d'))
     for (let i = 0; i < 4; i++) {
       const observer = new MutationObserver(records => { changes[i] += records.filter(r => r.attributeName === 'd').length })
@@ -87,12 +90,12 @@ export async function runConnectionProbe() {
     const narrow = document.createElement('div'); narrow.style.width = '320px'; document.body.append(narrow); hosts.push(narrow)
     const second = mount(narrow, { store, camera: { x: -100, y: -100, z: .5 }, pageId: fixture.viewState.currentPageId }); await settled()
     check(narrow.querySelectorAll('[data-connection]').length === 4, '小窗口漏画箭头')
-    check(subscriptions === 1, '多处挂载产生了重复订阅')
+    check(shared(2) === 1, '多处挂载产生了重复订阅')
     second.unmount(); narrow.remove(); renderer.unmount(); await settled()
     check(!host.querySelector('[data-shape-id]') && subscriptions === 0, '卸载残留图形或订阅')
     store.put([{ ...target, x: 900 }]); await settled()
     const remount = mount(host, { store, pageId: fixture.viewState.currentPageId }); await settled()
-    check(host.querySelectorAll('[data-connection]').length === 4 && subscriptions === 1, '重新挂载丢失或重复订阅')
+    check(host.querySelectorAll('[data-connection]').length === 4 && shared(1) === 1, '重新挂载丢失或重复订阅')
     remount.unmount(); check(subscriptions === 0, '重新挂载后未释放订阅')
     return { relatedMutationCounts: changes, targetFollow: true, labelAndBodyHit: true, retarget: true, unbind: true, fills: 6, groupBounds: true, narrowAndRemount: true, drawingEndpointChecks: await drawingCoordinatesProbe() }
   } finally { observers.forEach(o => o.disconnect()); renderers.forEach(r => r.unmount()); hosts.forEach(h => h.remove()) }
