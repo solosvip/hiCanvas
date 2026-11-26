@@ -1,3 +1,4 @@
+import { loadGeneratedFrame } from '../../renderer/index.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { EmbedShapeUtil, FrameShapeUtil, HTMLContainer, DEFAULT_EMBED_DEFINITIONS, toDomPrecision, useEditor, useIsEditing, DefaultSpinner } from "tldraw"
 import { attachCowartFilmController } from "../filmPlayback.js"
@@ -58,6 +59,7 @@ function CowartHtmlDraftEmbed({ shape }) {
     cowartHtmlDraftAssetUrlFromVirtualUrl(shape.props.url)
   const isEditing = useIsEditing(shape.id)
   const [htmlSource, setHtmlSource] = useState(null)
+  const [htmlFrame, setHtmlFrame] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const [frameLoadVersion, setFrameLoadVersion] = useState(0)
   const handleIframeRef = useCallback(
@@ -72,6 +74,7 @@ function CowartHtmlDraftEmbed({ shape }) {
   )
   useEffect(() => {
     setHtmlSource(null)
+    setHtmlFrame(null)
     setLoadError(null)
     // Read saved drafts lazily through MCP; still support legacy inline drafts
     // while they are being migrated to compact file-backed records.
@@ -79,6 +82,7 @@ function CowartHtmlDraftEmbed({ shape }) {
     const browserSourceUrl = directHtmlUrl || (!shouldReadPageAsset && draftAssetUrl)
     if (!shouldReadPageAsset && !browserSourceUrl) return undefined
     let isDisposed = false
+    let frame
     const controller = new AbortController()
     async function readDraftAssetWithRetry() {
       let lastError = null
@@ -107,8 +111,11 @@ function CowartHtmlDraftEmbed({ shape }) {
         if (isDisposed || htmlContent === null) return null
         return hydrateCowartHtmlDraftLocalImages(htmlContent, { signal: controller.signal })
       })
-      .then((htmlContent) => {
+      .then(async (htmlContent) => {
         if (isDisposed || htmlContent === null) return
+        frame = await loadGeneratedFrame(htmlContent, { sourceUrl: draftAssetUrl || undefined, signal: controller.signal })
+        if (isDisposed) { frame.dispose(); return }
+        setHtmlFrame(frame)
         setHtmlSource(htmlContent)
       })
       .catch((error) => {
@@ -119,6 +126,7 @@ function CowartHtmlDraftEmbed({ shape }) {
     return () => {
       isDisposed = true
       controller.abort()
+      frame?.dispose()
     }
   }, [directHtmlUrl, draftAssetUrl, shape.meta?.cowartHtmlDraftContentHash])
   useEffect(() => {
@@ -212,7 +220,7 @@ function CowartHtmlDraftEmbed({ shape }) {
           onLoad={() => setFrameLoadVersion((version) => version + 1)}
           referrerPolicy="no-referrer"
           sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
-          srcDoc={htmlSource}
+          {...htmlFrame?.attributes}
           tabIndex={isEditing ? 0 : -1}
           title={isCowartFilmShape(shape) ? AI_FILM_LABEL : AI_DRAFT_HOLDER_LABEL}
           allow={isCowartFilmShape(shape) ? "autoplay" : undefined}

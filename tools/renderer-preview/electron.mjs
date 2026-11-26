@@ -76,7 +76,7 @@ function createWindow(key) {
       simulated.push({ service, source: details.url })
       callback({ redirectURL: `${origin}/tools/renderer-preview/fake-embed.html?service=${service}` }); return
     }
-    const url = new URL(details.url), allowed = url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
+    const url = new URL(details.url), contentAllowed = manifest.contentSecurityOnly && (url.origin === new URL(manifest.scriptUrl).origin || /^[a-f0-9]{48}\.localhost$/.test(url.hostname) && Number(url.port) === manifest.contentPort), allowed = contentAllowed || url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
     if (!allowed) blocked.push(details.url)
     callback({ cancel: !allowed })
   })
@@ -96,6 +96,15 @@ async function run() {
       samples.push({ handles: await handleSmoke(window, manifest.output), cameraLayout: await cameraLayoutProbe(true) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if (manifest.contentSecurityOnly) {
+      window = createWindow('content-security')
+      await window.loadURL(manifest.url)
+      await until(() => evaluate('typeof window.runContentSecurity === "function"'))
+      const result = await evaluate(`window.runContentSecurity(${JSON.stringify({ enabled: manifest.securityEnabled, scriptUrl: manifest.scriptUrl })})`)
+      check(blocked.length === 0, `安全门禁不应请求公网：${blocked.join('; ')}`)
+      await writeFile(manifest.result, JSON.stringify({ ...result, blocked, runtime: process.versions }, null, 2))
+      window.destroy(); app.exit(0); return
     }
     if (manifest.cameraOnly) {
       window = createWindow('camera')
