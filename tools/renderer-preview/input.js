@@ -35,8 +35,13 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
       if (![0, 1].includes(event.button) || event.pointerType !== 'touch' && captured.size && !captured.has(event.pointerId)) return
       host.focus?.({ preventScroll: true }); host.setPointerCapture?.(event.pointerId); captured.add(event.pointerId)
     }
+    let inputType = type
+    if (type === 'pointer_up' && interaction.state.get().creation?.dragFromToolbar && interaction.state.get().mode === 'dragging') {
+      const target = host.ownerDocument?.elementFromPoint?.(event.clientX, event.clientY)
+      if (target && !host.contains(target)) inputType = 'pointer_cancel'
+    }
     event.preventDefault()
-    send({ type, time: event.timeStamp, ...(Number.isFinite(event.clientX) && { point: point(event) }), pointerId: event.pointerId, pointerType: event.pointerType, pressure: event.pressure, button: event.button, buttons: event.buttons, ...modifiers(event) })
+    send({ type: inputType, time: event.timeStamp, ...(Number.isFinite(event.clientX) && { point: point(event) }), pointerId: event.pointerId, pointerType: event.pointerType, pressure: event.pressure, button: event.button, buttons: event.buttons, ...modifiers(event) })
     if (['pointer_up', 'pointer_cancel'].includes(type) && captured.delete(event.pointerId)) {
       if (host.hasPointerCapture?.(event.pointerId)) host.releasePointerCapture(event.pointerId)
     }
@@ -75,6 +80,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   return {
     wake,
     dispatch: send,
+    beginToolDrag(event, options) { interaction.beginToolDrag(options); pointer('pointer_down')(event) },
     navigate(action, anchor, time) {
       // Buttons and rAF share this host clock. A rAF timestamp can precede an
       // event dispatched earlier in that frame; normalize both in one place.

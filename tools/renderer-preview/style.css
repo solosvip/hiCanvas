@@ -4,11 +4,11 @@ html, body { margin: var(--spacing-none); overflow: hidden; background: var(--co
 #canvas { position: fixed; inset: var(--spacing-none); touch-action: none; outline: none; }
 #status { position: fixed; top: var(--spacing-sm); left: var(--spacing-sm); padding: var(--spacing-sm); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-on-surface); pointer-events: none; max-width: calc(100% - var(--spacing-xl)); }
 #navigation { position: fixed; bottom: var(--spacing-sm); left: var(--spacing-sm); display: flex; flex-wrap: wrap; gap: var(--spacing-xs); padding: var(--spacing-sm); border-radius: var(--radius-md); background: var(--color-surface); max-width: calc(100% - var(--spacing-xl)); }
-#navigation button { font: inherit; color: var(--color-on-surface); background: var(--color-neutral); border: none; border-radius: var(--radius-sm); padding: var(--spacing-sm) var(--spacing-md); min-height: calc(var(--spacing-xl) + var(--spacing-lg) + var(--spacing-xs)); cursor: pointer; }
-#navigation button:hover { background: var(--color-on-neutral); color: var(--color-surface); }
-#navigation button:focus-visible { outline: var(--spacing-xs) solid var(--color-on-neutral); outline-offset: var(--spacing-xs); }
-#navigation button[aria-pressed='true'] { background: var(--color-on-neutral); color: var(--color-surface); }
-#navigation button:disabled { color: var(--color-secondary); cursor: default; }
+#navigation button, #creation button, #creation select { font: inherit; color: var(--color-on-surface); background: var(--color-neutral); border: none; border-radius: var(--radius-sm); padding: var(--spacing-sm) var(--spacing-md); min-height: calc(var(--spacing-xl) + var(--spacing-lg) + var(--spacing-xs)); cursor: pointer; }
+#navigation button:hover, #creation button:hover, #creation select:hover { background: var(--color-on-neutral); color: var(--color-surface); }
+#navigation button:focus-visible, #creation button:focus-visible, #creation select:focus-visible { outline: var(--spacing-xs) solid var(--color-on-neutral); outline-offset: var(--spacing-xs); }
+#navigation button[aria-pressed='true'], #creation button[aria-pressed='true'], #creation select[aria-pressed='true'] { background: var(--color-on-neutral); color: var(--color-surface); }
+#navigation button:disabled, #creation button:disabled, #creation select:disabled { color: var(--color-secondary); cursor: default; }
 #navigation button[data-visible='false'] { visibility: hidden; }
 #canvas[data-cursor='grab'] { cursor: grab; }
 #canvas[data-cursor='grabbing'] { cursor: grabbing; }
@@ -29,3 +29,6 @@ html, body { margin: var(--spacing-none); overflow: hidden; background: var(--co
 #image-tools label { display: flex; align-items: center; gap: var(--spacing-xs); min-height: calc(var(--spacing-xl) + var(--spacing-lg) + var(--spacing-xs)); }
 #image-tools input[type='range'] { width: calc(var(--spacing-xl) * 5); accent-color: var(--color-primary); }
 #image-tools input[type='checkbox'] { accent-color: var(--color-primary); }
+
+#creation { position: fixed; top: calc(var(--spacing-xl) + var(--spacing-xl) + var(--spacing-lg)); left: var(--spacing-sm); display: flex; flex-wrap: wrap; gap: var(--spacing-xs); padding: var(--spacing-sm); border-radius: var(--radius-md); background: var(--color-surface); max-width: calc(100% - var(--spacing-xl)); }
+#canvas[data-creation-tool='true'][data-cursor='default'] { cursor: crosshair; }

@@ -1,27 +1,28 @@
-import { executeCanvasCommands } from '../../engine/index.js'
+import { executeCanvasCommands, recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction } from '../../engine/index.js'
 
 // Used only by the original fixture/gallery preview. Persistent editing uses
 // the same interaction/runtime through the isolated HTTP host below.
-export function memoryTransport(snapshot, { history = false } = {}) {
-  let saved = snapshot, revision = 0
-  const past = [], future = []
+export function memoryTransport(snapshot) {
+  let saved = snapshot, revision = 0, history
   const read = async () => ({ snapshot: saved, revision: String(revision) })
-  const move = (from, to) => async ({ expectedRevision }) => {
-    if (expectedRevision !== String(revision)) throw Object.assign(new Error('合成画板版本已改变。'), { code: 'conflict' })
-    if (from.length) { to.push(saved); saved = from.pop(); revision++ }
-    return { ...await read(), changes: { added: {}, updated: {}, removed: {} }, results: [] }
+  const accept = result => { saved = result.snapshot; revision++; return { ...result, revision: String(revision) } }
+  const check = expected => { if (expected !== String(revision)) throw Object.assign(new Error('合成画板版本已改变。'), { code: 'conflict' }) }
+  const moveHistory = (move, { expectedRevision, actor }) => {
+    check(expectedRevision)
+    const result = move(saved, history, actor)
+    history = result.history
+    return accept(result)
   }
   return {
     read, subscribe: () => () => {},
-    ...(history && { undo: move(past, future), redo: move(future, past) }),
-    async commit({ expectedRevision, commands }) {
-      if (expectedRevision !== String(revision)) throw Object.assign(new Error('合成画板版本已改变。'), { code: 'conflict' })
+    async commit({ expectedRevision, commands, actor }) {
+      check(expectedRevision)
       const result = executeCanvasCommands(saved, commands)
-      if (history) { past.push(saved); future.length = 0 }
-      saved = result.snapshot; revision++
-      return { ...result, revision: String(revision) }
+      history = recordCanvasTransaction(history, actor, result.changes)
+      return accept(result)
     },
-
+    undo: request => moveHistory(undoCanvasTransaction, request),
+    redo: request => moveHistory(redoCanvasTransaction, request),
   }
 }
 
