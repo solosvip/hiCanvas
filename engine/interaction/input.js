@@ -2,11 +2,12 @@
 // CSS screen coordinates relative to the canvas host; never raw host events.
 // pointer_*: point, pointerId, pointerType, pressure, button, buttons, modifiers.
 // key_*: key, code, repeat, modifiers. wheel: point, delta in CSS pixels, modifiers.
-const types = new Set(['pointer_down', 'pointer_move', 'pointer_up', 'pointer_cancel', 'key_down', 'key_up', 'wheel'])
+const types = new Set(['pointer_down', 'pointer_move', 'pointer_up', 'pointer_cancel', 'key_down', 'key_up', 'wheel', 'frame'])
 export function normalizeInput(input) {
   if (!input || !types.has(input.type)) throw new Error('未知画布输入。')
   if (!Number.isFinite(input.time) || input.time < 0) throw new Error('输入时间需要非负有限毫秒。')
   const result = { type: input.type, time: input.time }
+  if (input.type === 'frame') return result
   for (const key of ['shiftKey', 'altKey', 'ctrlKey', 'metaKey']) result[key] = Boolean(input[key])
   if (input.type.startsWith('key_')) return { ...result, key: String(input.key || ''), code: String(input.code || ''), repeat: Boolean(input.repeat) }
   if (input.type !== 'pointer_cancel' || input.point) {
