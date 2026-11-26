@@ -18,6 +18,7 @@ export { getStrokeGeometry } from './stroke-geometry.js'
 export { getShapeBounds, getShapeContour } from './bounds.js'
 export { getConnectionGeometry } from './connection-geometry.js'
 export { createConnectionContext, getBoundArrowIds } from './connection-records.js'
+export { getHandDrawnContour } from './hand-drawn.js'
 
 export function orderedChildren(records) {
   const children = new Map()

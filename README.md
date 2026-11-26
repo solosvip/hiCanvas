@@ -200,7 +200,7 @@ npm run renderer:smoke
 
 预览入口是 `tools/renderer-preview/index.html`，独立 Vite 配置只扫描这个入口；正式构建仍从根 `index.html` 进入，桌面只复制正式 `dist/`，因此预览页不进入应用产物。合成规则复用性能基线的坐标、相机、尺寸、60% 几何／20% 文本／20% 图片构成及 16 张本地 PNG；保留三角形、菱形和 semi 填充，不再转换为矩形和实心。滚轮平移、Ctrl+滚轮或触控板捏合缩放只实现在预览页。只读观察接口 `window.__HICANVAS_RENDERER_PREVIEW__.getState()` 返回 `ready`、`error`、`camera`、`count`、`counts`、`renderedShapes`、`imageCount`、`decodedImages` 的副本，不暴露存储或修改接口；`ready` 等到全部形状、字体和图片解码完成后置为真，供后续测量工具读取。
 
-渲染挂载入口 `renderer/index.js` 导出 `mountCanvasRenderer(element, { store, camera?, pageId? })`，返回 `setCamera({ x, y, z })`、`getCamera()`、`hitTest({ x, y })`、`unmount()`。传入 `model/` 创建的 Store；调用方管理输入，相机满足 `屏幕坐标 = (画布坐标 + 相机平移) × 缩放`，查询坐标相对于挂载元素左上角，返回顶层形状 ID 或 `null`。挂载和相机变化不修改 Store，卸载释放订阅且不销毁调用方的 Store。支持 20 种几何形状、六种填充、实线／虚线／圆点线、四档线宽与透明度，以及纯文本、图片和带裁剪子形状的框。draw 暂按实线绘制，几何形状暂不画文字标签。浅色画板配色集中在 `renderer/palette.js`，颜色名取当前 MIT tlschema，数值对照隔离运行的旧版合成画面取色；图案为独立 SVG 实现。文字忽略富文本格式、用等宽排版估算行高和换行，尚不代表旧编辑器的视觉精度。
+渲染挂载入口 `renderer/index.js` 导出 `mountCanvasRenderer(element, { store, camera?, pageId? })`，返回 `setCamera({ x, y, z })`、`getCamera()`、`hitTest({ x, y })`、`unmount()`。传入 `model/` 创建的 Store；调用方管理输入，相机满足 `屏幕坐标 = (画布坐标 + 相机平移) × 缩放`，查询坐标相对于挂载元素左上角，返回顶层形状 ID 或 `null`。挂载和相机变化不修改 Store，卸载释放订阅且不销毁调用方的 Store。支持 20 种几何形状、六种填充、实线／虚线／圆点线、四档线宽与透明度，以及纯文本、图片和带裁剪子形状的框。手绘线型按稳定形状身份生成变宽、圆角和轻微抖动的笔触，填充沿同一边界闭合；几何形状暂不画文字标签。浅色画板配色集中在 `renderer/palette.js`，颜色名取当前 MIT tlschema，数值对照隔离运行的旧版合成画面取色；图案为独立 SVG 实现。文字忽略富文本格式、用等宽排版估算行高和换行，尚不代表旧编辑器的视觉精度。
 
 无界面几何入口 `renderer/geometry.js` 可直接在 Node 使用，不依赖 React 或 DOM：`getShapeContour(shape)` 返回共享闭合轮廓及叉勾装饰线，`getShapeBounds(shape)` 返回局部外框，`getShapePageBounds(snapshot, id)` 返回考虑父子旋转后的画布外框；`shapeToPagePoint`／`pageToShapePoint` 互换局部与画布坐标，`canvasToScreen`／`screenToCanvas` 互换画布与屏幕坐标，`pointInShape` 判断局部点，`hitTestCanvas(snapshot, point, camera?, pageId?)` 查询顶层记录。几何绘制与命中共用轮廓，无填充形状只命中边线和叉勾装饰线；曲线用多边形近似，椭圆／胶囊弦高误差不大于 `max(0.1, 长边/8192)` 画布单位，云形／心形各取 256 点。点中查询尚未接空间索引；文本高度暂为行数估算，真实文字测量另行实现。`npm test` 包含几何、边界和合成接口回归；`renderer:smoke` 需已安装的项目 Electron（可用 `HICANVAS_TEST_ELECTRON` 指向已有可执行文件，不会下载运行时），使用自动隔离环境在后台离屏打开三档画板，检查全量图片解码、真实滚轮输入、单记录订阅及卸载，并验证 20 种共享轮廓、六种填充和记录样式更新，结果与三档画板、两张图鉴截图保存到 `.scratch/renderer-smoke/`。截图供检查，不代表人工视觉验收，也不是性能比较报告。
 
@@ -218,6 +218,8 @@ npm run perf:baseline -- --renderer both --port 43326 --preview-port 43328 --loa
 ```
 
 脚本拒绝缺少上述变量、路径越出本 worktree 的 `.scratch/`、符号链接，以及使用端口 43218/43219。默认 `--renderer legacy` 测旧版正式构建；`preview` 单测新预览，`both` 按「旧 500、新 500、旧 2000、新 2000、旧 5000、新 5000」交替，再重复三轮；后两种须额外指定不同的 `--preview-port`（43300–65535）。新预览通过既有启动入口运行，使用 Vite 开发模式，旧版使用生产 `dist`，这一差别写入报告。
+
+`--dash draw` 将合成画板的几何形状设为手绘线型，默认 `--dash solid`；其余合成规则与测量方法不变。
 
 合成规则、输入轨迹与统计共用：默认 500、2000、5000 个元素（60% 几何图形、20% 文字、20% 图片；复用 16 张本地生成的 256×192 PNG），每项持续 2.5 秒；`--sizes 500,2000,5000 --runs 3 --duration-ms 2500` 可调整，新预览只支持上述三档。合成资料在导航前准备。每次打开用新内存浏览会话，进程和系统文件缓存保持温热；计时从导航开始，到形状数量吻合、字体就绪、图片解码及两帧之后，旧版额外等真实指针选中目标，新版无编辑能力，拖动记为「不适用」。旧版保留原来的可见图片解码口径，新版检查全部图片解码，打开时间均不含应用进程与宿主启动。
 

@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url'
 import { createFixture } from './perf/fixture.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
-export function createRendererFixture(count) {
+export function createRendererFixture(count, { dash = 'solid' } = {}) {
   if (![500, 2000, 5000].includes(count)) throw new Error('预览只支持 500、2000、5000 个元素。')
-  return createFixture(count)
+  return createFixture(count, undefined, undefined, { dash })
 }
 
 export async function startRendererPreview({ port = 0 } = {}) {
@@ -24,10 +24,12 @@ export async function startRendererPreview({ port = 0 } = {}) {
       if (request.method !== 'GET') { response.writeHead(405); response.end(); return }
       const count = Number(url.searchParams.get('count'))
       if (![500, 2000, 5000].includes(count)) { response.writeHead(400); response.end('Invalid synthetic size'); return }
-      if (!fixtures.has(count)) fixtures.set(count, JSON.stringify(createRendererFixture(count)))
+      const dash = url.searchParams.get('dash') || 'solid', key = `${count}:${dash}`
+      if (!['solid', 'draw'].includes(dash)) { response.writeHead(400); response.end('Invalid synthetic dash'); return }
+      if (!fixtures.has(key)) fixtures.set(key, JSON.stringify(createRendererFixture(count, { dash })))
       response.setHeader('Content-Type', 'application/json')
       response.setHeader('Cache-Control', 'no-store')
-      response.end(fixtures.get(count))
+      response.end(fixtures.get(key))
     })
   } }] }) } catch (error) { http.close(); throw error }
   return { url: `http://127.0.0.1:${http.address().port}`, async close() {

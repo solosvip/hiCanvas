@@ -115,7 +115,7 @@ async function run() {
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }
-    const galleryCounts = { shapes: 20, styles: 82, metrics: 22, 'metrics-long': 22, 'metrics-curves': 10, embeds: null, bookmarks: null, external: null, arrows: null, routes: null, lines: null, bindings: null, 'bound-elbows': null }
+    const galleryCounts = { shapes: 20, styles: 82, metrics: 22, 'metrics-long': 22, 'metrics-curves': 10, embeds: null, bookmarks: null, external: null, arrows: null, routes: null, lines: null, bindings: null, 'bound-elbows': null, draw: 16, 'draw-filled': 16 }
     for (const [gallery, count] of Object.entries(galleryCounts)) {
       if (manifest.galleries && !manifest.galleries.includes(gallery)) continue
       window = createWindow(gallery)
@@ -125,6 +125,7 @@ async function run() {
       if (gallery === 'embeds') await until(() => evaluate("document.querySelector('[data-embed-content=\"shape:embed-web\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-film\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-slide\"]')?.contentDocument?.documentElement?.dataset.instance"))
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
       const geometry = gallery === 'shapes' ? await evaluate("import('/tools/renderer-preview/geo-probe.js').then(module => module.runGeoProbe())") : undefined
+      const handDrawn = gallery === 'draw' ? await evaluate("import('/tools/renderer-preview/hand-drawn-probe.js').then(module => module.runHandDrawnProbe())") : undefined
       const embeds = gallery === 'embeds' ? await evaluate("import('/tools/renderer-preview/embed-probe.js').then(module => module.runEmbedProbe())") : undefined
       const bookmarks = gallery === 'bookmarks' ? await evaluate("import('/tools/renderer-preview/bookmark-probe.js').then(module => module.runBookmarkProbe())") : undefined
       const external = gallery === 'external' ? await evaluate("import('/tools/renderer-preview/external-probe.js').then(module => module.runExternalProbe())") : undefined
@@ -135,7 +136,7 @@ async function run() {
         await writeFile(join(manifest.output, `${gallery}-narrow.png`), (await window.webContents.capturePage()).toPNG())
       }
       const connections = gallery === 'bindings' ? await evaluate("import('/tools/renderer-preview/arrow-probe.js').then(module => module.runConnectionProbe())") : undefined
-      samples.push({ gallery, initial, geometry, embeds, bookmarks, external, connections })
+      samples.push({ gallery, initial, geometry, embeds, bookmarks, external, connections, handDrawn })
 
       window.destroy(); window = undefined
     }
