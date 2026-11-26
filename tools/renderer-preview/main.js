@@ -30,7 +30,7 @@ try {
   if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
   else if (gallery) metadata = gallery.startsWith('stroke-') ? createStrokeGallery(gallery) : createGallery(gallery)
   else {
-    const response = await fetch(`/__renderer_fixture?count=${encodeURIComponent(params.get('count') || '500')}`)
+    const response = await fetch(`/__renderer_fixture?count=${encodeURIComponent(params.get('count') || '500')}&dash=${encodeURIComponent(params.get('dash') || 'solid')}`)
     if (!response.ok) throw new Error('合成规模仅支持 500、2000、5000。')
     metadata = await response.json()
     if (params.get('strokes') === '500') metadata = addStrokeLoad(metadata)

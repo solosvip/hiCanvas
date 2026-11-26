@@ -57,7 +57,7 @@ export async function runGeoProbe() {
     const dash = dashed.querySelector('[data-geo-stroke]').getAttribute('stroke-dasharray').split(' ').map(Number)
     check(Math.abs(dash[0] + dash[1] - 160 / 11) < 1e-9, '虚线未按边长对齐拐角')
     const draw = await update({ dash: 'draw' })
-    check(!draw.querySelector('[data-geo-outline]').hasAttribute('stroke-dasharray'), 'draw 未按实线绘制')
+    check(draw.querySelector('[data-geo-hand-ink]') && draw.querySelector('[data-geo-outline]').getAttribute('stroke') === 'none', 'draw 未接独立手绘笔触')
     const before = (await update({ color: 'blue', size: 's', dash: 'solid', scale: 1 })).querySelector('[data-geo-outline]')
     const blue = before.getAttribute('stroke'), thin = Number(before.getAttribute('stroke-width'))
     const after = await update({ color: 'red', size: 'xl', dash: 'dotted', scale: 2 }, 0.4)

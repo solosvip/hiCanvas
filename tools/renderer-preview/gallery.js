@@ -4,9 +4,11 @@ import { createCanvasSnapshot } from '../../model/index.js'
 import { createEmbedGallery } from './embed-gallery.js'
 import { createBookmarkGallery } from './bookmark-gallery.js'
 import { createExternalGallery } from './external-gallery.js'
+import { createHandDrawnGallery } from './hand-drawn-gallery.js'
 
 // Synthetic document coordinates, independent of application UI tokens.
 export function createGallery(mode) {
+  if (['draw', 'draw-solid', 'draw-filled', 'draw-stress', 'draw-stress-solid'].includes(mode)) return createHandDrawnGallery(mode)
   if (mode === 'embeds') return createEmbedGallery()
   if (mode === 'bookmarks') return createBookmarkGallery()
   if (mode === 'external') return createExternalGallery()

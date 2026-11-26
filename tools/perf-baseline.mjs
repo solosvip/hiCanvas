@@ -45,20 +45,20 @@ try {
     // Both hosts prepare synthetic data before navigation starts. Otherwise the
     // first preview sample would also time PNG generation absent from legacy.
     for (const count of options.sizes) {
-      const response = await fetch(`${preview.url}/__renderer_fixture?count=${count}`)
+      const response = await fetch(`${preview.url}/__renderer_fixture?count=${count}&dash=${options.dash}`)
       if (!response.ok || (await response.json()).count !== count) throw new Error('新预览的合成资料准备失败。')
     }
   }
   const cases = []
   for (const { renderer, repeat, count } of measurementPlan(options)) {
     if (wasInterrupted) throw new Error('测量已中断。')
-    let fixture = createFixture(count)
-    let url = `${preview?.url}/?count=${count}`
+    let fixture = createFixture(count, undefined, undefined, { dash: options.dash })
+    let url = `${preview?.url}/?count=${count}&dash=${options.dash}`
     if (renderer === 'legacy') {
       const conversation = await workspace.open({ createNew: true, title: `Synthetic ${count} repeat ${repeat}` })
       const current = await workspace.read(conversation.id)
       // 旧版画板以服务端新建的快照为底，经编辑命令分批预置（#35）。
-      fixture = createFixture(count, current.snapshot)
+      fixture = createFixture(count, current.snapshot, undefined, { dash: options.dash })
       await prepareFixture(workspace, conversation.id, current, fixture.snapshot)
       await workspace.sidecar(conversation.id, 'view', fixture.viewState)
       url = `${baseUrl}/?conversation=${conversation.id}`

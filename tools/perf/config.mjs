@@ -46,14 +46,20 @@ export async function makeDirectories(paths) {
   for (const path of Object.values(paths)) await mkdir(path, { recursive: true })
 }
 
+export function checkedDash(dash = 'solid') {
+  if (!['solid', 'draw'].includes(dash)) throw new Error('线型 dash 需要 solid 或 draw。')
+  return dash
+}
+
 export function parseOptions(args, env = process.env) {
-  const options = { sizes: [500, 2000, 5000], runs: 3, durationMs: 2500, port: Number(env.HICANVAS_PORT), renderer: 'legacy', output: '.scratch/perf-results', loadNote: '未注明其他任务负载' }
-  const names = { '--sizes': 'sizes', '--runs': 'runs', '--duration-ms': 'durationMs', '--port': 'port', '--preview-port': 'previewPort', '--renderer': 'renderer', '--output': 'output', '--load-note': 'loadNote' }
+  const options = { sizes: [500, 2000, 5000], runs: 3, durationMs: 2500, port: Number(env.HICANVAS_PORT), renderer: 'legacy', dash: 'solid', output: '.scratch/perf-results', loadNote: '未注明其他任务负载' }
+  const names = { '--sizes': 'sizes', '--runs': 'runs', '--duration-ms': 'durationMs', '--port': 'port', '--preview-port': 'previewPort', '--renderer': 'renderer', '--dash': 'dash', '--output': 'output', '--load-note': 'loadNote' }
   for (let i = 0; i < args.length; i += 2) {
     const key = names[args[i]], value = args[i + 1]
     if (!key || !value || value.startsWith('--')) throw new Error(`无效参数：${args[i]}`)
     options[key] = key === 'sizes' ? value.split(',').map(Number) : ['runs', 'durationMs', 'port', 'previewPort'].includes(key) ? Number(value) : value
   }
+  checkedDash(options.dash)
   if (!options.sizes.length || options.sizes.some(n => !Number.isInteger(n) || n < 10 || n > 10000) || new Set(options.sizes).size !== options.sizes.length) throw new Error('sizes 需要不重复的整数（10–10000）。')
   if (!Number.isInteger(options.runs) || options.runs < 1 || options.runs > 20) throw new Error('runs 需要 1–20。正式基线至少 3 次。')
   if (!Number.isInteger(options.durationMs) || options.durationMs < 500 || options.durationMs > 30000) throw new Error('duration-ms 需要 500–30000。')

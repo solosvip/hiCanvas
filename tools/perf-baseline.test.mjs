@@ -197,3 +197,21 @@ test('browser camera installation returns a clonable value and zoom checks remai
   assert.equal(phaseChanged('zoom', before, before, { min: .1, max: .1 }), false, '相机空转不得计入 FPS')
   assert.equal(phaseChanged('pan', before, before), false)
 })
+
+test('性能线型参数默认实线，只允许实线或手绘，画板内容与统计不被改写', () => {
+  assert.equal(parseOptions(['--port', '43326'], {}).dash, 'solid')
+  assert.equal(parseOptions(['--port', '43326', '--dash', 'draw'], {}).dash, 'draw')
+  assert.throws(() => parseOptions(['--port', '43326', '--dash', 'dotted'], {}), /dash/)
+  const solid = createFixture(500), drawn = createFixture(500, solid.snapshot, undefined, { dash: 'draw' })
+  assert.deepEqual(drawn.viewState, solid.viewState)
+  assert.deepEqual(drawn.counts, solid.counts)
+  assert.equal(drawn.assetCount, solid.assetCount)
+  assert.equal(drawn.targetId, solid.targetId)
+  const source = Object.values(solid.snapshot.store).filter(record => record.typeName === 'shape')
+  for (const record of source) {
+    const actual = drawn.snapshot.store[record.id]
+    assert.deepEqual({ ...actual, index: record.index, props: actual.type === 'geo' ? { ...actual.props, dash: 'solid' } : actual.props }, record)
+    if (actual.type === 'geo') assert.equal(actual.props.dash, 'draw')
+  }
+  assert.throws(() => createFixture(500, undefined, undefined, { dash: 'wrong' }), /线型/)
+})

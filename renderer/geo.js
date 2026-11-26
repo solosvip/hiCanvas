@@ -1,6 +1,7 @@
 import { createElement as h, useId } from 'react'
 import { getShapeBounds, getShapeContour } from './bounds.js'
 import { dashLayout, strokeWidth, PATTERN_METRICS } from './geo-metrics.js'
+import { getHandDrawnContour } from './hand-drawn.js'
 import { colorPaint } from './palette.js'
 
 const pathOf = (points, close = false) => points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ') + (close ? ' Z' : '')
@@ -36,13 +37,15 @@ export function Geometry({ shape }) {
   const props = shape.props, paint = colorPaint(props), patterned = props.fill === 'pattern'
   const fill = props.fill === 'none' ? 'none' : patterned ? `url(#${id})` : props.fill === 'lined-fill' ? paint.lined : paint[props.fill] || paint.solid
   const stroke = { stroke: paint.stroke, strokeWidth: strokeWidth(props), strokeLinecap: 'round', strokeLinejoin: 'round' }
+  const hand = getHandDrawnContour(shape)
   const dashed = ['dashed', 'dotted'].includes(props.dash)
   const edges = !dashed ? [] : contour.continuous ? [contour.outline] : contour.outline.map((point, i) => [point, contour.outline[(i + 1) % contour.outline.length]])
   return h('svg', { width: bounds.w, height: bounds.h, overflow: 'visible' },
     patterned ? h(Pattern, { id, props, paint }) : null,
-    h('path', { 'data-geo-outline': '', d: pathOf(contour.outline, true), fill, ...stroke, stroke: dashed ? 'none' : stroke.stroke }),
+    h('path', { 'data-geo-outline': '', d: hand?.fillPath || pathOf(contour.outline, true), fill, ...stroke, stroke: hand || dashed ? 'none' : stroke.stroke }),
+    hand ? h('path', { 'data-geo-hand-ink': '', d: hand.strokePath, fill: paint.stroke, fillRule: 'nonzero' }) : null,
     dashed ? edges.map((points, i) => h(DashedStroke, { key: `edge-${i}`, points, closed: !!contour.continuous, props, stroke })) : null,
-    contour.decorations.map((line, i) => dashed
+    hand ? hand.decorationPaths.map((d, i) => h('path', { key: i, 'data-geo-decoration': '', d, fill: paint.stroke, fillRule: 'nonzero' })) : contour.decorations.map((line, i) => dashed
       ? h(DashedStroke, { key: i, points: line, closed: false, props, stroke })
       : h('path', { key: i, 'data-geo-decoration': '', d: pathOf(line), fill: 'none', ...stroke })))
 }

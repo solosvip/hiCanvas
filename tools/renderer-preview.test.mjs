@@ -66,7 +66,18 @@ test('独立预览只提供合成数据，拒绝写入与未知规模，不启�
     assert.match(await (await fetch(preview.url)).text(), /renderer-preview\/main.js|\.\/main.js/)
     const response = await fetch(`${preview.url}/__renderer_fixture?count=500`)
     assert.equal(response.status, 200)
-    assert.equal((await response.json()).count, 500)
+    const solid = await response.json()
+    assert.equal(solid.count, 500)
+    const draw = await (await fetch(`${preview.url}/__renderer_fixture?count=500&dash=draw`)).json()
+    const again = await (await fetch(`${preview.url}/__renderer_fixture?count=500`)).json()
+    assert.deepEqual(again, solid)
+    for (const record of Object.values(draw.snapshot.store)) {
+      const before = solid.snapshot.store[record.id]
+      const expected = record.typeName === 'shape' ? { ...before, index: record.index } : before
+      if (record.typeName === 'shape' && record.type === 'geo') expected.props = { ...expected.props, dash: 'draw' }
+      assert.deepEqual(record, expected)
+    }
+    assert.equal((await fetch(`${preview.url}/__renderer_fixture?count=500&dash=dotted`)).status, 400)
     assert.equal((await fetch(`${preview.url}/__renderer_fixture?count=500`, { method: 'POST' })).status, 405)
     assert.equal((await fetch(`${preview.url}/__renderer_fixture?count=123`)).status, 400)
   } finally { await preview.close() }

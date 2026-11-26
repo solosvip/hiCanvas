@@ -2,7 +2,7 @@ import { crc32, deflateSync } from 'node:zlib'
 import { getIndexAbove } from '@tldraw/utils'
 import { toRichText } from '@tldraw/tlschema'
 import { createCanvasSnapshot } from '../../model/index.js'
-import { benchmarkViewport } from './config.mjs'
+import { benchmarkViewport, checkedDash } from './config.mjs'
 
 function chunk(type, data) {
   const body = Buffer.concat([Buffer.from(type), data]), size = Buffer.alloc(4), crc = Buffer.alloc(4)
@@ -28,7 +28,8 @@ export function syntheticPng(seed, width = 256, height = 192) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))])
 }
 
-export function createFixture(count, initialSnapshot, viewport = benchmarkViewport) {
+export function createFixture(count, initialSnapshot, viewport = benchmarkViewport, { dash = 'solid' } = {}) {
+  checkedDash(dash)
   const snapshot = createCanvasSnapshot(initialSnapshot), store = snapshot.store
   const pageId = Object.values(store).find(r => r.typeName === 'page').id
   const columns = Math.ceil(Math.sqrt(count)), rows = Math.ceil(count / columns)
@@ -44,7 +45,7 @@ export function createFixture(count, initialSnapshot, viewport = benchmarkViewpo
     const common = { ...textProps, richText: toRichText(type === 'text' ? `合成 ${i}\nSynthetic canvas` : '') }
     const props = type === 'image' ? { w: 96, h: 72, assetId: `asset:perf-${Math.floor(i / 5) % assetCount}`, playing: true, url: '', crop: null, flipX: false, flipY: false, altText: `合成图片 ${i}` }
       : type === 'text' ? { ...common, w: 104, textAlign: 'start', autoSize: false }
-        : { ...common, w: 96, h: 72, geo: ['rectangle', 'ellipse', 'triangle', 'diamond'][i % 4], dash: 'solid', growY: 0, url: '', labelColor: 'black', color: ['blue', 'green', 'violet'][i % 3], fill: 'semi', align: 'middle', verticalAlign: 'middle' }
+        : { ...common, w: 96, h: 72, geo: ['rectangle', 'ellipse', 'triangle', 'diamond'][i % 4], dash, growY: 0, url: '', labelColor: 'black', color: ['blue', 'green', 'violet'][i % 3], fill: 'semi', align: 'middle', verticalAlign: 'middle' }
     store[id] = { id, typeName: 'shape', type, x: (i % columns) * 128, y: Math.floor(i / columns) * 104, rotation: 0, index, parentId: pageId, isLocked: false, opacity: 1, props, meta: {} }
     index = getIndexAbove(index)
   }
