@@ -2,6 +2,69 @@
 export const EMBED_FRAME_ATTRIBUTES = Object.freeze({ sandbox: 'allow-forms allow-popups allow-same-origin allow-scripts', referrerPolicy: 'no-referrer', tabIndex: -1, draggable: false, frameBorder: '0' })
 const virtualOrigin = 'https://cowart.local'
 
+const frame = extra => Object.freeze({ sandbox: `allow-popups ${extra ? extra + ' ' : ''}allow-scripts allow-same-origin allow-forms`, referrerPolicy: 'strict-origin-when-cross-origin', allowFullScreen: true, tabIndex: -1, draggable: false, frameBorder: '0' })
+const at = (url, host, path) => url.hostname === host && url.pathname.match(path)
+function appendQuery(raw, field) {
+  const [base, ...hash] = raw.split('#')
+  return base + (base.includes('?') ? '&' : '?') + field + (hash.length ? '#' + hash.join('#') : '')
+}
+function figma(url, raw) {
+  const file = value => at(value, 'www.figma.com', /^\/(?:file|design|proto)\/[A-Za-z0-9]{22}\/[^/]+\/?$/)
+  if (file(url)) return 'https://www.figma.com/embed?embed_host=share&url=' + raw
+  if (at(url, 'www.figma.com', /^\/embed$/)) {
+    try { if (file(new URL(url.searchParams.get('url')))) return raw } catch { /* Invalid nested URL falls back to a bookmark. */ }
+  }
+  return null
+}
+function youtube(url, raw) {
+  if (at(url, 'www.youtube.com', /^\/embed\/[A-Za-z0-9_-]+$/)) return raw
+  const short = at(url, 'youtu.be', /^\/([A-Za-z0-9_-]+)$/)
+  const id = short?.[1] || (at(url, 'www.youtube.com', /^\/watch$/) && url.searchParams.get('v'))
+  if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) return null
+  const params = new URLSearchParams()
+  for (const [key, value] of url.searchParams) if (key !== 'v') params.append(key === 't' ? 'start' : key, value)
+  return `https://www.youtube.com/embed/${id}${params.size ? '?' + params : ''}`
+}
+const entry = (id, name, size, minimumObserved, convert, extra = {}) => Object.freeze({ id, name, size: Object.freeze(size), minimumObserved: minimumObserved && Object.freeze(minimumObserved), canResize: true, lockAspectRatio: false, attributes: frame(''), convert, ...extra })
+
+// Independent black-box samples from the running legacy UI (2026-11-25).
+// The observed limits describe that probe, not independently inferred minW/minH.
+// Permissions preserve legacy behavior per #83's ruling; tightening belongs to #78.
+export const EXTERNAL_EMBED_SERVICES = Object.freeze([
+  entry('G05', 'tldraw', [720, 500], [300, 300], (u, raw) => at(u, 'www.tldraw.com', /^\/r\/[A-Za-z0-9_-]+\/?$/) ? raw : null, { attributes: frame('allow-top-navigation') }),
+  entry('G06', 'Figma', [720, 500], [200, 200], figma),
+  entry('G07', 'Canva', [720, 500], [200, 200], (u, raw) => at(u, 'www.canva.com', /^\/design\/[^/]+\/(?:[^/]+\/)?view\/?$/) ? u.searchParams.has('embed') ? raw : appendQuery(raw, 'embed=') : null),
+  entry('G08', 'Google Maps', [720, 500], [200, 200], (u, raw) => at(u, 'www.google.com', /^\/maps\/embed$/) && u.searchParams.get('pb') ? raw : null, { attributes: frame('allow-presentation') }),
+  entry('G09', 'Val Town', [720, 500], [260, 100], u => { const m = at(u, 'www.val.town', /^\/(?:v|embed)\/([^/]+(?:\/[^/]+)?)$/); return m ? 'https://www.val.town/embed/' + m[1] : null }),
+  entry('G10', 'CodeSandbox', [720, 500], [300, 300], u => { const m = at(u, 'codesandbox.io', /^\/(?:s|embed)\/([^/]+)$/); return m ? 'https://codesandbox.io/embed/' + m[1] : null }),
+  entry('G11', 'CodePen', [520, 400], [300, 300], u => { const m = at(u, 'codepen.io', /^\/([^/]+)\/(?:pen|embed)\/([^/]+)$/); return m ? `https://codepen.io/${m[1]}/embed/${m[2]}${u.search}${u.hash}` : null }),
+  entry('G12', 'Scratch', [520, 400], null, u => { const m = at(u, 'scratch.mit.edu', /^\/projects\/([A-Za-z0-9_-]+)(?:\/[^/]+)?\/?$/); return m ? 'https://scratch.mit.edu/projects/embed/' + m[1] : null }, { canResize: false }),
+  entry('G13', 'YouTube', [800, 450], [355.556, 200], youtube, { lockAspectRatio: true, attributes: frame('allow-popups-to-escape-sandbox allow-presentation') }),
+  entry('G14', 'Google Calendar', [720, 500], [460, 360], (u, raw) => at(u, 'calendar.google.com', /^\/calendar\/embed$/) && u.searchParams.get('src') ? raw : at(u, 'calendar.google.com', /^\/calendar\/u\/0\/r$/) && u.searchParams.get('cid') ? 'https://calendar.google.com/calendar/embed?src=' + encodeURIComponent(u.searchParams.get('cid')) : null, { attributes: frame('allow-popups-to-escape-sandbox') }),
+  entry('G15', 'Google Slides', [720, 500], [460, 360], (u, raw) => { const m = at(u, 'docs.google.com', /^\/presentation\/d\/e\/([^/]+)\/(pub|embed)$/); return m ? m[2] === 'embed' ? raw : `https://docs.google.com/presentation/d/e/${m[1]}/embed${u.hash}` : null }, { attributes: frame('allow-popups-to-escape-sandbox') }),
+  entry('G16', 'GitHub Gist', [720, 500], [200, 200], () => null, { fallbackIssue: 78, attributes: Object.freeze({ ...frame(''), sandbox: 'allow-popups allow-scripts allow-forms', allowFullScreen: false }) }),
+  entry('G17', 'Replit', [720, 500], [200, 200], (u, raw) => at(u, 'replit.com', /^\/@[^/]+\/[^/]+$/) ? appendQuery(raw, 'embed=true') : null),
+  entry('G18', 'Felt', [720, 500], [200, 200], u => { const m = at(u, 'felt.com', /^\/(?:embed\/)?map\/([^/]+)$/); return m ? 'https://felt.com/embed/map/' + m[1] : null }),
+  // Official full-audio guidance requires encrypted-media. The observed legacy
+  // frame has no allow attribute; #83 preserves it rather than claiming minimum permissions.
+  entry('G19', 'Spotify', [720, 500], [200, 500], u => { const m = at(u, 'open.spotify.com', /^\/(?:embed\/)?album\/([A-Za-z0-9]{22})$/); return m ? 'https://open.spotify.com/embed/album/' + m[1] : null }),
+  entry('G20', 'Vimeo', [640, 360], [355.556, 200], (u, raw) => { if (at(u, 'player.vimeo.com', /^\/video\/\d+$/)) return raw; const m = at(u, 'vimeo.com', /^\/(\d+)(?:\/[^/]+)?$/); return m ? `https://player.vimeo.com/video/${m[1]}?title=0&byline=0` : null }, { lockAspectRatio: true }),
+  entry('G21', 'Observable', [720, 500], [200, 200], (u, raw) => { if (at(u, 'observablehq.com', /^\/embed\/(?:@[^/]+\/[^/]+|[^/]+)$/)) return raw; const m = at(u, 'observablehq.com', /^\/(?:d\/([^/]+)|(@[^/]+\/[^/]+))$/); return m ? `https://observablehq.com/embed/${m[1] || m[2]}?cell=*` : null }),
+  entry('G22', 'Desmos', [700, 450], [200, 200], (u, raw) => at(u, 'www.desmos.com', /^\/calculator\/[a-z0-9]{10}$/) && !u.hash && ['', '?embed'].includes(u.search) ? u.search ? raw : raw + '?embed' : null)
+])
+
+export function resolveExternalEmbed(value) {
+  if (typeof value !== 'string') return null
+  let url
+  try { url = new URL(value) } catch { return null }
+  if (url.protocol !== 'https:' || url.port || url.username || url.password) return null
+  for (const service of EXTERNAL_EMBED_SERVICES) {
+    const src = service.convert(url, value)
+    if (src) return { service, src, attributes: service.attributes }
+  }
+  return null
+}
+
 function assetUrl(value, extensions = /\.html?$/i) {
   if (typeof value !== 'string') return null
   try {

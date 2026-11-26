@@ -2,10 +2,14 @@ import { DefaultColorStyle, GeoShapeGeoStyle, toRichText } from '@tldraw/tlschem
 import { getIndexAbove } from '@tldraw/utils'
 import { createCanvasSnapshot } from '../../model/index.js'
 import { createEmbedGallery } from './embed-gallery.js'
+import { createBookmarkGallery } from './bookmark-gallery.js'
+import { createExternalGallery } from './external-gallery.js'
 
 // Synthetic document coordinates, independent of application UI tokens.
 export function createGallery(mode) {
   if (mode === 'embeds') return createEmbedGallery()
+  if (mode === 'bookmarks') return createBookmarkGallery()
+  if (mode === 'external') return createExternalGallery()
   if (!['shapes', 'styles', 'metrics', 'metrics-long', 'metrics-curves'].includes(mode)) throw new Error('未知合成图鉴。')
   const snapshot = createCanvasSnapshot(), store = snapshot.store
   const pageId = Object.values(store).find(r => r.typeName === 'page').id
