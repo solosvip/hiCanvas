@@ -1,12 +1,14 @@
 import { createElement as h } from 'react'
 import { useValue } from '@tldraw/state-react'
 import { StaticFrame } from './image.js'
+import { checkedScribble, ScribbleOverlay } from './scribble-overlay.js'
 const overlayStyle = Object.freeze({ position: 'absolute', inset: 'var(--spacing-none)', pointerEvents: 'none', transformOrigin: '0 0' })
 const itemStyle = Object.freeze({ position: 'absolute', left: 'var(--spacing-none)', top: 'var(--spacing-none)', transformOrigin: '0 0' })
 
 export function checkedOverlays(value) {
   if (!Array.isArray(value)) throw new Error('覆盖层需要描述数组。')
   return Object.freeze(value.map(item => {
+    if (item?.kind === 'scribble') return checkedScribble(item)
     const b = item?.bounds
     if (!['selection', 'marquee', 'crop'].includes(item?.kind) || !b || ![b.x, b.y, b.w, b.h].every(Number.isFinite) || b.w < 0 || b.h < 0) throw new Error('覆盖层描述需要有效种类和画布外框。')
     const image = item.image
@@ -32,6 +34,7 @@ export function CanvasOverlays({ camera, overlays, reduceMotion }) {
   // pixels before the outer scale, so they cannot keep a constant screen width.
   return h('div', { style: { ...overlayStyle, transform: `scale(${view.z}) translate3d(${view.x}px,${view.y}px,0)` }, 'data-canvas-overlays': '', 'aria-hidden': true },
     items.map((item, i) => {
+      if (item.kind === 'scribble') return h(ScribbleOverlay, { key: `scribble:${i}`, item, zoom: view.z })
       const brush = item.kind === 'marquee', stroke = `var(--spacing-overlay-${brush ? 'brush' : 'selection'}-stroke)`
       return h('div', { key: `${item.kind}:${item.id || i}`, 'data-overlay-kind': item.kind, 'data-overlay-id': item.id,
         style: { ...itemStyle, width: item.bounds.w, height: item.bounds.h, transform: `translate3d(${item.bounds.x}px,${item.bounds.y}px,0) rotate(${item.rotation || 0}rad)`, backgroundColor: brush ? 'var(--color-overlay-brush-fill)' : undefined } },

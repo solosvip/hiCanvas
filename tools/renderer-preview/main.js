@@ -7,6 +7,7 @@ import { createGallery } from './gallery.js'
 import { createConnectionGallery } from './arrow-gallery.js'
 import { createStrokeGallery, addStrokeLoad } from './stroke-fixtures.js'
 import { createNoteGallery } from './note-fixtures.js'
+import { createSelectionGallery } from './selection-fixture.js'
 import { createFrameTitleFixture } from './frame-title-fixture.js'
 import { attachPreviewInput } from './input.js'
 import { attachNavigationUi } from './navigation-ui.js'
@@ -22,7 +23,7 @@ const host = document.querySelector('#canvas'), status = document.querySelector(
 const getState = () => {
   const state = interaction?.state.get()
   return Object.freeze({ ready, error: failure, count: metadata?.count || 0, counts: metadata ? Object.freeze({ ...metadata.counts }) : null, camera: state ? { ...state.camera } : null,
-    selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling, shortcutsEnabled: state?.shortcutsEnabled, inputContext: state ? { ...state.inputContext } : null,
+    focusedGroupId: state?.focusedGroupId, isWrapMode: state?.isWrapMode, selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling, shortcutsEnabled: state?.shortcutsEnabled, inputContext: state ? { ...state.inputContext } : null,
     croppingId: state?.croppingId || null, cropZoom: state?.cropZoom || 0,
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
     revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, lastError: state?.lastError || session?.state.get().lastError || null,
@@ -40,7 +41,8 @@ try {
     if (!response.ok) throw new Error('本机校准日志写入失败。')
   } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
-  if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
+  if (gallery === 'selection-semantics') metadata = createSelectionGallery()
+  else if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
   else if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
   else if (gallery === 'images') metadata = createImageGallery()
   else if (gallery?.startsWith('note-') || gallery === 'frame-titles') metadata = createNoteGallery(gallery)
@@ -65,7 +67,7 @@ try {
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1' })
   disposers.push(() => renderer.unmount())
-  const instructions = `${metadata.count} 个合成元素 · 点选／Shift 加减选 · 空白拖框 · 拖动移动 · 角点／边线缩放 · 角外旋转 · Shift 等比／15° · Alt 中心缩放 · H 手形／空格平移 · Z 缩放 · ⇧0/1/2 · ⌘/Ctrl Z 撤销 · Esc 取消${metadata.persistent ? ' · 松手保存' : ' · 临时预览，刷新还原'}`
+  const instructions = `${metadata.count} 个合成元素 · Shift 点击增减／框选追加 · Ctrl 反转框选 · Alt 涂抹 · Shift 拖动锁轴 · Enter/Esc 组导航 · Tab 顺序选择 · 拖动移动 · 角点／边线缩放 · 角外旋转 · Shift 等比／15° · Alt 中心缩放 · H 手形／空格平移 · Z 缩放 · ⇧0/1/2 · ⌘/Ctrl Z 撤销 · Esc 取消${metadata.persistent ? ' · 松手保存' : ' · 临时预览，刷新还原'}`
   const showError = error => { status.textContent = `操作失败：${error.message}` }
   const navigation = attachNavigationUi(host, interaction, showError, (...args) => controls.navigate(...args))
   disposers.push(() => navigation.dispose())

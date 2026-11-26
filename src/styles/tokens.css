@@ -7,6 +7,7 @@
   --color-minimap-shape: #6e7477;
   --color-minimap-viewport: #0000001a;
   --color-overlay-crop-ghost: #0000001a;
+  --color-overlay-scribble-stroke: #2f80ed52;
   --color-secondary: #596170;
   --color-tertiary: #0ea5e9;
   --color-neutral: #f7f5ef;
@@ -30,6 +31,7 @@
   --radius-full: 9999px;
   --spacing-overlay-selection-stroke: 2px;
   --spacing-overlay-brush-stroke: 1px;
+  --spacing-overlay-scribble-stroke: 12px;
   --spacing-overlay-handle-size: 10px;
   --spacing-overlay-handle-stroke: 2px;
   --spacing-overlay-handle-hit: 12px;

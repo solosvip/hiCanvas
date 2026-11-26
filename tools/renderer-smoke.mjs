@@ -19,7 +19,7 @@ const runtime = await mkdtemp(join(output, 'runtime-'))
 let preview, child, childClosed
 try {
   await runContentHostSmoke()
-  preview = await startRendererPreview({ geometryFixtures: true })
+  preview = await startRendererPreview({ geometryFixtures: true, watch: false })
   const manifest = join(runtime, 'manifest.json')
   await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(runtime, 'profile'), output, result: join(output, 'result.json') }))
   const code = await new Promise((accept, reject) => {
