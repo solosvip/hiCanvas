@@ -34,7 +34,9 @@ export function createTextInput(context, editing) {
   function handle(input) {
     const state = read()
     if (state.textEditing || state.toolId !== 'select') return { handled: false }
-    if (input.type === 'key_down' && input.key === 'Enter' && !input.repeat && !input.metaKey && !input.ctrlKey && !input.altKey && !input.shiftKey && state.selectedIds.length === 1 && editing.canBegin(state.selectedIds[0])) return { handled: true, result: editing.begin(state.selectedIds[0]) }
+    // Selected + Enter starts editing only from idle: during an active move or
+    // resize, Enter must neither finish the gesture nor open an editor (TL-B27).
+    if (input.type === 'key_down' && input.key === 'Enter' && state.mode === 'idle' && !input.repeat && !input.metaKey && !input.ctrlKey && !input.altKey && !input.shiftKey && state.selectedIds.length === 1 && editing.canBegin(state.selectedIds[0])) return { handled: true, result: editing.begin(state.selectedIds[0]) }
     if (input.type !== 'pointer_up' || input.button !== 0 || input.clickCount !== 2 || state.mode !== 'pointing') return { handled: false }
     const point = screenToCanvas(input.point, state.camera), raw = index.hitsAtPoint(point, 4 / state.camera.z, { geoInterior: true }).find(targets.isSelectable)
     const title = frameTitleAtPoint(context, point)
