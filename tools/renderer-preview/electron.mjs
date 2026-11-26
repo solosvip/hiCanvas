@@ -129,6 +129,27 @@ async function run() {
 
       window.destroy(); window = undefined
     }
+    for (const gallery of ['stroke-styles', 'stroke-details', 'stroke-highlights', 'stroke-transforms']) {
+      window = createWindow(gallery)
+      await window.loadURL(`${manifest.url}/?gallery=${gallery}`)
+      const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
+      check(initial.renderedShapes === initial.count && initial.counts.draw + initial.counts.highlight > 0, '笔迹图鉴未完整绘制')
+      const capture = await window.webContents.capturePage()
+      await writeFile(join(manifest.output, `${gallery}-gallery.png`), capture.toPNG())
+      let overlaps
+      if (gallery === 'stroke-highlights') {
+        const size = capture.getSize(), bytes = capture.toBitmap(), ratio = size.width / 1280
+        overlaps = Array.from({ length: 4 }, (_, col) => {
+          const x = (130 + col * 280 + initial.camera.x) * initial.camera.z, y = (600 + initial.camera.y) * initial.camera.z
+          const offset = (Math.round(y * ratio) * size.width + Math.round(x * ratio)) * 4
+          return [bytes[offset + 2], bytes[offset + 1], bytes[offset]]
+        })
+        check(overlaps.every(rgb => rgb.every((value, i) => Math.abs(value - [87, 188, 181][i]) <= 2)), `荧光笔全局叠色顺序或透明度不符：${JSON.stringify(overlaps)}`)
+      }
+      const strokes = gallery === 'stroke-styles' ? await evaluate("import('/tools/renderer-preview/stroke-probe.js').then(module => module.runStrokeProbe())") : undefined
+      samples.push({ gallery, initial, strokes, overlaps })
+      window.destroy(); window = undefined
+    }
     check(errors.length === 0 && blocked.length === 0, `浏览器错误：${errors.join('; ')}；外部请求：${blocked.join('; ')}`)
     await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2))
     app.exit(0)

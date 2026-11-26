@@ -4,6 +4,7 @@ import { createEditorSession, createCanvasInteraction } from '../../engine/index
 import { mountCanvasRenderer } from '../../renderer/index.js'
 import { createGallery } from './gallery.js'
 import { createConnectionGallery } from './arrow-gallery.js'
+import { createStrokeGallery, addStrokeLoad } from './stroke-fixtures.js'
 import { attachPreviewInput } from './input.js'
 import { memoryTransport, previewTransport } from './transport.js'
 
@@ -27,11 +28,12 @@ Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.f
 try {
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
-  else if (gallery) metadata = createGallery(gallery)
+  else if (gallery) metadata = gallery.startsWith('stroke-') ? createStrokeGallery(gallery) : createGallery(gallery)
   else {
     const response = await fetch(`/__renderer_fixture?count=${encodeURIComponent(params.get('count') || '500')}`)
     if (!response.ok) throw new Error('合成规模仅支持 500、2000、5000。')
     metadata = await response.json()
+    if (params.get('strokes') === '500') metadata = addStrokeLoad(metadata)
   }
   const transport = metadata.persistent ? previewTransport(metadata.conversationId) : memoryTransport(metadata.snapshot)
   const actorKey = `preview-actor:${metadata.conversationId || gallery || metadata.count}`

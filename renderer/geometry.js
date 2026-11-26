@@ -14,6 +14,7 @@ export function screenToCanvas(point, camera) {
 }
 import { getShapeBounds, getShapeContour, hitTestShape } from './bounds.js'
 import { createConnectionContext } from './connection-records.js'
+export { getStrokeGeometry } from './stroke-geometry.js'
 export { getShapeBounds, getShapeContour } from './bounds.js'
 export { getConnectionGeometry } from './connection-geometry.js'
 export { createConnectionContext, getBoundArrowIds } from './connection-records.js'
