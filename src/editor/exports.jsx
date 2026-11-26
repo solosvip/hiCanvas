@@ -153,7 +153,7 @@ async function exportCowartFilm(editor, draftShapeId, onProgress, signal) {
     // A separate iframe renders from zero without changing the preview or edits.
     const html = await hydrateCowartHtmlDraftLocalImages(await readCowartHtmlDraftContent(shape))
     const blob = await renderCowartFilmMp4({ html, width: Number(shape.props.w), height: Number(shape.props.h),
-      duration: getFilmOptions(shape).duration, onProgress, signal })
+      duration: getFilmOptions(shape).duration, onProgress, signal, sourceUrl: shape.props.url })
     signal?.throwIfAborted()
     const fileName = htmlDraftExportFileName(shape, 'mp4')
     if (hasCowartWidgetBridge()) {

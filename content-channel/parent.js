@@ -1,3 +1,5 @@
+import {armDeadline} from './film-deadline.js'
+import {binaryCommand,filmFrameSize,releaseBinary,filmStageOrder,filmFrameBudget,filmAudioStageOrder,filmAudioStepBudget,filmAudioBudget,MAX_FILM_TASK_TIMEOUT} from './film-export-protocol.js'
 import {CAPTURE_TIMEOUT,captureSize} from './capture-protocol.js'
 import {PROTOCOL_VERSION,MAX_MESSAGE_BYTES,MAX_PENDING_REQUESTS,MAX_REPLY_MESSAGES_PER_SECOND,REQUEST_TIMEOUT,messageSize,validMessage,validCommand,validLegacyStatus,createRateLimit} from './protocol.js'
 
@@ -55,34 +57,58 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
     active.timer=setTimeout(()=>{if(session===active)invalidate(new Error('内容通道握手超时。'))},REQUEST_TIMEOUT)
     active.port.onmessage=event=>{
       const data=event.data
-      if(!active.allowIncoming())return
       if(session!==active){
         if(data?.type==='capture-end'&&messageSize(data)<=MAX_MESSAGE_BYTES&&validMessage(data,instanceId,generation)&&captureJobs.get(data.id)===active)releaseCapture(data.id)
-        else if(data?.value?.pixels instanceof ArrayBuffer)data.value.pixels.transfer?.(0)
+        else{active.allowIncoming();releaseBinary(data?.value)}
         return
       }
       // Binary pixels have a separate strict budget; every other message keeps
       // the 4 KiB ceiling. An invalid matching reply fails explicitly.
-      if(data?.type==='capture-result'){
+      if(['film-stage','film-audio-stage'].includes(data?.type)){
         const task=pending.get(data.id)
-        const discard=()=>{if(data.value?.pixels instanceof ArrayBuffer)data.value.pixels.transfer?.(0)}
-        if(!task||task.command!=='capture'||data.instance!==instanceId||data.generation!==generation){discard();return}
-        if(!validMessage(data,instanceId,generation)||data.value.width!==task.size.width||data.value.height!==task.size.height){discard();task.finish(new Error('截图像素数据无效或超过上限。'));return}
-        task.finish(null,data.value);return
+        const matches=task&&task.command===(data.type==='film-stage'?'film-frame':'film-audio')&&data.instance===instanceId&&data.generation===generation
+        // Strictly increasing stages are independently bounded per request:
+        // 4+2N frame stages or six audio stages. They cannot consume replies.
+        // Unmatched/late traffic still pays the ordinary 120/s ingress budget.
+        if(!matches){active.allowIncoming();return}
+        if(messageSize(data)>MAX_MESSAGE_BYTES||!validMessage(data,instanceId,generation)||!task.progress(data))task.fail(new Error('影片导出阶段回报无效。'))
+        return
       }
-      if(messageSize(data)>MAX_MESSAGE_BYTES||!validMessage(data,instanceId,generation))return
+      if(['capture-result','film-frame-result','film-audio-result'].includes(data?.type)){
+        const task=pending.get(data.id)
+        const discard=()=>releaseBinary(data.value)
+        const expected={'capture-result':'capture','film-frame-result':'film-frame','film-audio-result':'film-audio'}[data.type]
+        if(!task||task.command!==expected||data.instance!==instanceId||data.generation!==generation){active.allowIncoming();discard();return}
+        const valid=validMessage(data,instanceId,generation)
+        const matches=valid&&(expected==='film-audio'?Math.abs(data.value.length/data.value.sampleRate-task.duration)<=.05:
+          data.value.width===task.size.width&&data.value.height===task.size.height&&(expected!=='film-frame'||data.frame===task.frame))
+        if(!matches){active.allowIncoming();discard();task.finish(new Error(expected==='film-audio'?'影片音轨数据无效或超过上限。':'截图像素数据无效或超过上限。'));return}
+        if(expected==='film-audio'){
+          if(active.exportConfig){discard();task.fail(new Error('影片音轨视频源数重复声明。'));return}
+          active.exportConfig={sources:data.videoSources,timeout:task.durationTimeout}
+        }
+        task.finish(null,task.command==='film-frame'?{...data.value,frame:data.frame}:data.value);return
+      }
+      // A validated result settles its pending task once; an end receipt spends
+      // its capture lease once. Reserved replies cannot be starved by junk that
+      // has exhausted the ordinary ingress bucket (including on retired Ports).
+      const bounded=messageSize(data)<=MAX_MESSAGE_BYTES&&validMessage(data,instanceId,generation)
+      if(data?.type==='capture-end'&&bounded&&captureJobs.get(data.id)===active){releaseCapture(data.id);return}
+      if(data?.type==='response'&&bounded&&!data.ok&&binaryCommand(pending.get(data.id)?.command)){pending.get(data.id).finish(new Error(data.error),undefined,false);return}
+      if(!active.allowIncoming()){releaseBinary(data?.value);return}
+      if(!bounded)return
       if(data.type==='ready'){clearTimeout(active.timer);active.resolve();if(data.legacy&&!active.legacy){active.legacy=true;active.port.postMessage({...base,type:'legacy-poll'})}return}
       if(data.type==='capture-end'){releaseCapture(data.id);return}
       if(data.type==='close'){invalidate();return}
       if(data.type==='status'){notify(data.value);return}
-      if(data.type==='response'){const task=pending.get(data.id);if(task&&(!data.ok||task.command!=='capture'))task.finish(data.ok?null:new Error(data.error),data.value,task.command!=='capture')}
+      if(data.type==='response'){const task=pending.get(data.id);if(task&&(!data.ok||!binaryCommand(task.command)))task.finish(data.ok?null:new Error(data.error),data.value,!binaryCommand(task.command))}
     }
     active.port.onmessageerror=()=>{if(session===active)invalidate()}
     active.port.start()
     try{iframe.contentWindow.postMessage({...base,type:'connect',options:{duration,muted,film}},origin,[channel.port2])}
     catch(error){channel.port2.close();invalidate(error)}
   }
-  async function request(command,value,{signal,timeout=command==='capture'?CAPTURE_TIMEOUT:REQUEST_TIMEOUT}={}){
+  async function request(command,value,{signal,timeout=command==='film-frame'?(session?.exportConfig?.timeout||15000):command==='film-audio'?(value.taskTimeout||15000):command==='capture'?CAPTURE_TIMEOUT:REQUEST_TIMEOUT}={}){
     if(!validCommand(command,value))throw new Error(command==='capture'?'截图参数无效：边长不得超过4096，像素不得超过1600万。':'内容命令或参数无效。')
     signal?.throwIfAborted()
     const active=session
@@ -95,20 +121,33 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
     })
     signal?.throwIfAborted()
     if(session!==active)throw new Error('内容实例已失效。')
-    const capturing=command==='capture'
+    const capturing=binaryCommand(command),exportConfig=active.exportConfig
+    if(command==='film-frame'&&!exportConfig)throw new Error('影片导出尚未声明视频源数。')
     if(capturing&&(captureJobs.size>0||(pageCaptures.get(host)||0)>=2)){const error=new Error('截图忙，请稍后重试。');error.code='CHANNEL_BUSY';throw error}
     if(pending.size>=MAX_PENDING_REQUESTS||!active.allowOutgoing()){const error=new Error('内容请求过于频繁。');error.code='CHANNEL_BUSY';throw error}
-    if(!Number.isFinite(timeout)||timeout<=0||timeout>(capturing?CAPTURE_TIMEOUT:REQUEST_TIMEOUT))throw new Error('内容请求超时设置无效。')
+    if(!Number.isFinite(timeout)||timeout<=0||timeout>(command.startsWith('film-')?MAX_FILM_TASK_TIMEOUT:capturing?CAPTURE_TIMEOUT:REQUEST_TIMEOUT))throw new Error('内容请求超时设置无效。')
     const id='p'+(++sequence),message={...active.base,type:'request',id,command,...value!==undefined?{value}:{}}
     if(capturing){captureJobs.set(id,active);pageCaptures.set(host,(pageCaptures.get(host)||0)+1)}
     return new Promise((resolve,reject)=>{
-      let timer
+      let stopWait=()=>{},stopHard=()=>{},lastStage=-1
       const cancel=()=>{try{active.port.postMessage({...active.base,type:'cancel',id})}catch{/* Detached. */}}
       const abort=()=>{cancel();finish(signal.reason||new DOMException('已取消。','AbortError'),undefined,false)}
-      function finish(error,result,ended=true){if(!pending.delete(id))return;if(capturing&&ended)releaseCapture(id);clearTimeout(timer);signal?.removeEventListener('abort',abort);if(!error&&command==='mute')muted=value;error?reject(error):resolve(result)}
-      pending.set(id,{finish,command,size:capturing?captureSize(value):null})
+      function finish(error,result,ended=true){if(!pending.delete(id))return;if(capturing&&ended)releaseCapture(id);stopWait();stopHard();signal?.removeEventListener('abort',abort);if(!error&&command==='mute')muted=value;error?reject(error):resolve(result)}
+      pending.set(id,{finish,command,size:command==='capture'?captureSize(value):command==='film-frame'?filmFrameSize(value):null,frame:value?.index,duration:value?.duration,durationTimeout:value?.taskTimeout||15000,
+        fail(error){cancel();finish(error,undefined,false)},
+        progress(data){
+          const audio=command==='film-audio'
+          const rank=audio?filmAudioStageOrder(data.stage):filmStageOrder(data.media===undefined?{stage:data.stage}:{stage:data.stage,media:data.media},exportConfig.sources)
+          if((!audio&&data.frame!==value.index)||rank<=lastStage)return false
+          const stepTimeout=audio?filmAudioStepBudget(data.stage,timeout):timeout
+          lastStage=rank;stopWait();stopWait=armDeadline(()=>{cancel();finish(new Error('影片导出阶段失联超时。'),undefined,false)},stepTimeout+1000)
+          return true
+        },
+      })
       signal?.addEventListener('abort',abort,{once:true})
-      timer=setTimeout(()=>{cancel();finish(new Error('内容请求超时。'),undefined,false)},timeout)
+      const exporting=command==='film-frame'||command==='film-audio'
+      stopWait=armDeadline(()=>{cancel();finish(new Error('内容请求超时。'),undefined,false)},exporting?timeout+1000:timeout)
+      if(exporting)stopHard=armDeadline(()=>{cancel();finish(new Error('影片导出超过步骤总时限。'),undefined,false)},command==='film-audio'?filmAudioBudget(timeout):filmFrameBudget(exportConfig.sources,timeout))
       try{active.port.postMessage(message)}catch(error){finish(error)}
     })
   }
@@ -150,7 +189,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
       })
       const flushSeek=()=>{clearTimeout(seekTimer);seekTimer=null;if(stopped||queuedSeek===undefined)return;const value=queuedSeek;queuedSeek=undefined;lastSeekAt=Date.now();send('seek',value)}
       return {command(name,value){
-        if(stopped||name==='capture'||!validCommand(name,value)||disposed)return false
+        if(stopped||binaryCommand(name)||!validCommand(name,value)||disposed)return false
         if(name==='seek'){
           queuedSeek=value
           if(seekTimer===null){const delay=Math.max(0,50-(Date.now()-lastSeekAt));if(delay)seekTimer=setTimeout(flushSeek,delay);else flushSeek()}

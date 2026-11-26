@@ -1,3 +1,4 @@
+import {binaryCommand,releaseBinary,filmAudioStepBudget} from './film-export-protocol.js'
 import {CAPTURE_TIMEOUT} from './capture-protocol.js'
 import {attachCowartFilmController} from './film-controller.js'
 import {PROTOCOL_VERSION,MAX_MESSAGE_BYTES,messageSize,validMessage,createRateLimit} from './protocol.js'
@@ -12,7 +13,7 @@ export function installContentChild(host,{instanceId,parentOrigin}){
     if(!session)return
     current=null;clearTimeout(session.statusTimer);clearInterval(session.legacyTimer)
     for(const task of session.pending.values())task.abort?.abort()
-    session.pending.clear();session.controller?.dispose()
+    session.pending.clear();session.controller?.dispose();session.filmExport?.disposeFilmExport(host)
     try{session.port.postMessage({...session.base,type:'close'})}catch{/* Port already detached. */}
     if(!session.captures)session.port.close()
   }
@@ -45,20 +46,38 @@ export function installContentChild(host,{instanceId,parentOrigin}){
       if(message.type==='legacy-poll'){if(session.legacy&&allowPoll())messageTransport.post('status');return}
       if(!allow())return
       if(message.type!=='request'||session.pending.has(message.id))return
-      if(message.command==='capture'){
+      if(binaryCommand(message.command)){
         if(capturing){post({type:'response',id:message.id,ok:false,error:'截图忙，请稍后重试。'});post({type:'capture-end',id:message.id});return}
         capturing=true;session.captures++
         const task={abort:new AbortController()};session.pending.set(message.id,task)
-        const timer=setTimeout(()=>{
-          if(!task.abort.signal.aborted){post({type:'response',id:message.id,ok:false,error:'截图等待素材或渲染超时。'});task.abort.abort()}
-        },CAPTURE_TIMEOUT)
-        import('./capture.js').then(({captureDocument})=>captureDocument(host,message.value,task.abort.signal)).then(value=>{
-          if(current!==session||task.abort.signal.aborted||session.pending.get(message.id)!==task){value.pixels.transfer?.(0);return}
-          try{port.postMessage({...base,type:'capture-result',id:message.id,value},[value.pixels])}catch{disconnect()}
+        let timer,stopStep=()=>{}
+        const expire=()=>{
+          if(!task.abort.signal.aborted){post({type:'response',id:message.id,ok:false,error:'内容导出步骤超时。'});task.abort.abort()}
+        }
+        const reportStage=(stage,media)=>{
+          clearTimeout(timer);stopStep()
+          const audio=message.command==='film-audio',timeout=session.exportTimeout||15000
+          stopStep=session.filmExport.armDeadline(expire,audio?filmAudioStepBudget(stage,timeout):timeout)
+          post(audio?{type:'film-audio-stage',id:message.id,stage}:{type:'film-stage',id:message.id,frame:message.value.index,stage,...media===undefined?{}:{media}})
+        }
+        if(message.command==='capture')timer=setTimeout(expire,CAPTURE_TIMEOUT)
+        if(message.command==='film-audio'){
+          session.exportTimeout=message.value.taskTimeout||15000
+          timer=setTimeout(expire,session.exportTimeout)
+        }
+        const rendering=message.command==='capture'?import('./capture.js').then(({captureDocument})=>captureDocument(host,message.value,task.abort.signal)):
+          import('./film-export.js').then(module=>{session.filmExport=module;task.abort.signal.throwIfAborted();return module.renderFilmExport(host,message.command,message.value,task.abort.signal,reportStage)})
+        rendering.then(value=>{
+          if(current!==session||task.abort.signal.aborted||session.pending.get(message.id)!==task){releaseBinary(value);return}
+          const audio=message.command==='film-audio'
+          const videoSources=value.videoSources
+          if(audio)delete value.videoSources
+          const type=audio?'film-audio-result':message.command==='film-frame'?'film-frame-result':'capture-result'
+          try{port.postMessage({...base,type,id:message.id,...type==='film-frame-result'?{frame:message.value.index}:audio?{videoSources}:{},value},audio?value.channels:[value.pixels])}catch{disconnect()}
         },error=>{
           if(current===session&&!task.abort.signal.aborted&&session.pending.get(message.id)===task)post({type:'response',id:message.id,ok:false,error:String(error.message||error).slice(0,256)})
         }).finally(()=>{
-          clearTimeout(timer);if(session.pending.get(message.id)===task)session.pending.delete(message.id)
+          clearTimeout(timer);stopStep();if(session.pending.get(message.id)===task)session.pending.delete(message.id)
           capturing=false;session.captures--
           // Retired sessions send only this receipt. No old pixels or status can
           // cross back after close; the parent keeps its memory lease until here.
