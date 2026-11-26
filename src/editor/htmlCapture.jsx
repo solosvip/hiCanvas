@@ -1,8 +1,8 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
-import { renderHtmlDraftDocument } from "../htmlDraftCapture.js"
+import { renderHtmlDraftDocument, getContentChannel, renderContentCapture } from "../../content-channel/index.js"
 import { hasCowartWidgetBridge, readCowartPageAsset } from "../cowartClient.js"
 import { HTML_DRAFT_CAPTURE_DELAY_MS, AI_IMAGE_HOLDER_DEFAULT_W, AI_IMAGE_HOLDER_DEFAULT_H, PAGE_ASSETS_ROUTE } from './configuration.jsx'
-import { cowartHtmlDraftAssetUrlFromVirtualUrl, isCowartHtmlDraftDataUrl, blobFromBase64 } from './assets.jsx'
+import { cowartHtmlDraftAssetUrlFromVirtualUrl, isCowartHtmlDraftDataUrl, blobFromBase64, cowartHtmlDraftIframes } from './assets.jsx'
 import { isCowartHtmlDraftEmbedShape } from './holderMeta.jsx'
 import { waitForHtmlDraftDocument } from './htmlEditor.jsx'
 import { readFileAsDataUrl } from './readFileAsDataUrl.jsx'
@@ -75,16 +75,19 @@ async function renderCowartHtmlDraftCanvas(shape, pixelRatio) {
   if (!isCowartHtmlDraftEmbedShape(shape)) {
     throw new Error('请选择一个已生成网页的 AI 网页。')
   }
-  const iframeDocument = await waitForHtmlDraftDocument(shape.id)
-  await waitForHtmlDraftCaptureReady(iframeDocument)
   const width = Math.max(1, Number(shape.props.w) || AI_IMAGE_HOLDER_DEFAULT_W)
   const height = Math.max(1, Number(shape.props.h) || AI_IMAGE_HOLDER_DEFAULT_H)
   const captureRatio = Math.max(1, Number(pixelRatio) || 1)
-  const canvas = await renderHtmlDraftDocument(iframeDocument, {
-    width,
-    height,
-    pixelRatio: captureRatio
-  })
+  const options = { width, height, pixelRatio: captureRatio }
+  const iframe = cowartHtmlDraftIframes.get(shape.id)
+  let canvas
+  if (hasIsolatedHtmlCapture(shape)) {
+    canvas = await renderContentCapture(iframe, options)
+  } else {
+    const iframeDocument = await waitForHtmlDraftDocument(shape.id)
+    await waitForHtmlDraftCaptureReady(iframeDocument)
+    canvas = await renderHtmlDraftDocument(iframeDocument, options)
+  }
   return {
     canvas,
     url: canvas.toDataURL('image/png'),
@@ -94,6 +97,14 @@ async function renderCowartHtmlDraftCanvas(shape, pixelRatio) {
     displayHeight: height,
     pixelRatio: captureRatio
   }
+}
+function hasIsolatedHtmlCapture(shape) {
+  if (!isCowartHtmlDraftEmbedShape(shape)) return false
+  const iframe = cowartHtmlDraftIframes.get(shape.id)
+  if (getContentChannel(iframe)) return true
+  // Before the first load/bind, an isolated frame must report "not ready";
+  // never fall back to child DOM or the editor's generic embed bitmap.
+  try { return /^[a-f0-9]{48}\.localhost$/.test(new URL(iframe?.src).hostname) } catch { return false }
 }
 function htmlDraftExportBaseName(shape) {
   const assetUrl = getCowartHtmlDraftAssetUrl(shape)
@@ -151,4 +162,4 @@ async function readCowartImageDataUrl(editor, imageShape) {
   if (!response.ok) throw new Error(`读取当前图片失败：${response.status}`)
   return readFileAsDataUrl(await response.blob())
 }
-export { waitForHtmlDraftAssets, waitForHtmlDraftPaint, waitForHtmlDraftCaptureReady, loadRasterImage, getCowartHtmlDraftAssetUrl, getCowartHtmlDraftLocalPath, renderCowartHtmlDraftCanvas, htmlDraftExportBaseName, htmlDraftExportFileName, textDataUrl, readCowartHtmlDraftContent, readCowartImageDataUrl }
+export { hasIsolatedHtmlCapture, waitForHtmlDraftAssets, waitForHtmlDraftPaint, waitForHtmlDraftCaptureReady, loadRasterImage, getCowartHtmlDraftAssetUrl, getCowartHtmlDraftLocalPath, renderCowartHtmlDraftCanvas, htmlDraftExportBaseName, htmlDraftExportFileName, textDataUrl, readCowartHtmlDraftContent, readCowartImageDataUrl }

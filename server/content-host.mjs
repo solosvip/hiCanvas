@@ -1,15 +1,7 @@
 import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import {readFile} from 'node:fs/promises'
 import { httpError } from './file-lock.mjs'
-import {CHILD_ASSETS} from '../content-channel/index.js'
-
-// Fixed project assets, shared as immutable bytes across instances. No path from
-// a request is used for filesystem reads, including in the bundled desktop host.
-let channelAssets
-function readChannelAssets(){
-  return channelAssets ||= Promise.all(CHILD_ASSETS.map(async name=>[name,await readFile(new URL('../content-channel/'+name,import.meta.url))]))
-}
+import {readChannelAssets} from './content-channel-assets.mjs'
 
 // Read-only, disposable publications; no canvas API, file system or network proxy.
 export function createContentHost({now=Date.now,ttl=30*60*1000,maxHtmlBytes=5*1024*1024,maxTotalBytes=128*1024*1024,maxInstances=64,prepare=async html=>({path:'/document.html',files:new Map([['/document.html',{bytes:Buffer.from(html),type:'text/html; charset=utf-8'}]])})} = {}) {

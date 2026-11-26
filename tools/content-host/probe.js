@@ -1,5 +1,6 @@
 import {createCanvasStore} from '../../model/index.js'
 import {mountCanvasRenderer,loadGeneratedFrame} from '../../renderer/index.js'
+import {getContentChannel} from '../../content-channel/index.js'
 import {createEmbedGallery} from '../renderer-preview/embed-gallery.js'
 
 const until=async predicate=>{const deadline=Date.now()+8000;while(Date.now()<deadline){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,20))}throw new Error('内容安全门禁等待超时')}
@@ -10,14 +11,20 @@ export async function runContentSecurity({enabled,scriptUrl}){
   const fixture=createEmbedGallery(),ids=['shape:embed-web','shape:embed-film','shape:embed-slide','shape:embed-slides']
   for(const [id,record] of Object.entries(fixture.snapshot.store))if(record.typeName==='shape'&&!ids.includes(id))delete fixture.snapshot.store[id]
   const childScript=`
+    let captureHeld=false;const nativeRAF=window.requestAnimationFrame;
     window.addEventListener('message',async event=>{
-      if(event.source!==parent||event.origin!==${JSON.stringify(location.origin)}||event.data!=='security-probe')return;
+      if(event.source!==parent||event.origin!==${JSON.stringify(location.origin)})return;
+      if(event.data==='capture-hold'){captureHeld=true;window.requestAnimationFrame=()=>1;return}
+      if(event.data==='capture-release'){captureHeld=false;window.requestAnimationFrame=nativeRAF;return}
+      if(!['security-probe','capture-security-probe'].includes(event.data))return;
       const attempt=fn=>{try{return {blocked:false,value:fn()}}catch(error){return {blocked:true,error:error.name}}};
-      const result={type:'security-result',kind:document.title,
+      const result={type:event.data==='security-probe'?'security-result':'capture-security-result',kind:document.title,
+        captureHeld,captureFrame:!!document.querySelector('iframe[data-hicanvas-capture-realm]'),
+        captureSibling:attempt(()=>parent.frames[0].frames[0].document.body.textContent),
         window:attempt(()=>parent.__contentHostSecret),storage:attempt(()=>parent.localStorage.getItem('content-host-secret')),
         sibling:attempt(()=>{const target=parent.frames[0]===window?parent.frames[1]:parent.frames[0];return target.document.body.textContent}),
         domain:attempt(()=>{document.domain='localhost';return document.domain}),thirdParty:window.__thirdPartyLoaded===true,requests:[]};
-      if(${JSON.stringify(enabled)})for(const options of [{method:'POST',body:'{}'},{method:'POST',mode:'no-cors',body:'{}'},{method:'POST',headers:{'x-hicanvas-client':'1','content-type':'application/json'},body:'{"title":"forbidden"}'}]){
+      if(${JSON.stringify(enabled)}&&event.data==='security-probe')for(const options of [{method:'POST',body:'{}'},{method:'POST',mode:'no-cors',body:'{}'},{method:'POST',headers:{'x-hicanvas-client':'1','content-type':'application/json'},body:'{"title":"forbidden"}'}]){
         try{const response=await fetch(${JSON.stringify(location.origin)}+'/api/conversations/open',options);result.requests.push(response.status)}catch(error){result.requests.push(error.name)}
       }
       parent.postMessage(result,${JSON.stringify(location.origin)});
@@ -29,11 +36,12 @@ export async function runContentSecurity({enabled,scriptUrl}){
   const raw=createCanvasStore();raw.loadStoreSnapshot(fixture.snapshot)
   const before=JSON.stringify(raw.getStoreSnapshot()),host=document.createElement('div');document.body.append(host)
   host.style.height='800px';host.style.width='1200px'
-  const loaded=new Map(),reports=new Map()
+  const loaded=new Map(),reports=new Map(),captureReports=new Map()
   const receive=event=>{
     const frames=[...host.querySelectorAll('iframe[data-embed-content]')],frame=frames.find(value=>value.contentWindow===event.source)
     if(!frame||event.origin!==(enabled?new URL(frame.src).origin:location.origin))return
     if(event.data?.type==='content-loaded')loaded.set(event.data.kind,true)
+    if(event.data?.type==='capture-security-result')captureReports.set(event.data.kind,event.data)
     if(event.data?.type==='security-result')reports.set(event.data.kind,event.data)
   }
   addEventListener('message',receive)
@@ -70,6 +78,28 @@ export async function runContentSecurity({enabled,scriptUrl}){
       check(result.kind+'：第三来源经典脚本可运行',result.thirdParty)
       if(enabled){for(const name of ['window','storage','sibling','domain'])check(result.kind+'：'+name+'读取／放宽被拒绝',result[name].blocked)}
       else check(result.kind+'：反例确实能读取父身份',result.window.value==='synthetic-parent'&&result.storage.value==='synthetic-storage')
+    }
+    if(enabled){
+      await until(()=>frames.every(frame=>!!getContentChannel(frame)))
+      frames[0].contentWindow.postMessage('capture-hold',new URL(frames[0].src).origin)
+      const abort=new AbortController(),capture=getContentChannel(frames[0]).request('capture',{width:320,height:180,pixelRatio:1},{signal:abort.signal})
+      capture.catch(()=>{})
+      const ask=()=>{for(const frame of frames)frame.contentWindow.postMessage('capture-security-probe',new URL(frame.src).origin)}
+      let poll=setInterval(ask,50)
+      try{
+        await until(()=>captureReports.size===3&&[...captureReports.values()].some(result=>result.captureFrame))
+        check('截图停在受控等待点，未释放RAF不能自然完成',[...captureReports.values()].some(result=>result.captureFrame&&result.captureHeld))
+        let blocked=false
+        try{void frames[0].contentWindow.frames[0].document}catch(error){blocked=error.name==='SecurityError'}
+        check('实际截图中性iframe存在时父页仍不可访问',blocked)
+        const peers=[...captureReports.values()].filter(result=>!result.captureFrame)
+        check('其他实例不可访问截图中性iframe',peers.length===2&&peers.every(result=>result.captureSibling.error==='SecurityError'))
+      }finally{clearInterval(poll);abort.abort();await capture.then(()=>check('取消请求必须拒绝',false),error=>check('取消请求明确AbortError',error.name==='AbortError'))}
+      captureReports.clear();poll=setInterval(ask,50)
+      try{
+        await until(()=>captureReports.size===3&&[...captureReports.values()].every(result=>!result.captureFrame))
+        check('取消截图后中性iframe已全部移除',true)
+      }finally{clearInterval(poll);frames[0].contentWindow.postMessage('capture-release',new URL(frames[0].src).origin)}
     }
     // Exercise the same loading interface used by the legacy editor's data-URL slide branch.
     const directUrl='data:text/html,<h1>legacy</h1>',legacy=await loadGeneratedFrame(null,{directUrl})

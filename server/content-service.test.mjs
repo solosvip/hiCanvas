@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url'
 import {createHiCanvasService} from './local-service.mjs'
 import http from 'node:http'
 const contentGet=url=>new Promise((resolve,reject)=>{
-  const u=new URL(url);http.get({hostname:'127.0.0.1',port:u.port,path:u.pathname,headers:{host:u.host}},res=>{const chunks=[];res.on('data',x=>chunks.push(x));res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,text:Buffer.concat(chunks).toString()}))}).on('error',reject)
+  const u=new URL(url);http.get({hostname:'127.0.0.1',port:u.port,path:u.pathname,headers:{host:u.host},agent:false},res=>{const chunks=[];res.on('data',x=>chunks.push(x));res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,text:Buffer.concat(chunks).toString()}))}).on('error',reject)
 })
 async function setup(t,enabled=false){
   const scratch=fileURLToPath(new URL('../.scratch/',import.meta.url));await mkdir(scratch,{recursive:true})
@@ -65,5 +65,7 @@ test('关闭主服务同时停止内容端口',async t=>{
   const created=await api('/api/content-host/instances','POST',{html:'<h1>close</h1>'})
   assert.equal((await contentGet(created.body.url)).status,200)
   service.closeAllConnections();await new Promise(resolve=>service.close(resolve))
+  // A fresh TCP probe proves the listener stopped; a reused keep-alive socket
+  // can instead report ECONNRESET while shutdown is correctly closing it.
   await assert.rejects(contentGet(created.body.url),e=>e.code==='ECONNREFUSED')
 })

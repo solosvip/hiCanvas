@@ -24,11 +24,18 @@ test('共用通道只经公开入口使用，内部不得反向依赖旧界面�
     await writeFile(join(root,'content-channel/index.js'),"export * from './protocol.js'")
     await writeFile(join(root,'content-channel/protocol.js'),'export const protocol=1')
     await checkRendererBoundary({root})
-    for(const dependency of ['../src/filmPlayback.js','../renderer/index.js','../engine/index.js','node:fs','react','tldraw']){
+    for(const dependency of ['../src/filmPlayback.js','../renderer/index.js','../engine/index.js','node:fs','react','tldraw','html2canvas/dist/lib/index.js']){
       await writeFile(join(root,'content-channel/protocol.js'),`import ${JSON.stringify(dependency)}`)
       await assert.rejects(checkRendererBoundary({root}),/内容通道越界/,dependency)
     }
     await writeFile(join(root,'content-channel/protocol.js'),'export const protocol=1')
+    // The exception is both filename- and exact-path-specific, never a package
+    // prefix allowlist that could later admit unrelated internals.
+    for(const dependency of ['html2canvas','html2canvas/dist/lib/other.js','react','node:fs','tldraw']){
+      await writeFile(join(root,'content-channel/capture-clip-fix.js'),`import ${JSON.stringify(dependency)}`)
+      await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
+    }
+    await writeFile(join(root,'content-channel/capture-clip-fix.js'),'export const capture=1')
     await mkdir(join(root,'content-channel/nested'))
     await writeFile(join(root,'content-channel/nested/hidden.js'),"import 'react'")
     await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)

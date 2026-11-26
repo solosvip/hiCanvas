@@ -1,10 +1,11 @@
+import {captureSize,validPixels} from './capture-protocol.js'
 export const PROTOCOL_VERSION=1
 export const MAX_MESSAGE_BYTES=4096
 export const MAX_MESSAGES_PER_SECOND=60
 export const MAX_REPLY_MESSAGES_PER_SECOND=120
 export const MAX_PENDING_REQUESTS=32
 export const REQUEST_TIMEOUT=3000
-export const CHILD_ASSETS=Object.freeze(['bootstrap.js','child.js','protocol.js','film-controller.js','film-time.js'])
+export const CHILD_ASSETS=Object.freeze(['bootstrap.js','child.js','protocol.js','film-controller.js','film-time.js','capture-protocol.js','capture.js'])
 
 const plain=value=>value!==null&&typeof value==='object'&&[Object.prototype,null].includes(Object.getPrototypeOf(value))
 const exact=(value,keys)=>plain(value)&&Object.keys(value).every(key=>keys.includes(key))
@@ -13,6 +14,7 @@ const finite=value=>typeof value==='number'&&Number.isFinite(value)
 export function validCommand(command,value){
   if(['play','pause'].includes(command))return value===undefined
   if(command==='seek')return finite(value)&&value>=0&&value<=86400
+  if(command==='capture')return captureSize(value)!==null
   if(command==='mute')return typeof value==='boolean'
   return false
 }
@@ -31,8 +33,9 @@ export function validMessage(value,instance,generation){
   if(value.type==='legacy-status')return exact(value,[...base,'value'])&&validLegacyStatus(value.value)
   if(value.type==='connect')return exact(value,[...base,'options'])&&exact(value.options,['duration','muted','film'])&&finite(value.options.duration)&&value.options.duration>0&&value.options.duration<=86400&&typeof value.options.muted==='boolean'&&typeof value.options.film==='boolean'
   if(value.type==='request')return exact(value,[...base,'id','command','value'])&&identifier(value.id)&&validCommand(value.command,value.value)
-  if(value.type==='cancel')return exact(value,[...base,'id'])&&identifier(value.id)
+  if(['cancel','capture-end'].includes(value.type))return exact(value,[...base,'id'])&&identifier(value.id)
   if(value.type==='status')return exact(value,[...base,'value'])&&validStatus(value.value)
+  if(value.type==='capture-result')return exact(value,[...base,'id','value'])&&identifier(value.id)&&validPixels(value.value)
   if(value.type==='response')return exact(value,[...base,'id','ok','value','error'])&&identifier(value.id)&&typeof value.ok==='boolean'&&(value.ok?value.value===true&&value.error===undefined:typeof value.error==='string'&&value.error.length<=256&&value.value===undefined)
   return false
 }

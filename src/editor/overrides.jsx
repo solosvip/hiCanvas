@@ -6,7 +6,7 @@ import { isCowartHtmlDraftEmbedShape, isImageShape } from './holderMeta.jsx'
 import { createAiImageHolderShape, createAiImageHolderAtViewportCenter, createAiDraftHolderShape, createAiDraftHolderAtViewportCenter, createAiFilmHolderShape, createAiFilmHolderAtViewportCenter, createAiSlidesShape, createAiSlidesAtViewportCenter } from './holderCreation.jsx'
 import { unlockGlobalToolLock } from './annotationEditing.jsx'
 import { getAnnotationEditExportPixelRatio } from './annotationRequests.jsx'
-import { renderCowartHtmlDraftCanvas } from './htmlCapture.jsx'
+import { renderCowartHtmlDraftCanvas, hasIsolatedHtmlCapture } from './htmlCapture.jsx'
 import { downloadCowartImageShape } from './exports.jsx'
 const cowartUiOverrides = {
   actions(editor, actions, helpers) {
@@ -20,7 +20,9 @@ const cowartUiOverrides = {
         async onSelect(source) {
           // Codex widgets run inside an iframe where the host can deny the browser Clipboard API.
           // Render in the widget, then hand the PNG to the local MCP process for the native write.
-          if (!hasCowartWidgetBridge()) {
+          const selected = editor.getSelectedShapeIds()
+          const isolated = selected.length === 1 && hasIsolatedHtmlCapture(editor.getShape(selected[0]))
+          if (!hasCowartWidgetBridge() && !isolated) {
             return defaultCopyAsPng.onSelect(source)
           }
           let shapeIds = editor.getSelectedShapeIds()
@@ -45,10 +47,14 @@ const cowartUiOverrides = {
             } else {
               image = await editor.toImageDataUrl(shapeIds, { format: 'png' })
             }
-            const result = await copyCowartImageToClipboard({
-              dataUrl: image.url,
-              mimeType: 'image/png'
-            })
+            let result
+            if (hasCowartWidgetBridge()) {
+              result = await copyCowartImageToClipboard({ dataUrl: image.url, mimeType: 'image/png' })
+            } else {
+              const blob = await (await fetch(image.url)).blob()
+              await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+              result = { width: image.width, height: image.height }
+            }
             helpers.addToast({
               title: 'PNG 已复制',
               description: `${result.width} × ${result.height}，可直接粘贴到其他应用。`,
