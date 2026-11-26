@@ -41,7 +41,7 @@ if (process.platform === 'darwin') app.setActivationPolicy('prohibited')
 app.on('window-all-closed', () => {})
 const samples = [], errors = [], blocked = [], simulated = []
 const fakeSources = new Map(externalSamples.filter(sample => sample.src).map(sample => [new URL(sample.src).href.split('#')[0], sample.id]))
-let window
+let window,contentPort=manifest.contentPort
 const evaluate = code => window.webContents.executeJavaScript(code)
 async function state() { return evaluate('window.__HICANVAS_RENDERER_PREVIEW__?.getState()') }
 async function until(predicate) {
@@ -92,7 +92,7 @@ function createWindow(key) {
       simulated.push({ service, source: details.url })
       callback({ redirectURL: `${origin}/tools/renderer-preview/fake-embed.html?service=${service}` }); return
     }
-    const url = new URL(details.url), contentAllowed = manifest.contentSecurityOnly && (url.origin === new URL(manifest.scriptUrl).origin || /^[a-f0-9]{48}\.localhost$/.test(url.hostname) && Number(url.port) === manifest.contentPort), allowed = contentAllowed || url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
+    const url = new URL(details.url), contentAllowed = (manifest.scriptUrl && url.origin === new URL(manifest.scriptUrl).origin || /^[a-f0-9]{48}\.localhost$/.test(url.hostname) && Number(url.port) === contentPort), allowed = contentAllowed || url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
     if (!allowed) blocked.push(details.url)
     callback({ cancel: !allowed })
   })
@@ -103,6 +103,7 @@ function createWindow(key) {
 }
 
 async function run() {
+  if(!contentPort)contentPort=(await(await fetch(origin+'/api/health')).json()).contentHost?.port
   try {
     app.dock?.hide()
     if (manifest.notesOnly) {
@@ -198,7 +199,7 @@ async function run() {
       window = createWindow('content-security')
       await window.loadURL(manifest.url)
       await until(() => evaluate('typeof window.runContentSecurity === "function"'))
-      const result = await evaluate(`window.runContentSecurity(${JSON.stringify({ enabled: manifest.securityEnabled, scriptUrl: manifest.scriptUrl })})`)
+      const result = await evaluate(`window.runContentSecurity(${JSON.stringify({ scriptUrl: manifest.scriptUrl })})`)
       check(blocked.length === 0, `安全门禁不应请求公网：${blocked.join('; ')}`)
       await writeFile(manifest.result, JSON.stringify({ ...result, blocked, runtime: process.versions }, null, 2))
       window.destroy(); app.exit(0); return
@@ -268,7 +269,24 @@ async function run() {
       const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
       const type = gallery === 'images' ? 'image' : gallery.startsWith('note-') ? 'note' : gallery === 'frame-titles' ? 'frame' : 'geo'
       check(initial.renderedShapes === initial.count && (gallery === 'embeds' ? initial.counts.embed === 6 && initial.counts.bookmark === 1 : gallery === 'bookmarks' ? initial.counts.bookmark === 9 : gallery === 'external' ? initial.counts.embed === 18 : count === null || initial.counts[type] === count), '图鉴元素未完整绘制')
-      if (gallery === 'embeds') await until(() => evaluate("document.querySelector('[data-embed-content=\"shape:embed-web\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-film\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-slide\"]')?.contentDocument?.documentElement?.dataset.instance"))
+      if (gallery === 'embeds') {
+        const instanceReady = '!!document.documentElement?.dataset.instance'
+        // A navigating frame may not have parsed its root yet. Exercise that
+        // state deliberately; caught executeJavaScript failures still pollute
+        // the renderer console and must never be hidden by the readiness loop.
+        const pending = createWindow('embed-readiness')
+        try {
+          await pending.loadURL('data:text/html,<html></html>')
+          await pending.webContents.executeJavaScript("document.documentElement.dataset.instance='ready';void 0")
+          check(await pending.webContents.executeJavaScript(instanceReady) === true, '已就绪的实例没有被识别')
+          await pending.webContents.executeJavaScript('document.documentElement.remove();void 0')
+          check(await pending.webContents.executeJavaScript(instanceReady) === false, '未解析根节点的实例不得就绪')
+        } finally { pending.destroy() }
+        await until(async () => {
+          const values=await Promise.all(window.webContents.mainFrame.frames.map(frame=>frame.executeJavaScript(instanceReady).catch(()=>false)))
+          return values.filter(Boolean).length===3
+        })
+      }
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
       // The images gallery holds an animated GIF whose frames change between the
       // clip pixel captures. Pause it with the gallery's own reduce-motion control

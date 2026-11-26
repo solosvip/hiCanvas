@@ -9,7 +9,7 @@ import {cowartUiOverrides} from '../../src/editor/overrides.jsx'
 // Only the editor and output boundaries are fixtures. All four production
 // entry functions, resource waiting, html2canvas, Ports and parent composition
 // run unchanged. No real clipboard, file download, MCP or paid API is used.
-window.startCapturePreview=async({font,enabled})=>{
+window.startCapturePreview=async({font})=>{
   const checks=[],artifacts={},publications=[],toasts=[]
   const check=(name,value)=>{checks.push({name,pass:!!value});if(!value)throw new Error(name)}
   const bitmap=document.createElement('canvas');bitmap.width=80;bitmap.height=40
@@ -58,17 +58,17 @@ window.startCapturePreview=async({font,enabled})=>{
     const iframe=document.createElement('iframe');iframe.width=320;iframe.height=180;iframe.title=shape.id
     const frame=await loadGeneratedFrame(html(index+1));publications.push(frame)
     const ready=new Promise((resolve,reject)=>{
-      iframe.addEventListener('load',()=>{try{frame.bind?.(iframe);resolve()}catch(error){reject(error)}},{once:true})
+      iframe.addEventListener('load',()=>{try{frame.bind(iframe);resolve()}catch(error){reject(error)}},{once:true})
     })
     cowartHtmlDraftIframes.set(shape.id,iframe)
-    if(frame.attributes.src)iframe.src=frame.attributes.src;else iframe.srcdoc=frame.attributes.srcDoc
-    check('加载前已识别隔离入口 '+shape.id,hasIsolatedHtmlCapture(shape)===enabled)
-    if(enabled){
+    iframe.src=frame.attributes.src
+    check('加载前已识别隔离入口 '+shape.id,hasIsolatedHtmlCapture(shape))
+    {
       let error;try{await renderCowartHtmlDraftCanvas(shape,2)}catch(value){error=value}
       check('握手前明确未就绪且不回退DOM '+shape.id,/通道尚未就绪/.test(error?.message))
     }
     document.querySelector('#frames').append(iframe);await ready
-    check('iframe实际隔离状态 '+shape.id,enabled?!iframe.contentDocument:!!iframe.contentDocument)
+    check('iframe实际隔离状态 '+shape.id,!iframe.contentDocument)
   }
   const controls={
     png:()=>exportCowartHtmlDraft(editor,web.id,'png'),
@@ -76,16 +76,15 @@ window.startCapturePreview=async({font,enabled})=>{
     async annotation(){artifacts.annotation=(await exportCowartHtmlDraftAnnotationScreenshot(editor,web.id)).url},
     slides:()=>widget(()=>exportCowartSlides(editor,slides.id,'image'),'slides'),
     async delegation(){
-      for(const ids of [[],[arrow.id],[web.id,arrow.id],...enabled?[]:[[web.id]]]){
+      for(const ids of [[],[arrow.id],[web.id,arrow.id]]){
         selected=ids;const count=delegated
         check('原样委托旧编辑器 '+JSON.stringify(ids),await actions['copy-as-png'].onSelect('same-source')==='same-source'&&delegated===count+1)
       }
       selected=[web.id]
-      if(enabled){await actions['copy-as-png'].onSelect('isolated');check('隔离单网页在父页写PNG',bitmapWrites===1&&!!artifacts.browserCopy)}
+      {await actions['copy-as-png'].onSelect('isolated');check('隔离单网页在父页写PNG',bitmapWrites===1&&!!artifacts.browserCopy)}
       check('所有截图入口没有错误提示',!toasts.some(value=>value.severity==='error'))
     },
     async repeat(){
-      if(!enabled)return
       const iframe=cowartHtmlDraftIframes.get(web.id)
       for(let i=0;i<10;i++){
         const canvas=await renderContentCapture(iframe,{width:320,height:180,pixelRatio:1})
@@ -93,7 +92,6 @@ window.startCapturePreview=async({font,enabled})=>{
       }
     },
     async limits(){
-      if(!enabled)return
       const iframe=cowartHtmlDraftIframes.get(web.id),channel=getContentChannel(iframe)
       let error;try{await channel.request('capture',{width:4097,height:1,pixelRatio:1})}catch(value){error=value}
       check('超限不缩小而明确报错',/4096/.test(error?.message))

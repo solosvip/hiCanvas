@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '@babel/parser'
+import {checkContentIsolation} from './check-content-isolation.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const staged = process.argv.includes('--staged')
@@ -252,6 +253,7 @@ try {
       checkLicenseWatermark(path, content)
       checkTestSandbox(path, content)
       checkCommandWrites(path, content)
+      errors.push(...checkContentIsolation(path, content))
     }
   }
   checkRules(files, contents)

@@ -1,4 +1,4 @@
-import {isInteractiveSlideClick,contentSandbox} from '../../content-channel/index.js'
+import {isInteractiveSlideClick} from '../../content-channel/index.js'
 import { loadGeneratedFrame } from '../../renderer/index.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { useEditor } from "tldraw"
@@ -90,36 +90,10 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
   function handleHtmlFrameLoad(event) {
     iframeClickCleanupRef.current?.()
     iframeClickCleanupRef.current = null
-    if(source?.frame?.bind){
-      // The isolated channel intentionally unifies data: and file-backed
-      // slides. OFF retains data: opacity and its inherited click limitation.
-      const channel=source.frame.bind(event.currentTarget,{slides:!!onUnhandledHtmlClick})
-      if(onUnhandledHtmlClick)iframeClickCleanupRef.current=channel.subscribeNavigation(direction=>onUnhandledHtmlClick(direction))
-      return
-    }
-    if (!onUnhandledHtmlClick) return
-    try {
-      const iframeDocument = event.currentTarget.contentDocument
-      const iframeWindow = iframeDocument?.defaultView
-      if (!iframeDocument || !iframeWindow) return
-      const pendingTimers = new Set()
-      function handleHtmlClick(clickEvent) {
-        const timer = iframeWindow.setTimeout(() => {
-          pendingTimers.delete(timer)
-          if (!isInteractiveHtmlClick(clickEvent)) onUnhandledHtmlClick()
-        }, 0)
-        pendingTimers.add(timer)
-      }
-      iframeDocument.addEventListener('click', handleHtmlClick)
-      iframeClickCleanupRef.current = () => {
-        iframeDocument.removeEventListener('click', handleHtmlClick)
-        for (const timer of pendingTimers) iframeWindow.clearTimeout(timer)
-        pendingTimers.clear()
-      }
-    } catch (_error) {
-      // Cross-origin HTML keeps its own interactions; keyboard navigation remains available.
-    }
+    const channel=source.frame.bind(event.currentTarget,{slides:!!onUnhandledHtmlClick})
+    if(onUnhandledHtmlClick)iframeClickCleanupRef.current=channel.subscribeNavigation(direction=>onUnhandledHtmlClick(direction))
   }
+
   if (source?.kind === 'image') {
     return <img alt={title} className="cowart-slides-media" draggable={false} src={source.url} />
   }
@@ -129,7 +103,7 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
         className="cowart-slides-media"
         frameBorder="0"
         onLoad={handleHtmlFrameLoad}
-        sandbox={contentSandbox(true)}
+        sandbox=""
         {...source.frame?.attributes}
         tabIndex={-1}
         title={title}

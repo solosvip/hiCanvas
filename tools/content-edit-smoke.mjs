@@ -8,7 +8,7 @@ import {build} from 'vite'
 import {createHiCanvasService} from '../server/local-service.mjs'
 
 const root=fileURLToPath(new URL('../',import.meta.url)),output=join(root,'.scratch/content-edit-smoke')
-const port=Number(process.env.HICANVAS_EDIT_PORT),observe=process.argv.includes('--observe')
+const port=Number(process.env.HICANVAS_EDIT_PORT)
 if(!Number.isInteger(port)||port<43300||port>65535)throw new Error('先在白板登记专用端口，再指定HICANVAS_EDIT_PORT（43300以上）。')
 await mkdir(output,{recursive:true})
 const runtime=await mkdtemp(join(output,'runtime-')),distDir=join(runtime,'dist')
@@ -27,9 +27,9 @@ try{
   const executable=process.env.HICANVAS_TEST_ELECTRON||join(root,'node_modules/electron/dist',(await readFile(join(root,'node_modules/electron/path.txt'),'utf8')).trim())
   await access(executable,constants.X_OK)
   const reports=[]
-  for(const enabled of observe?[false]:process.argv.includes('--on-only')?[true]:[false,true]){
-    const key=enabled?'on':'off',canvasDir=join(runtime,key,'canvas')
-    service=createHiCanvasService({distDir,canvasDir,settingsDir:join(runtime,key,'settings'),contentHostEnabled:enabled})
+  {
+    const key='isolated',canvasDir=join(runtime,key,'canvas')
+    service=createHiCanvasService({distDir,canvasDir,settingsDir:join(runtime,key,'settings')})
     await new Promise((resolve,reject)=>{service.once('error',reject);service.listen(port,'127.0.0.1',resolve)})
     const url='http://127.0.0.1:'+port
     async function api(path,method='GET',body){const response=await fetch(url+path,{method,headers:{'x-hicanvas-client':'1','content-type':'application/json','connection':'close'},body:body===undefined?undefined:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(JSON.stringify(result));return result}
@@ -40,14 +40,14 @@ try{
     const source=`<!doctype html><html><head><meta charset="utf-8"><link rel="alternate" href="${url}/c/${conversation.id}/assets/sample.css"><style>body{margin:24px;font:20px Arial;background:white;color:black}p{margin:18px 0;line-height:30px}button{font:20px Arial}</style></head><body><p id="first">Alpha beta gamma</p><p id="second">one two three</p><button id="action" onclick="window.actionClicks=(window.actionClicks||0)+1">Action</button><p id="preexisting" contenteditable="true" spellcheck="true">Existing</p><img id="raster" src="/c/${conversation.id}/assets/sample.png" width="12" height="12"></body></html>`
     const before=await api('/api/canvas?conversation='+conversation.id)
     const inserted=await api('/api/canvas/html?conversation='+conversation.id,'POST',{expectedRevision:before.revision,htmlContent:source,displayWidth:600,displayHeight:400,x:100,y:100})
-    const health=await api('/api/health'),manifest=join(runtime,'manifest.json'),result=join(output,observe?'legacy-observation.json':key+'.json')
-    await writeFile(manifest,JSON.stringify({url,output,result,profile:join(runtime,'profile-'+key),conversationId:conversation.id,shapeId:inserted.shapeId,source,enabled,observe,contentPort:health.contentHost.port}))
+    const health=await api('/api/health'),manifest=join(runtime,'manifest.json'),result=join(output,key+'.json')
+    await writeFile(manifest,JSON.stringify({url,output,result,profile:join(runtime,'profile-'+key),conversationId:conversation.id,shapeId:inserted.shapeId,source,contentPort:health.contentHost.port}))
     await electron(executable,manifest)
     reports.push(JSON.parse(await readFile(result,'utf8')))
     service.closeAllConnections();await new Promise(resolve=>service.close(resolve));service=null
   }
-  if(!observe)await writeFile(join(output,'report.json'),JSON.stringify({reports},null,2)+'\n')
-  console.log((observe?'旧版行为观察':'OFF/ON就地编辑对照')+'通过；证据：'+output)
+  await writeFile(join(output,'report.json'),JSON.stringify({reports},null,2)+'\n')
+  console.log('隔离网页就地编辑回归通过；证据：'+output)
 }finally{
   if(service){service.closeAllConnections();await new Promise(resolve=>service.close(resolve))}
   await rm(runtime,{recursive:true,force:true})

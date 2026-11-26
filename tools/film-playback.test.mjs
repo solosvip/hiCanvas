@@ -1,7 +1,7 @@
 import './test-sandbox.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {attachCowartFilmController} from '../src/filmPlayback.js'
+import {attachCowartFilmController} from '../content-channel/index.js'
 
 test('继承播放控制的暂停、静音、30fps定位、结束再播放与卸载保持不变',()=>{
   let clock=0,sequence=0

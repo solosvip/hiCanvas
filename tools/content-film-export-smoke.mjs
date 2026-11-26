@@ -28,12 +28,11 @@ try{
   const executable=process.env.HICANVAS_TEST_ELECTRON||join(root,'node_modules/electron/dist',(await readFile(join(root,'node_modules/electron/path.txt'),'utf8')).trim())
   await access(executable,constants.X_OK)
   const captureFont=(await readFile(join(root,'renderer/fonts/files/ibm-plex-sans/IBMPlexSans-Bold.woff2'))).toString('base64')
-  for(const enabled of [false,true]){
-    const key=enabled?'on':'off'
-    service=createHiCanvasService({distDir,canvasDir:join(runtime,key,'canvas'),settingsDir:join(runtime,key,'settings'),contentHostEnabled:enabled})
+  for(const key of ['first','repeat']){
+    service=createHiCanvasService({distDir,canvasDir:join(runtime,key,'canvas'),settingsDir:join(runtime,key,'settings')})
     await new Promise((resolve,reject)=>{service.once('error',reject);service.listen(port,'127.0.0.1',resolve)})
     const url='http://127.0.0.1:'+port,health=await(await fetch(url+'/api/health')).json(),manifest=join(runtime,'manifest.json')
-    await writeFile(manifest,JSON.stringify({url,output,result:join(output,key+'.json'),profile:join(runtime,'profile-'+key),contentFilmOnly:true,contentSecurityOnly:true,securityEnabled:enabled,contentPort:health.contentHost.port,scriptUrl:url,captureFont}))
+    await writeFile(manifest,JSON.stringify({url,output,result:join(output,key+'.json'),profile:join(runtime,'profile-'+key),contentFilmOnly:true,contentSecurityOnly:true,sample:key,contentPort:health.contentHost.port,scriptUrl:url,captureFont}))
     await runElectron(executable,[join(root,'tools/renderer-preview/electron.mjs'),manifest])
     service.closeAllConnections();await new Promise(resolve=>service.close(resolve));service=null
   }

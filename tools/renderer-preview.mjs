@@ -4,8 +4,9 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readFile } from 'node:fs/promises'
 import { createFixture } from './perf/fixture.mjs'
+import {createContentRoutes} from '../server/content-routes.mjs'
 import { appendFile, mkdir } from 'node:fs/promises'
-import { requireLocalRequest, jsonBody } from '../server/local-request.mjs'
+import { requireLocalRequest, requireLocalRead, jsonBody } from '../server/local-request.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 export function createRendererFixture(count, { dash = 'solid' } = {}) {
@@ -21,6 +22,7 @@ export function createRendererFixture(count, { dash = 'solid' } = {}) {
 export async function startRendererPreview({ port = 0, geometryFixtures = false, watch = true } = {}) {
   if (port !== 0 && (!Number.isInteger(port) || port < 43300 || port > 65535)) throw new Error('预览端口须在 43300–65535，测试可使用系统分配端口。')
   const fixtures = new Map()
+  const content=createContentRoutes({storageFor(){throw new Error('只读预览不发布磁盘素材。')}})
   let server
   const http = createHttpServer((request, response) => server ? server.middlewares(request, response) : response.end())
   await new Promise((accept, reject) => { http.once('error', reject); http.listen(port, '127.0.0.1', accept) })
@@ -40,7 +42,16 @@ export async function startRendererPreview({ port = 0, geometryFixtures = false,
         } catch { response.writeHead(400); response.end() }
         return
       }
-      if (url.pathname === '/api/health' && request.method === 'GET') { response.setHeader('content-type','application/json'); response.end(JSON.stringify({contentHost:{enabled:false}})); return }
+      if (url.pathname === '/api/health' || url.pathname === '/api/content-host/instances') {
+        try {
+          requireLocalRead(request)
+          if(url.pathname==='/api/health' && request.method==='GET') {
+            response.setHeader('content-type','application/json');response.end(JSON.stringify({contentHost:await content.info()}))
+          } else if(url.pathname==='/api/content-host/instances') {requireLocalRequest(request);await content.handle(request,response)}
+          else {response.writeHead(405);response.end()}
+        }catch(error){response.writeHead(error.status||400,{'content-type':'application/json'});response.end(JSON.stringify({error:error.message}))}
+        return
+      }
       if (url.pathname === '/') request.url = `/tools/renderer-preview/index.html${url.search}`
       if (url.pathname !== '/__renderer_fixture') return next()
       if (request.method !== 'GET') { response.writeHead(405); response.end(); return }
@@ -60,9 +71,10 @@ export async function startRendererPreview({ port = 0, geometryFixtures = false,
     const source = await readFile(id, 'utf8'), anchor = 'const geometryByType = Object.freeze({'
     if (!source.includes(anchor)) throw new Error('合成几何注册入口已变化，请更新绘制分派守卫。')
     return source.replace(anchor, anchor + '\n  synthetic_geometry_only: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },')
-  } }] }) } catch (error) { http.close(); throw error }
+  } }] }) } catch (error) { http.close(); await content.close(); throw error }
   return { url: `http://127.0.0.1:${http.address().port}`, async close() {
     await server.close()
+    await content.close()
     http.closeAllConnections()
     await new Promise((accept, reject) => http.close(error => error ? reject(error) : accept()))
   } }

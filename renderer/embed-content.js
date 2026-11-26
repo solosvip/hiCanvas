@@ -1,9 +1,12 @@
 import { getEmbedService, getEmbedServiceConstraints } from '../model/index.js'
+import {contentSandbox} from '../content-channel/index.js'
 
-// #70 保持继承权限；独立来源与消息通道的隔离迁移由 #78 负责。
-export const EMBED_FRAME_ATTRIBUTES = Object.freeze({ sandbox: 'allow-forms allow-popups allow-same-origin allow-scripts', referrerPolicy: 'no-referrer', tabIndex: -1, draggable: false, frameBorder: '0' })
+// Until a validated publication supplies its own attributes, the frame is opaque.
+export const EMBED_FRAME_ATTRIBUTES = Object.freeze({ sandbox: contentSandbox(), referrerPolicy: 'no-referrer', tabIndex: -1, draggable: false, frameBorder: '0' })
 const virtualOrigin = 'https://cowart.local'
 
+// Second approved constructor: resolveExternalEmbed only attaches these to
+// model's HTTPS provider whitelist. Preserve the observed #83 permissions.
 const frame = extra => Object.freeze({ sandbox: `allow-popups ${extra ? extra + ' ' : ''}allow-scripts allow-same-origin allow-forms`, referrerPolicy: 'strict-origin-when-cross-origin', allowFullScreen: true, tabIndex: -1, draggable: false, frameBorder: '0' })
 function appendQuery(raw, field) {
   const [base, ...hash] = raw.split('#')
@@ -45,7 +48,7 @@ const entry = (id, name, size, minimumObserved, extra = {}) => {
 
 // Independent black-box samples from the running legacy UI (2026-11-25).
 // The observed limits describe that probe, not independently inferred minW/minH.
-// Permissions preserve legacy behavior per #83's ruling; tightening belongs to #78.
+// Permissions preserve legacy behavior per #83 and ADR0013's controlled boundary.
 export const EXTERNAL_EMBED_SERVICES = Object.freeze([
   entry('G05', 'tldraw', [720, 500], [300, 300], { attributes: frame('allow-top-navigation') }),
   entry('G06', 'Figma', [720, 500], [200, 200]),
@@ -61,7 +64,7 @@ export const EXTERNAL_EMBED_SERVICES = Object.freeze([
   entry('G16', 'GitHub Gist', [720, 500], [200, 200], { fallbackIssue: 78, attributes: Object.freeze({ ...frame(''), sandbox: 'allow-popups allow-scripts allow-forms', allowFullScreen: false }) }),
   entry('G17', 'Replit', [720, 500], [200, 200]),
   entry('G18', 'Felt', [720, 500], [200, 200]),
-  // #83 preserves observed permissions; changes belong to isolation work.
+  // #83 preserves observed permissions, including provider-specific capabilities.
   entry('G19', 'Spotify', [720, 500], [200, 500]),
   entry('G20', 'Vimeo', [640, 360], [355.556, 200]),
   entry('G21', 'Observable', [720, 500], [200, 200]),

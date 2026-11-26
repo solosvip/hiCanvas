@@ -1,14 +1,13 @@
 import { loadGeneratedFrame } from '../../renderer/index.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { EmbedShapeUtil, FrameShapeUtil, HTMLContainer, DEFAULT_EMBED_DEFINITIONS, toDomPrecision, useEditor, useIsEditing, DefaultSpinner } from "tldraw"
-import { attachCowartFilmController } from "../filmPlayback.js"
 import { getFilmOptions } from "../filmConfig.js"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { hasCowartWidgetBridge, readCowartPageAsset, updateCowartHtmlDraft } from "../cowartClient.js"
+import { hasCowartWidgetBridge, readCowartPageAsset } from "../cowartClient.js"
 import { isCowartAiHolderShape, isAiImageAspectLocked, isCowartFilmShape, isCowartHtmlDraftEmbedShape } from './holderMeta.jsx'
 import { AI_DRAFT_HOLDER_LABEL, AI_IMAGE_HOLDER_DEFAULT_W, AI_IMAGE_HOLDER_DEFAULT_H, COWART_HTML_DRAFT_EMBED_TYPE, AI_FILM_LABEL, COWART_FILM_STATUS_EVENT, HTML_DRAFT_ASSET_RETRY_DELAYS_MS } from './configuration.jsx'
 import { isCowartHtmlDraftDataUrl, cowartHtmlDraftAssetUrlFromVirtualUrl, cowartHtmlDraftVirtualUrl, cowartHtmlDraftIframes, cowartHtmlDraftDomEditSessions, cowartFilmControllers, cowartFilmStatuses, hydrateCowartHtmlDraftLocalImages, blobFromBase64 } from './assets.jsx'
-import { waitForHtmlDraftDocument, cowartHtmlDraftDataUrl, createCowartHtmlDraftDomEditorSession } from './htmlEditor.jsx'
+import { cowartHtmlDraftDataUrl } from '../../content-channel/index.js'
 import { CowartFilmPlaybackControls } from './htmlToolbar.jsx'
 import {useContentEditing} from './useContentEditing.js'
 class CowartFrameShapeUtil extends FrameShapeUtil {
@@ -78,11 +77,6 @@ function CowartHtmlDraftEmbed({ shape }) {
     })
     return true
   }, [editor, shape.id])
-  const persistDomEdits = useCallback(async htmlContent => {
-    await updateCowartHtmlDraft({ draftShapeId: shape.id, htmlContent }, {
-      applyResult: result => applyDomEditResult(result, htmlContent)
-    })
-  }, [applyDomEditResult, shape.id])
   const exitDomEditing = useCallback(() => {
     editor.setEditingShape(null)
     editor.setCurrentTool('select')
@@ -169,7 +163,7 @@ function CowartHtmlDraftEmbed({ shape }) {
   useEffect(() => {
     if (!isCowartFilmShape(shape) || !htmlSource || !frameLoadVersion) return undefined
     const iframe = cowartHtmlDraftIframes.get(shape.id)
-    if (!iframe || !htmlFrame?.bind && !iframe.contentDocument?.body) return undefined
+    if (!iframe || !htmlFrame) return undefined
     const options = getFilmOptions(shape)
     const playbackOptions = {
       duration: options.duration,
@@ -179,9 +173,7 @@ function CowartHtmlDraftEmbed({ shape }) {
         window.dispatchEvent(new CustomEvent(COWART_FILM_STATUS_EVENT, { detail: { shapeId: shape.id, status } }))
       }
     }
-    const controller = htmlFrame?.bind
-      ? htmlFrame.bind(iframe,{...options,film:true}).attachFilmController(playbackOptions)
-      : attachCowartFilmController(iframe,playbackOptions)
+    const controller = htmlFrame.bind(iframe,{...options,film:true}).attachFilmController(playbackOptions)
     cowartFilmControllers.set(shape.id, controller)
     return () => {
       controller.dispose()
@@ -196,31 +188,6 @@ function CowartHtmlDraftEmbed({ shape }) {
       cowartFilmControllers.get(shape.id)?.command('mute', muted)
     }
   }, [shape.id, shape.meta?.cowartFilm, shape.meta?.cowartFilmMuted, frameLoadVersion])
-  useEffect(() => {
-    if (htmlFrame?.bind || !isEditing || !htmlSource) return undefined
-    let disposed = false
-    let session = null
-    waitForHtmlDraftDocument(shape.id)
-      .then((iframeDocument) => {
-        if (disposed) return
-        session = createCowartHtmlDraftDomEditorSession(iframeDocument, {
-          onSave: persistDomEdits,
-          onRequestExit: exitDomEditing
-        })
-        cowartHtmlDraftDomEditSessions.set(shape.id, session)
-      })
-      .catch((error) => console.error('Cowart could not start HTML DOM editing.', error))
-    return () => {
-      disposed = true
-      if (!session) return
-      if (cowartHtmlDraftDomEditSessions.get(shape.id) === session) {
-        cowartHtmlDraftDomEditSessions.delete(shape.id)
-      }
-      session
-        .dispose({ save: true })
-        .catch((error) => console.error('Cowart could not save HTML DOM edits.', error))
-    }
-  }, [exitDomEditing, frameLoadVersion, htmlSource, htmlFrame, isEditing, persistDomEdits, shape.id])
   return (
     <HTMLContainer className={`cowart-html-draft-container${isCowartFilmShape(shape) ? ' cowart-film-container' : ''}`} id={shape.id}>
       {htmlSource ? (
@@ -233,7 +200,7 @@ function CowartHtmlDraftEmbed({ shape }) {
           height={toDomPrecision(shape.props.h)}
           onLoad={(event) => { htmlFrame?.bind?.(event.currentTarget,{...getFilmOptions(shape),film:isCowartFilmShape(shape)}); setFrameLoadVersion((version) => version + 1) }}
           referrerPolicy="no-referrer"
-          sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
+          sandbox=""
           {...htmlFrame?.attributes}
           tabIndex={isEditing ? 0 : -1}
           title={isCowartFilmShape(shape) ? AI_FILM_LABEL : AI_DRAFT_HOLDER_LABEL}

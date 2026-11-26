@@ -4,7 +4,7 @@ import {filmFixture,faultFilm,delayedFilm,delayedAudioFilm,legacyAudioFilm} from
 
 const asData=blob=>new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.readAsDataURL(blob)})
 function bytesBase64(values){let text='';const bytes=new Uint8Array(values.buffer,values.byteOffset,values.byteLength);for(let index=0;index<bytes.length;index+=4096)text+=String.fromCharCode(...bytes.subarray(index,index+4096));return btoa(text)}
-window.startFilmPreview=async({font,enabled})=>{
+window.startFilmPreview=async({font})=>{
   const checks=[],artifacts={},html=await filmFixture(font)
   const check=(name,value)=>{checks.push({name,pass:!!value});if(!value)throw new Error(name)}
   let pcm,cancels=0
@@ -14,7 +14,13 @@ window.startFilmPreview=async({font,enabled})=>{
   const controls={
     async render(){
       const started=performance.now()
-      const blob=await renderCowartFilmMp4({html,width:160,height:90,duration:1})
+      let permissionsChecked=false
+      const blob=await renderCowartFilmMp4({html,width:160,height:90,duration:1,onProgress(value){
+        if(value<=0||permissionsChecked)return
+        const permissions=document.querySelector('iframe')?.sandbox
+        check('导出iframe只保留原有脚本和独立来源权限，不开放表单弹窗',permissions?.length===2&&permissions.contains('allow-scripts')&&permissions.contains('allow-same-origin'))
+        permissionsChecked=true
+      }})
       artifacts.elapsed=performance.now()-started;artifacts.mp4=await asData(blob);artifacts.pcm=pcm
       check('真实编码返回MP4文件',blob.type==='video/mp4'&&blob.size>1000)
       const input=new Input({source:new BlobSource(blob),formats:ALL_FORMATS})
@@ -32,7 +38,6 @@ window.startFilmPreview=async({font,enabled})=>{
       check('成功后导出iframe已经移除',document.querySelectorAll('iframe').length===0)
     },
     async failures(){
-      if(!enabled)return
       artifacts.failures=[]
       for(const kind of ['cancel','timeout','reload','unload','invalid-pixels']){
         const abort=new AbortController(),before=cancels,progress=[];let returned,error
@@ -51,18 +56,11 @@ window.startFilmPreview=async({font,enabled})=>{
       }
     },
     async slow(){
-      const nativeFetch=window.fetch;let first=true
-      // OFF decodes in the parent, ON in the child; delay the same public fetch
-      // boundary in both realms, without replacing any product export step.
-      window.fetch=async function(url,options){if(first&&String(url).startsWith('data:video/mp4')){first=false;await new Promise(resolve=>setTimeout(resolve,6000))}return nativeFetch.call(this,url,options)}
-      try{
         const start=performance.now(),blob=await renderCowartFilmMp4({html:delayedFilm(html),width:160,height:90,duration:1})
         artifacts.slow={elapsed:performance.now()-start,bytes:blob.size}
-        check('素材10秒加视频6秒的真实旧/新路径均成功',blob.size>1000&&artifacts.slow.elapsed>=16000)
-      }finally{window.fetch=nativeFetch}
+        check('素材10秒加视频6秒的真实隔离路径成功',blob.size>1000&&artifacts.slow.elapsed>=16000)
     },
     async customTimeout(){
-      if(!enabled)return
       let error
       const timed=html+`<script>const seek=CowartFilm.seek;CowartFilm.seek=async function(t){await new Promise(resolve=>setTimeout(resolve,3000));return seek.call(this,t)};<\/script>`
       try{await renderCowartFilmMp4({html:timed,width:160,height:90,duration:1,taskTimeout:1000})}catch(value){error=value}
@@ -71,8 +69,8 @@ window.startFilmPreview=async({font,enabled})=>{
     async audio(){
       const start=performance.now(),blob=await renderCowartFilmMp4({html:delayedAudioFilm(html),width:160,height:90,duration:1})
       artifacts.slowAudio={elapsed:performance.now()-start,bytes:blob.size}
-      check('音轨各步骤6秒，总18秒的真实旧/新路径均成功',blob.size>1000&&artifacts.slowAudio.elapsed>=18000)
-      if(enabled){
+      check('音轨各步骤6秒，总18秒的真实隔离路径成功',blob.size>1000&&artifacts.slowAudio.elapsed>=18000)
+      {
         let result,error;const before=cancels
         try{result=await renderCowartFilmMp4({html:faultFilm('audio-hard'),width:160,height:90,duration:1,taskTimeout:1000})}catch(value){error=value}
         artifacts.audioHardError=error?.message
@@ -81,7 +79,6 @@ window.startFilmPreview=async({font,enabled})=>{
       }
     },
     async phaseFailures(){
-      if(!enabled)return
       const descriptor=Object.getOwnPropertyDescriptor(MessagePort.prototype,'onmessage')
       let fault
       // Observe the documented platform message boundary. Product handlers and

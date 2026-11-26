@@ -3,27 +3,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {loadGeneratedFrame} from '../renderer/index.js'
 
+globalThis.location={origin:'http://127.0.0.1:43300',search:''}
 const instance={id:'a'.repeat(48),url:`http://${'a'.repeat(48)}.localhost:12345/document.html`,revokeToken:'b'.repeat(48),leaseMs:1800000}
-function transport({enabled=true,afterPost,invalid=false}={}){
+function transport({afterPost,invalid=false}={}){
   const calls=[]
   return {calls,async fetcher(url,options={}){
     calls.push({url,...options})
-    if(url==='/api/health')return Response.json({contentHost:enabled?{enabled:true,port:12345}:{enabled:false}})
+    if(url==='/api/health')return Response.json({contentHost:{port:12345}})
     if(url.startsWith('data:'))return new Response('<h1>decoded</h1>')
     if(options.method==='POST'){afterPost?.();return Response.json({...instance,...invalid?{url:'http://parent.invalid/document.html'}:{}})}
     return Response.json({ok:true})
   }}
 }
-test('加载开关关闭保留srcdoc和data URL，开启只用内容实例且卸载只撤销一次',async()=>{
-  const off=transport({enabled:false})
-  const old=await loadGeneratedFrame('<h1>original</h1>',{fetcher:off.fetcher})
-  assert.deepEqual(old.attributes,{srcDoc:'<h1>original</h1>'})
-  const direct=await loadGeneratedFrame(null,{directUrl:'data:text/html,hello',fetcher:off.fetcher})
-  assert.equal(direct.attributes.src,'data:text/html,hello')
-  assert.equal(off.calls.filter(call=>call.method).length,0)
-  assert.equal(off.calls.filter(call=>call.url==='/api/health').length,1)
+test('生成网页只用内容实例，data URL解码后登记且卸载只撤销一次',async()=>{
   const on=transport(),frame=await loadGeneratedFrame(null,{directUrl:'data:text/html,hello',fetcher:on.fetcher})
-  assert.deepEqual(frame.attributes,{src:instance.url})
+  assert.deepEqual(frame.attributes,{src:instance.url,sandbox:'allow-forms allow-popups allow-scripts allow-same-origin'})
   const registered=JSON.parse(on.calls.find(call=>call.method==='POST').body)
   assert.equal(registered.html,'<h1>decoded</h1>')
   await Promise.all([frame.dispose(),frame.dispose()])
@@ -60,7 +54,7 @@ test('异步登记期间卸载仍回收实例；拒绝错误宿主时也撤销�
   assert.equal(invalid.calls.filter(call=>call.method==='DELETE').length,1)
 })
 test('旧全局素材来源不跟随当前画板参数，续租失败撤销并停止请求',async t=>{
-  const oldLocation=globalThis.location;globalThis.location={search:'?conversation=another-board'}
+  const oldLocation=globalThis.location;globalThis.location={...oldLocation,search:'?conversation=another-board'}
   t.after(()=>{globalThis.location=oldLocation})
   const legacy=transport(),frame=await loadGeneratedFrame('html',{sourceUrl:'/assets/page.html',fetcher:legacy.fetcher})
   t.after(()=>frame.dispose())
@@ -80,11 +74,18 @@ test('旧全局素材来源不跟随当前画板参数，续租失败撤销并�
   await active.dispose()
 })
 
-test('ON发布未水合原文保留图片地址，OFF仍用继承的水合srcdoc',async()=>{
+test('发布未水合原文，保留本机图片地址供实例资源授权',async()=>{
   const original='<img src="/c/synthetic/assets/a.png">',hydrated='<img src="data:image/png;base64,AA==">'
-  const off=transport({enabled:false}),legacy=await loadGeneratedFrame(hydrated,{originalHtml:original,fetcher:off.fetcher})
-  assert.equal(legacy.attributes.srcDoc,hydrated)
   const on=transport(),frame=await loadGeneratedFrame(hydrated,{originalHtml:original,fetcher:on.fetcher})
   assert.equal(JSON.parse(on.calls.find(call=>call.method==='POST').body).html,original)
   await frame.dispose()
+})
+
+test('缺失或损坏启动描述及旧服务器均明确失败，绝不降级为同源加载',async()=>{
+  for(const response of [new Response('',{status:404}),new Response('',{status:405}),Response.json({}),Response.json({contentHost:{}}),...[0,-1,65536,1.5,'12345'].map(port=>Response.json({contentHost:{port}}))]){
+    const calls=[]
+    const fetcher=async(url)=>{calls.push(url);return response}
+    await assert.rejects(loadGeneratedFrame('<script>parent.document</script>',{fetcher}),/内容宿主|启动信息/)
+    assert.deepEqual(calls,['/api/health'])
+  }
 })

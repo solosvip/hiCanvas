@@ -1,48 +1,10 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
-import { renderHtmlDraftDocument, getContentChannel, renderContentCapture } from "../../content-channel/index.js"
+import { renderContentCapture } from "../../content-channel/index.js"
 import { hasCowartWidgetBridge, readCowartPageAsset } from "../cowartClient.js"
-import { HTML_DRAFT_CAPTURE_DELAY_MS, AI_IMAGE_HOLDER_DEFAULT_W, AI_IMAGE_HOLDER_DEFAULT_H, PAGE_ASSETS_ROUTE } from './configuration.jsx'
+import { AI_IMAGE_HOLDER_DEFAULT_W, AI_IMAGE_HOLDER_DEFAULT_H, PAGE_ASSETS_ROUTE } from './configuration.jsx'
 import { cowartHtmlDraftAssetUrlFromVirtualUrl, isCowartHtmlDraftDataUrl, blobFromBase64, cowartHtmlDraftIframes } from './assets.jsx'
 import { isCowartHtmlDraftEmbedShape } from './holderMeta.jsx'
-import { waitForHtmlDraftDocument } from './htmlEditor.jsx'
 import { readFileAsDataUrl } from './readFileAsDataUrl.jsx'
-async function waitForHtmlDraftAssets(iframeDocument) {
-  const pending = []
-  if (iframeDocument.fonts?.ready) pending.push(iframeDocument.fonts.ready.catch(() => undefined))
-  for (const image of Array.from(iframeDocument.images || [])) {
-    if (image.complete) {
-      if (typeof image.decode === 'function') pending.push(image.decode().catch(() => undefined))
-      continue
-    }
-    pending.push(
-      new Promise((resolve) => {
-        const finish = () => resolve()
-        image.addEventListener('load', finish, { once: true })
-        image.addEventListener('error', finish, { once: true })
-      })
-    )
-  }
-  await Promise.race([
-    Promise.all(pending),
-    new Promise((resolve) => window.setTimeout(resolve, 1500))
-  ])
-}
-function waitForHtmlDraftPaint(iframeDocument) {
-  const frameWindow = iframeDocument.defaultView
-  if (!frameWindow?.requestAnimationFrame) {
-    return new Promise((resolve) => window.setTimeout(resolve, 34))
-  }
-  return new Promise((resolve) => {
-    frameWindow.requestAnimationFrame(() => frameWindow.requestAnimationFrame(resolve))
-  })
-}
-async function waitForHtmlDraftCaptureReady(iframeDocument) {
-  await Promise.all([
-    waitForHtmlDraftAssets(iframeDocument),
-    new Promise((resolve) => window.setTimeout(resolve, HTML_DRAFT_CAPTURE_DELAY_MS))
-  ])
-  await waitForHtmlDraftPaint(iframeDocument)
-}
 function loadRasterImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image()
@@ -80,14 +42,7 @@ async function renderCowartHtmlDraftCanvas(shape, pixelRatio) {
   const captureRatio = Math.max(1, Number(pixelRatio) || 1)
   const options = { width, height, pixelRatio: captureRatio }
   const iframe = cowartHtmlDraftIframes.get(shape.id)
-  let canvas
-  if (hasIsolatedHtmlCapture(shape)) {
-    canvas = await renderContentCapture(iframe, options)
-  } else {
-    const iframeDocument = await waitForHtmlDraftDocument(shape.id)
-    await waitForHtmlDraftCaptureReady(iframeDocument)
-    canvas = await renderHtmlDraftDocument(iframeDocument, options)
-  }
+  const canvas = await renderContentCapture(iframe, options)
   return {
     canvas,
     url: canvas.toDataURL('image/png'),
@@ -99,12 +54,7 @@ async function renderCowartHtmlDraftCanvas(shape, pixelRatio) {
   }
 }
 function hasIsolatedHtmlCapture(shape) {
-  if (!isCowartHtmlDraftEmbedShape(shape)) return false
-  const iframe = cowartHtmlDraftIframes.get(shape.id)
-  if (getContentChannel(iframe)) return true
-  // Before the first load/bind, an isolated frame must report "not ready";
-  // never fall back to child DOM or the editor's generic embed bitmap.
-  try { return /^[a-f0-9]{48}\.localhost$/.test(new URL(iframe?.src).hostname) } catch { return false }
+  return isCowartHtmlDraftEmbedShape(shape)
 }
 function htmlDraftExportBaseName(shape) {
   const assetUrl = getCowartHtmlDraftAssetUrl(shape)
@@ -162,4 +112,4 @@ async function readCowartImageDataUrl(editor, imageShape) {
   if (!response.ok) throw new Error(`读取当前图片失败：${response.status}`)
   return readFileAsDataUrl(await response.blob())
 }
-export { hasIsolatedHtmlCapture, waitForHtmlDraftAssets, waitForHtmlDraftPaint, waitForHtmlDraftCaptureReady, loadRasterImage, getCowartHtmlDraftAssetUrl, getCowartHtmlDraftLocalPath, renderCowartHtmlDraftCanvas, htmlDraftExportBaseName, htmlDraftExportFileName, textDataUrl, readCowartHtmlDraftContent, readCowartImageDataUrl }
+export { hasIsolatedHtmlCapture, loadRasterImage, getCowartHtmlDraftAssetUrl, getCowartHtmlDraftLocalPath, renderCowartHtmlDraftCanvas, htmlDraftExportBaseName, htmlDraftExportFileName, textDataUrl, readCowartHtmlDraftContent, readCowartImageDataUrl }

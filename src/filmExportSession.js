@@ -6,7 +6,6 @@ import {renderContentFilmFrame,renderContentFilmAudio,waitForFilmTask} from '../
 // CowartFilm, audio graphs, media elements or the child's virtual clock.
 export async function openFilmExportSession({html,width,height,duration,sourceUrl},options){
   const publication=await loadGeneratedFrame(html,{sourceUrl,signal:options.signal})
-  if(!publication.bind)return null
   const iframe=document.createElement('iframe'),lifecycle=new AbortController()
   const signal=options.signal?AbortSignal.any([options.signal,lifecycle.signal]):lifecycle.signal
   const tasks={...options,signal,timeout:options.timeout||15000}
@@ -22,7 +21,10 @@ export async function openFilmExportSession({html,width,height,duration,sourceUr
     // existing #114 memory lease; revocation then drops published assets.
     iframe.remove();await publication.dispose()
   }
-  iframe.setAttribute('sandbox','allow-scripts allow-same-origin');iframe.setAttribute('aria-hidden','true')
+  // Export frames historically grant scripts and their own origin only. Keep
+  // forms/popups disabled even though interactive publications allow them.
+  const sandbox=publication.attributes.sandbox.split(' ').filter(value=>!['allow-forms','allow-popups'].includes(value)).join(' ')
+  iframe.setAttribute('sandbox',sandbox);iframe.setAttribute('aria-hidden','true')
   iframe.style.cssText=`position:fixed;left:-100000px;top:0;width:${width}px;height:${height}px;border:0;pointer-events:none;`
   try{
     await waitForFilmTask(()=>new Promise(resolve=>{

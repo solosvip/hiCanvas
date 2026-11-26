@@ -47,8 +47,8 @@ test('历史 data URL 使用浏览器的解码语义，保留裸百分号和百�
   assert.equal(await loadEmbedHtml('data:text/html;base64,' + encodeURIComponent(base64)), html)
 })
 
-test('沙箱逐项锁定旧版权限；#78 负责已知同源与联网风险，不在本单偷偷收紧', () => {
-  assert.deepEqual(EMBED_FRAME_ATTRIBUTES, { sandbox: 'allow-forms allow-popups allow-same-origin allow-scripts', referrerPolicy: 'no-referrer', tabIndex: -1, draggable: false, frameBorder: '0' })
+test('加载未确认内容宿主前保持opaque默认，实例属性由受控加载器提供', () => {
+  assert.deepEqual(EMBED_FRAME_ATTRIBUTES, { sandbox: 'allow-forms allow-popups allow-scripts', referrerPolicy: 'no-referrer', tabIndex: -1, draggable: false, frameBorder: '0' })
   assert.ok(Object.isFrozen(EMBED_FRAME_ATTRIBUTES))
 })
 

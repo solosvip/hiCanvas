@@ -33,7 +33,7 @@ async function run(){
     try{return await Promise.race([frame.executeJavaScript(code),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('演示子页已重载，重新查找')),1000)})])}finally{clearTimeout(timer)}
   }
   const check=(name,value)=>{checks.push({name,pass:!!value});console.log('幻灯片原生：'+name+' '+!!value);if(!value)throw new Error(name)}
-  const reading=(name,value)=>{if(!manifest.observe)return check(name,value);checks.push({name,pass:!!value,observation:true});console.log('旧版观察：'+name+' '+!!value)}
+  const reading=check
   async function until(predicate){const end=Date.now()+20000;while(Date.now()<end){const value=await predicate();if(value)return value;await delay(25)}throw new Error('幻灯片就绪等待超时')}
   const frameExpression=offline?'document.getElementById("slide")':'window.slidesProbe.iframe'
   const countExpression=offline?'document.getElementById("count").textContent':'window.slidesProbe.state().count'
@@ -82,7 +82,7 @@ async function run(){
     await ready();check('三页演示从第一页开始',await count()==='1 / 3')
     for(const item of slideClickCases){
       await first();const inputStart=observations.nativeInputs.length;await clickCase(item)
-      const after=await count(),advance=after==='2 / 3',expected=offline?item.offline:manifest.inline&&!manifest.enabled?false:item.app
+      const after=await count(),advance=after==='2 / 3',expected=offline?item.offline:item.app
       const events=observations.nativeInputs.slice(inputStart)
       observations.clicks.push({id:item.id,before:'1 / 3',after,advance,predicted:expected,events})
       if(!['disabled','select','audio','video'].includes(item.id))check('实际点击命中 '+item.id,events.some(event=>event.case===item.id&&event.trusted))
@@ -94,7 +94,7 @@ async function run(){
       observations.keys.push({label,after,advance:after==='2 / 3',predicted:expected})
       reading(label,(after==='2 / 3')===expected)
     }
-    if(manifest.enabled){
+    {
       await first();await ready();await until(()=>child('!!window.syntheticConnection'))
       await child('(()=>{const c=window.syntheticConnection,d=c.data;c.port.postMessage(d.protocol?{protocol:d.protocol,instance:d.instance,generation:d.generation,type:"slide-nav",value:"previous"}:{version:1,generation:d.generation,type:"slide-nav",value:"previous"});return true})()')
       await delay(100);check('边界意图不改变页码，随后仍能有效翻页',await count()==='1 / 3')
@@ -103,7 +103,7 @@ async function run(){
       await delay(200);check('同代千条意图只翻一页',await count()==='2 / 3');await ready()
     }
     await first();await button('下一页');await ready();await key('ArrowLeft',true);await ready();check('子页左键保持原路径语义',await count()===(offline?'1 / 3':'2 / 3'))
-    if(manifest.enabled){
+    {
       await first();await button('下一页');await ready();await until(()=>child('!!window.syntheticConnection'))
       // Return the automation evaluation before its message destroys this
       // document. Otherwise Electron can await the retired JS context forever.
@@ -119,11 +119,11 @@ async function run(){
     await first();await ready()
     await evaluate('window.__slidesPlayerSecret="synthetic-only"')
     observations.security=await child('(()=>{const denied=fn=>{try{fn();return false}catch{return true}};return{parentDocument:denied(()=>parent.document.body),parentGlobal:denied(()=>parent.__slidesPlayerSecret),parentWrite:denied(()=>{parent.__slidesPlayerSecret="changed"}),topDocument:denied(()=>top.document.body),openerNull:opener===null}})()')
-    if(manifest.enabled)check('子页读写父窗口和top均被隔离',Object.values(observations.security).every(Boolean))
+    check('子页读写父窗口和top均被隔离',Object.values(observations.security).every(Boolean))
     if(manifest.localAssets)check('本地CSS、脚本、字体、SVG与音轨已完整加载',!!observations.localResources)
-    if(!offline){observations.export=await evaluate('window.slidesProbe.export()');if(manifest.enabled){observations.exportFailure=await evaluate('window.slidesProbe.exportFailure()');check('后页缺资源时整套导出预检失败',observations.exportFailure.failed)}}
-    await writeFile(join(manifest.output,(offline?'offline':'app')+'-'+(manifest.enabled?'on':'off')+'.png'),(await contents.capturePage()).toPNG())
-    if(!offline&&manifest.enabled){
+    if(!offline){observations.export=await evaluate('window.slidesProbe.export()');{observations.exportFailure=await evaluate('window.slidesProbe.exportFailure()');check('后页缺资源时整套导出预检失败',observations.exportFailure.failed)}}
+    await writeFile(join(manifest.output,(offline?'offline':'app')+'-'+'isolated'+'.png'),(await contents.capturePage()).toPNG())
+    if(!offline){
       await button('退出播放');await button('关闭演示页')
       await evaluate('(()=>{const editor=window.__cowartEditor;editor.select('+JSON.stringify(manifest.slidesId)+');editor.setCamera({x:100,y:500,z:0.3});editor.focus();return true})()')
       const trigger='[data-testid="tool.cowart-export-slides-'+manifest.slidesId+'"]'
@@ -141,14 +141,14 @@ async function run(){
       // native title attribute on its button. Its accessible name is observable.
       check('导出菜单组件的可访问名称列出需联网资源',observations.exportNotice.label.startsWith('导出完成；')&&observations.exportNotice.label.includes(syntheticCdnUrl))
     }
-    if(manifest.enabled)check(offline?'断服后只尝试原外部引用、没有本机请求':'应用只尝试声明的外部引用',blocked.every(url=>url===syntheticCdnUrl))
+    check(offline?'断服后只尝试原外部引用、没有本机请求':'应用只尝试声明的外部引用',blocked.every(url=>url===syntheticCdnUrl))
     await writeFile(manifest.result,JSON.stringify({checks,observations,errors,blocked,runtime:process.versions},null,2)+'\n')
     window.destroy();app.exit(0)
   }catch(error){
     observations.failure=await evaluate('({url:location.href,count:'+countExpression+',iframe:'+frameExpression+'?.outerHTML.slice(0,300)})').catch(()=>null)
     observations.frames=await Promise.all(contents.mainFrame.frames.map(async frame=>({url:frame.url,name:frame.name,value:await frameEvaluate(frame,'({name:window.name,number:window.slideNumber,loaded:window.slideLoaded,html:document.body.innerHTML.slice(0,100)})').catch(error=>({error:error.message}))})))
     await writeFile(manifest.result,JSON.stringify({checks,observations,errors,blocked,error:error.stack},null,2)+'\n')
-    await writeFile(join(manifest.output,'failed-'+(offline?'offline':'app')+'-'+manifest.enabled+'.png'),(await contents.capturePage()).toPNG())
+    await writeFile(join(manifest.output,'failed-'+(offline?'offline':'app')+'-isolated.png'),(await contents.capturePage()).toPNG())
     console.error(error);window.destroy();app.exit(1)
   }
 }

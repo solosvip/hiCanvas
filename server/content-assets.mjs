@@ -8,7 +8,12 @@ const virtual='http://cowart.local'
 const types={'.html':'text/html; charset=utf-8','.htm':'text/html; charset=utf-8','.svg':'image/svg+xml','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.avif':'image/avif','.apng':'image/apng','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.mp4':'video/mp4','.webm':'video/webm','.mp3':'audio/mpeg','.wav':'audio/wav','.ogg':'audio/ogg'}
 export function sandboxActiveAsset(res,type) {
   res.setHeader('x-content-type-options','nosniff')
-  if(/^(?:text\/html|image\/svg\+xml)(?:;|$)/i.test(type))res.setHeader('content-security-policy','sandbox allow-scripts allow-forms allow-popups')
+  if(/^(?:text\/html|image\/svg\+xml)(?:;|$)/i.test(type)){
+    // Successful authored resources may be framed, but never inherit this
+    // service's origin. Errors retain the canvas's frame-denial headers.
+    res.removeHeader('x-frame-options')
+    res.setHeader('content-security-policy','sandbox allow-scripts allow-forms allow-popups')
+  }
 }
 function localPath(value,base,parentOrigin,id) {
   let url
