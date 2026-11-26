@@ -1,6 +1,15 @@
 import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
+import {readFile} from 'node:fs/promises'
 import { httpError } from './file-lock.mjs'
+import {CHILD_ASSETS} from '../content-channel/index.js'
+
+// Fixed project assets, shared as immutable bytes across instances. No path from
+// a request is used for filesystem reads, including in the bundled desktop host.
+let channelAssets
+function readChannelAssets(){
+  return channelAssets ||= Promise.all(CHILD_ASSETS.map(async name=>[name,await readFile(new URL('../content-channel/'+name,import.meta.url))]))
+}
 
 // Read-only, disposable publications; no canvas API, file system or network proxy.
 export function createContentHost({now=Date.now,ttl=30*60*1000,maxHtmlBytes=5*1024*1024,maxTotalBytes=128*1024*1024,maxInstances=64,prepare=async html=>({path:'/document.html',files:new Map([['/document.html',{bytes:Buffer.from(html),type:'text/html; charset=utf-8'}]])})} = {}) {
@@ -45,12 +54,22 @@ export function createContentHost({now=Date.now,ttl=30*60*1000,maxHtmlBytes=5*10
       try {
       const {port}=await info()
       const prepared=await prepare(html,{...context,parentOrigin})
+      const assets=await readChannelAssets()
       const size=[...prepared.files.values()].reduce((sum,file)=>sum+file.bytes.length,0)
       sweep()
       if(closed)throw httpError('内容宿主已关闭。',503)
       if(instances.size>=maxInstances||size+usedBytes>maxTotalBytes)throw httpError('内容宿主容量已满。',413)
       const id=randomBytes(24).toString('hex'),hostname=`${id}.localhost:${port}`,revokeToken=randomBytes(24).toString('hex')
-      const instance={id,hostname,parentOrigin,revokeToken,files:prepared.files,size,expiresAt:now()+ttl}
+      const prefix='/.hicanvas-channel/'+id+'/',files=new Map(prepared.files)
+      for(const [name,bytes] of assets)files.set(prefix+name,{bytes,type:'text/javascript; charset=utf-8'})
+      const document=files.get(prepared.path)
+      const source=prefix+'bootstrap.js?instance='+id+'&parent='+encodeURIComponent(parentOrigin)
+      const script=`<script type="module" src="${source}"></script>`
+      const original=document.bytes.toString('utf8')
+      const injected=/^\s*<!doctype[^>]*>/i.test(original)?original.replace(/^(\s*<!doctype[^>]*>)/i,'$1'+script):script+original
+      files.set(prepared.path,{...document,bytes:Buffer.from(injected)})
+      // User-content quota is unchanged. The finite bridge is shared host code.
+      const instance={id,hostname,parentOrigin,revokeToken,files,size,expiresAt:now()+ttl}
       instances.set(hostname,instance);usedBytes+=size
       return {id,url:`http://${hostname}${prepared.path}`,revokeToken,expiresAt:instance.expiresAt,leaseMs:ttl}
       }finally{preparing--}

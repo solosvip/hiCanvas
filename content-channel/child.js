@@ -1,0 +1,83 @@
+import {attachCowartFilmController} from './film-controller.js'
+import {PROTOCOL_VERSION,MAX_MESSAGE_BYTES,messageSize,validMessage,createRateLimit} from './protocol.js'
+
+// This code runs in the content realm. It never receives a parent object or a
+// callable capability over the wire; CowartFilm and DOM stay in this realm.
+export function installContentChild(host,{instanceId,parentOrigin}){
+  let current=null,disposed=false
+  const allowConnect=createRateLimit()
+  function disconnect(){
+    const session=current
+    if(!session)return
+    current=null;clearTimeout(session.statusTimer);clearInterval(session.legacyTimer)
+    session.pending.clear();session.controller?.dispose()
+    try{session.port.postMessage({...session.base,type:'close'})}catch{/* Port already detached. */}
+    session.port.close()
+  }
+  function connect(event){
+    const data=event.data
+    if(disposed||event.source!==host.parent||event.origin!==parentOrigin||!allowConnect()||messageSize(data)>MAX_MESSAGE_BYTES||!validMessage(data,instanceId)||data.type!=='connect'||event.ports?.length!==1)return
+    disconnect()
+    const port=event.ports[0],base={protocol:PROTOCOL_VERSION,instance:instanceId,generation:data.generation}
+    const session={port,base,pending:new Map(),statusTimer:null,legacyTimer:null,lastStatusAt:-Infinity,controller:null,status:null,legacy:false,receiveLegacy:null}
+    current=session
+    const allow=createRateLimit(),allowLegacy=createRateLimit(),allowPoll=createRateLimit(1)
+    const post=message=>{if(current===session)port.postMessage({...base,...message})}
+    const publish=status=>{
+      if(current!==session)return
+      const duration=Math.min(86400,status.duration)
+      session.status={duration,currentTime:Math.min(duration,status.currentTime),playing:status.playing,muted:status.muted,ready:status.ready,...status.error?{error:String(status.error).slice(0,256)}:{}}
+      if(session.statusTimer!==null)return
+      session.statusTimer=setTimeout(()=>{
+        session.statusTimer=null;session.lastStatusAt=Date.now()
+        post({type:'status',value:session.status})
+      },Math.max(0,100-(Date.now()-session.lastStatusAt)))
+    }
+    port.onmessage=event=>{
+      const message=event.data
+      if(current!==session||messageSize(message)>MAX_MESSAGE_BYTES||!validMessage(message,instanceId,data.generation))return
+      if(message.type==='close'){disconnect();return}
+      if(message.type==='cancel'){session.pending.delete(message.id);return}
+      if(message.type==='pause'){session.controller?.command('pause');return}
+      if(message.type==='legacy-status'){if(session.legacy&&allowLegacy())session.receiveLegacy?.(message.value);return}
+      if(message.type==='legacy-poll'){if(session.legacy&&allowPoll())messageTransport.post('status');return}
+      if(!allow())return
+      if(message.type!=='request'||session.pending.has(message.id))return
+      // The list is validated by protocol.js before any film code is called.
+      const task={};session.pending.set(message.id,task)
+      Promise.resolve().then(()=>{
+        if(current!==session||session.pending.get(message.id)!==task)return
+        return session.controller?.command(message.command,message.value)
+      }).then(result=>{
+        if(current!==session||session.pending.get(message.id)!==task)return
+        session.pending.delete(message.id)
+        post(result===true?{type:'response',id:message.id,ok:true,value:true}:{type:'response',id:message.id,ok:false,error:'影片尚未就绪或命令失败。'})
+      },error=>{
+        if(current!==session||session.pending.get(message.id)!==task)return
+        session.pending.delete(message.id);post({type:'response',id:message.id,ok:false,error:String(error.message||error).slice(0,256)})
+      })
+    }
+    port.onmessageerror=()=>{if(current===session)disconnect()}
+    port.start()
+    // Only old cowart-film message films use this compatibility entry. New
+    // content uses Port. #118 must review this sole remaining window ingress.
+    const messageTransport={
+      post(command,value){
+        if(!session.legacy){
+          session.legacy=true
+          // Always refresh paused films too: a delayed old status may say they
+          // are playing. Status alone never drives playback or end-of-film seek.
+          session.legacyTimer=setInterval(()=>messageTransport.post('status'),100)
+        }
+        host.dispatchEvent(new host.MessageEvent('message',{source:host.parent,origin:parentOrigin,data:{channel:'cowart-film',type:'command',command,...value!==undefined?{value}:{}}}))
+      },
+      subscribe(listener){session.receiveLegacy=listener;return ()=>{session.receiveLegacy=null}},
+    }
+    if(data.options.film)session.controller=attachCowartFilmController({contentWindow:host,contentDocument:host.document,ownerDocument:{defaultView:host}},{...data.options,onStatus:publish,messageTransport})
+    post({type:'ready',legacy:session.legacy})
+  }
+  const unload=()=>disconnect()
+  host.addEventListener('message',connect)
+  host.addEventListener('pagehide',unload)
+  return {dispose(){if(disposed)return;disposed=true;disconnect();host.removeEventListener('message',connect);host.removeEventListener('pagehide',unload)}}
+}

@@ -40,11 +40,13 @@ export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
 
 `HICANVAS_CONTENT_HOST=1 npm start`（开发时改用 `npm run dev`）启用独立内容来源，默认关闭。开启后，网页、影片和 HTML 幻灯片的加载入口把每次挂载登记为一个随机 `*.localhost` 主机；内容宿主只监听 loopback，端口由系统分配，经 `/api/health` 启动信息提供，不写进画板、HTML 或 `connection.json`。保存的 URL 与文档不变。关闭时仍沿用原 srcdoc／data URL；父来源的 HTML、SVG 资源直接打开始终带响应级沙箱。
 
-这是 #112 的加载阶段。影片控制、截图、影片导出、就地编辑和离线 Play.html 还要按 #113–#118 迁移；开启本开关不能视为这些能力已可用，日常使用保持默认关闭。架构与取舍见 [ADR0012](docs/adr/0012-isolated-generated-content.md)。第三方公网脚本允许运行；字体、ESM 与媒体仍遵守资源方 CORS。
+隔离模式的影片播放、暂停、时间定位、静音与状态已通过实例 MessagePort 接线；每次加载重新握手，绑定窗口、精确来源、协议版本及实例，重载和卸载使旧请求失效。启动信息每个页面共用一次。截图、影片导出、就地编辑和离线 Play.html 仍待 #114–#118 迁移，日常使用保持默认关闭。架构与取舍见 [ADR0012](docs/adr/0012-isolated-generated-content.md)。第三方公网脚本允许运行；字体、ESM 与媒体仍遵守资源方 CORS。
 
 内容服务只接受已登记的精确主机名，按当前画板文档中的静态 HTML／CSS 引用发布资源快照，不暴露画板、生图、MCP、任意路径或请求转发。CSS 引用继续展开；动态拼接的本地请求和未列出的资源返回拒绝或未找到，不回退到整个资源目录。HTML 上限 5 MiB，单素材 20 MiB，每份文档最多 128 个素材、总计 32 MiB；宿主最多 64 个实例、128 MiB，并限制同时准备的登记。租约 30 分钟，挂载期间自动续期，卸载即时撤销；异常断连最多保留到租约到期。
 
 `npm test` 包含宿主、资源授权及卸载回归。`npm run renderer:smoke` 先执行真实 Electron 浏览器安全门禁，再运行渲染回归；也可只运行 `node tools/content-host-smoke.mjs`。它使用 `.scratch/` 合成资料和独立后台窗口，关闭／开启各跑一次，检查网页、影片、幻灯片脚本、父窗口／存储／兄弟访问、document.domain、第三来源脚本，以及真实写接口的服务端拒绝计数。证据在 `.scratch/content-host-smoke/`。复用已安装的项目 Electron，不下载浏览器；云端普通 `npm run check` 不自动运行此浏览器门禁。
+
+实例通道的原生回归：在占用白板登记专用端口后运行 `HICANVAS_CHANNEL_PORT=43396 node tools/content-channel-smoke.mjs`（按登记替换端口，可用 `HICANVAS_TEST_ELECTRON` 复用已有运行时）。它使用合成画板操作旧影片工具栏，并验证新渲染宿主、重载和共用启动请求；证据在 `.scratch/content-channel-smoke/`。消息只接受四个播放命令与纯值状态，单条最多4 KiB、每秒最多60条请求及120条回复/状态、同时最多32个请求，握手与请求最多3秒；时间轴合并高频定位并保留最后位置，取消会撤回未执行请求，已开始的播放操作由暂停命令停止。既有仅实现 cowart-film 消息的影片保留一条严格绑定窗口与来源、校验字段和额度的状态兼容入口；控制命令仍走Port，关闭开关不启用这条适配。
 
 ## 画板保存在哪里
 

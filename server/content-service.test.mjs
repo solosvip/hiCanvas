@@ -33,7 +33,9 @@ test('开关默认关闭；开启后的启动信息提供运行时端口，只�
   assert.equal(denied.status,403)
   const created=await on.api('/api/content-host/instances','POST',{html:'<h1>x</h1>'})
   assert.equal(created.status,201)
-  assert.equal((await contentGet(created.body.url)).text,'<h1>x</h1>')
+  const html=(await contentGet(created.body.url)).text
+  assert.match(html,/^<script type="module" src="\/\.hicanvas-channel\//)
+  assert.ok(html.endsWith('<h1>x</h1>'))
   assert.equal((await on.api('/api/content-host/instances','DELETE',created.body)).status,200)
   assert.equal((await contentGet(created.body.url)).status,403)
 })
