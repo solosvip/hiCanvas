@@ -1,0 +1,23 @@
+// Author originals. CSS 400 intentionally maps IBM Medium (physical weight 500).
+// Sans is pinned to author 3.005 after natural-width and glyph comparison.
+// Keep each URL static so Vite emits assets and native Node can resolve local bytes.
+export const canvasFontFaces = Object.freeze([
+  Object.freeze({ key: 'sans', family: 'hiCanvas Sans', weight: '700', style: 'normal', url: new URL('./files/ibm-plex-sans/IBMPlexSans-Bold.woff2', import.meta.url), bytes: 63012, sha256: 'fa7130d854a660b39a7fc9e6e0f2dc23dba5f1346e2adea3e1fe37b6d884133d' }),
+  Object.freeze({ key: 'sans', family: 'hiCanvas Sans', weight: '700', style: 'italic', url: new URL('./files/ibm-plex-sans/IBMPlexSans-BoldItalic.woff2', import.meta.url), bytes: 66632, sha256: '73d57000ee0fa7d6e1dd3a9fe5901c2d7c71904af9a935dbbc1d44abc9574c1f' }),
+  Object.freeze({ key: 'sans', family: 'hiCanvas Sans', weight: '400', style: 'normal', url: new URL('./files/ibm-plex-sans/IBMPlexSans-Medium.woff2', import.meta.url), bytes: 66740, sha256: '5660f8a658f8bb50dbc005232f885eadffd2bc1c235c4f6fbb63469d1f9cde6d' }),
+  Object.freeze({ key: 'sans', family: 'hiCanvas Sans', weight: '400', style: 'italic', url: new URL('./files/ibm-plex-sans/IBMPlexSans-MediumItalic.woff2', import.meta.url), bytes: 71204, sha256: '16f11ab3543e3d1e2704407378aafa4ddb570ad11f6a476eeaa4ec6e67fc30e8' }),
+  Object.freeze({ key: 'serif', family: 'hiCanvas Serif', weight: '700', style: 'normal', url: new URL('./files/ibm-plex-serif/IBMPlexSerif-Bold.woff2', import.meta.url), bytes: 69300, sha256: '3b9eb99793dd9fed419aaf1af03559ea28bac17b7cb6146e7f8fc3db813621fe' }),
+  Object.freeze({ key: 'serif', family: 'hiCanvas Serif', weight: '700', style: 'italic', url: new URL('./files/ibm-plex-serif/IBMPlexSerif-BoldItalic.woff2', import.meta.url), bytes: 74484, sha256: 'cbbf0d3e16d2b42ba3c8a67e849de15b250a9eff06ef79aaacdfab3b3556acdb' }),
+  Object.freeze({ key: 'serif', family: 'hiCanvas Serif', weight: '400', style: 'normal', url: new URL('./files/ibm-plex-serif/IBMPlexSerif-Medium.woff2', import.meta.url), bytes: 73052, sha256: 'f66376aeb33a5b32116558e0de53b76b48531f6388e352aeeb35ad82ea05cfaa' }),
+  Object.freeze({ key: 'serif', family: 'hiCanvas Serif', weight: '400', style: 'italic', url: new URL('./files/ibm-plex-serif/IBMPlexSerif-MediumItalic.woff2', import.meta.url), bytes: 78544, sha256: '2db2b2f50ab43daa31bf5579554a47a055ba10bad7f4bc42d1120d7c89e3fc26' }),
+  Object.freeze({ key: 'mono', family: 'hiCanvas Mono', weight: '700', style: 'normal', url: new URL('./files/ibm-plex-mono/IBMPlexMono-Bold.woff2', import.meta.url), bytes: 50380, sha256: 'ea576f38d05cc44cca48c45314984beb8cc1d2b886f58e1dce99f15dc344eb1d' }),
+  Object.freeze({ key: 'mono', family: 'hiCanvas Mono', weight: '700', style: 'italic', url: new URL('./files/ibm-plex-mono/IBMPlexMono-BoldItalic.woff2', import.meta.url), bytes: 54028, sha256: '03e97fe28d44cc2bdf18d77284046bc9019ee626bdab1f06e7ea64837680824b' }),
+  Object.freeze({ key: 'mono', family: 'hiCanvas Mono', weight: '400', style: 'normal', url: new URL('./files/ibm-plex-mono/IBMPlexMono-Medium.woff2', import.meta.url), bytes: 50400, sha256: '33faf307fa6031fb4062276d7320a6d632de890cbb347576fd80cfa01077bc25' }),
+  Object.freeze({ key: 'mono', family: 'hiCanvas Mono', weight: '400', style: 'italic', url: new URL('./files/ibm-plex-mono/IBMPlexMono-MediumItalic.woff2', import.meta.url), bytes: 54868, sha256: '782325462f9a9708e02cb0415445cef7c9b5ee74f8910f33bfd1ab405a3402d2' }),
+  Object.freeze({ key: 'draw', family: 'hiCanvas Draw', weight: '400', style: 'normal', url: new URL('./files/shantell-sans/Shantell_Sans-Informal_Regular.woff2', import.meta.url), bytes: 148664, sha256: 'a302805ba89622e957daa16a8837343567bc61890440bd4154f0592ce2027296' }),
+  Object.freeze({ key: 'draw', family: 'hiCanvas Draw', weight: '400', style: 'italic', url: new URL('./files/shantell-sans/Shantell_Sans-Informal_Regular_Italic.woff2', import.meta.url), bytes: 158112, sha256: 'cd142fbf5a04e600a8cdbadb428813e1364513de07bd372d68247dc8c86c1e0f' }),
+  Object.freeze({ key: 'draw', family: 'hiCanvas Draw', weight: '700', style: 'normal', url: new URL('./files/shantell-sans/Shantell_Sans-Informal_Bold.woff2', import.meta.url), bytes: 146904, sha256: 'cb7adae54f19a079b5650fd9d5db49c82eea0a01ab6ba36169b2ef8b7c1d317a' }),
+  Object.freeze({ key: 'draw', family: 'hiCanvas Draw', weight: '700', style: 'italic', url: new URL('./files/shantell-sans/Shantell_Sans-Informal_Bold_Italic.woff2', import.meta.url), bytes: 155372, sha256: '8935343b2a87cef2b064317c584776358bff5ece53d05cc7ad19a4f26e17ea59' }),
+])
+
+export { canvasFonts, canvasFontFamily } from '../font-families.js'

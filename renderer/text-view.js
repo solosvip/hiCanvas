@@ -2,6 +2,7 @@ import { createElement as h, useMemo, useRef } from 'react'
 import { textLayout } from './text.js'
 import { colorPaint, FRAME_TITLE_PAINT } from './palette.js'
 import { useValue } from '@tldraw/state-react'
+import { canvasFontFamily } from './font-families.js'
 
 let context
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -25,14 +26,16 @@ function Line({ text, width, size, family, baseline }) {
   // spacing for the existing approximate widths; glyphs retain their height.
   const letters = [...graphemes.segment(displayed)].length
   const letterSpacing = width && letters ? (width - naturalWidth) / letters : 0
-  return h('div', { style: { position: 'absolute', left: 0, top: baseline - (size + ascent - descent) / 2, fontFamily: family, fontSize: size, lineHeight: `${size}px`, whiteSpace: 'pre', letterSpacing } }, displayed)
+  // Chromium floors half-pixel inline leading. Match its strut rounding so a
+  // newly loaded face with odd ascent/descent does not shift above the line.
+  return h('div', { style: { position: 'absolute', left: 0, top: baseline - Math.floor((size + ascent - descent) / 2), fontFamily: family, fontSize: size, lineHeight: `${size}px`, whiteSpace: 'pre', letterSpacing } }, displayed)
 }
 
 export function Text({ props }) {
   const { lines, size, scale, lineHeight, w, h: height } = textLayout(props)
   return h('div', { style: { width: w, height, color: colorPaint(props).text } },
     h('div', { style: { transformOrigin: '0 0', transform: `scale(${scale})` } },
-      lines.map((line, i) => h(Line, { key: i, text: line.text, width: line.width, size, family: 'monospace', baseline: i * lineHeight + size }))))
+      lines.map((line, i) => h(Line, { key: i, text: line.text, width: line.width, size, family: canvasFontFamily(props.font), baseline: i * lineHeight + size }))))
 }
 
 export function FrameTitle({ text, width, camera }) {
