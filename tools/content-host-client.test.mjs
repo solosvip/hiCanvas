@@ -79,3 +79,12 @@ test('旧全局素材来源不跟随当前画板参数，续租失败撤销并�
   assert.equal(renewals,1)
   await active.dispose()
 })
+
+test('ON发布未水合原文保留图片地址，OFF仍用继承的水合srcdoc',async()=>{
+  const original='<img src="/c/synthetic/assets/a.png">',hydrated='<img src="data:image/png;base64,AA==">'
+  const off=transport({enabled:false}),legacy=await loadGeneratedFrame(hydrated,{originalHtml:original,fetcher:off.fetcher})
+  assert.equal(legacy.attributes.srcDoc,hydrated)
+  const on=transport(),frame=await loadGeneratedFrame(hydrated,{originalHtml:original,fetcher:on.fetcher})
+  assert.equal(JSON.parse(on.calls.find(call=>call.method==='POST').body).html,original)
+  await frame.dispose()
+})
