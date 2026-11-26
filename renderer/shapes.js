@@ -7,6 +7,10 @@ import { colorPaint } from './palette.js'
 import { Embed } from './embed.js'
 import { FrameState } from './frame-state.js'
 import { Connection } from './connection.js'
+import { Stroke } from './stroke.js'
+import { BackgroundLayer } from './backgrounds.js'
+
+const drawings = Object.freeze({ draw: { body: Stroke }, highlight: { body: Stroke, background: Stroke } })
 
 const colorOf = props => colorPaint(props).stroke
 const connectionTypes = { line: Connection, arrow: Connection }
@@ -30,12 +34,12 @@ const Shape = memo(function Shape({ scene, id }) {
     h('svg', { key: 'body', width: props.w, height: props.h, overflow: 'visible' },
       h('rect', { width: props.w, height: props.h, fill: 'white', stroke: colorOf(props), strokeWidth: 2 })),
     h(FrameTitle, { key: 'title', text: props.name || '', color: colorOf(props) }),
-    h('div', { key: 'children', 'data-frame-clip': id, style: { position: 'absolute', left: 0, top: 0, width: props.w, height: props.h, overflow: 'hidden' } }, h(Children, { scene, parentId: id })),
+    h('div', { key: 'children', 'data-frame-clip': id, style: { position: 'absolute', left: 0, top: 0, width: props.w, height: props.h, overflow: 'hidden' } }, h(BackgroundLayer, { scene, drawings, parentId: id }), h(Children, { scene, parentId: id })),
     h(FrameState, { shape, key: 'generation-state' })
   ]
   else {
     if (connectionTypes[shape.type]) body = h(connectionTypes[shape.type], { scene, shape, key: 'body' })
-    else if (getShapeBounds(shape)) body = ['embed', 'bookmark'].includes(shape.type) ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : h(Geometry, { shape, key: 'body' })
+    else if (getShapeBounds(shape)) body = ['embed', 'bookmark'].includes(shape.type) ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : drawings[shape.type]?.body ? h(drawings[shape.type].body, { shape, key: 'body' }) : h(Geometry, { shape, key: 'body' })
     body = [body, h(Children, { scene, parentId: id, key: 'children' })]
   }
   return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: shape.opacity ?? 1 } }, body)
@@ -45,5 +49,5 @@ export function CanvasWorld({ scene, camera }) {
   const { x, y, z } = useValue(camera)
   // Zero depth preserves the 2D camera math while changing the browser's
   // compositing strategy. Camera changes never touch shape records.
-  return h('div', { 'data-renderer-world': '', style: { position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `scale(${z}) translate3d(${x}px, ${y}px, 0)` } }, h(Children, { scene, parentId: scene.pageId }))
+  return h('div', { 'data-renderer-world': '', style: { position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `scale(${z}) translate3d(${x}px, ${y}px, 0)` } }, h(BackgroundLayer, { scene, drawings }), h(Children, { scene, parentId: scene.pageId }))
 }

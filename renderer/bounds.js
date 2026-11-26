@@ -2,6 +2,7 @@ import { strokeWidth } from './geo-metrics.js'
 import { textLayout } from './text.js'
 import { getGeoContour, getGeoSize } from './geo-contours.js'
 import { getConnectionGeometry } from './connection-geometry.js'
+import { getStrokeGeometry, pointInStroke } from './stroke-geometry.js'
 
 const stored = shape => ({ w: shape.props.w || 0, h: shape.props.h || 0 })
 // One registration per supported type. Text height is an estimate until the
@@ -18,6 +19,8 @@ const geometryByType = Object.freeze({
   text: { hit: legacyHit, bounds: textSize, contour: shape => box(textSize(shape)) },
   image: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },
   frame: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },
+  draw: { hit: pointInStroke, bounds: shape => getStrokeGeometry(shape)?.bounds, contour: getStrokeGeometry },
+  highlight: { hit: pointInStroke, bounds: shape => getStrokeGeometry(shape)?.bounds, contour: getStrokeGeometry },
   group: { hit: legacyHit, bounds: () => null, contour: () => null },
   line: connection,
   arrow: connection,
