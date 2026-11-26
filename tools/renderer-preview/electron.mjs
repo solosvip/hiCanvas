@@ -6,6 +6,7 @@ import { measureFrameTitlePerformance } from './frame-title-performance.mjs'
 import { handleSmoke } from './handle-smoke.mjs'
 import { cameraSmoke } from './camera-smoke.mjs'
 import { minimapSmoke } from './minimap-smoke.mjs'
+import { keyboardSmoke } from './keyboard-smoke.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
@@ -90,6 +91,13 @@ function createWindow(key) {
 async function run() {
   try {
     app.dock?.hide()
+    if (manifest.keyboardOnly) {
+      window = createWindow('keyboard')
+      await window.loadURL(`${manifest.url}/?count=500`)
+      samples.push({ keyboard: await keyboardSmoke(window, manifest.output) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.handlesOnly) {
       window = createWindow('handles')
       await window.loadURL(`${manifest.url}/?count=500`)
@@ -153,7 +161,8 @@ async function run() {
       const camera = count === 500 ? await cameraSmoke(window, manifest.output) : undefined
       const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
       const minimap = count === 500 ? await minimapSmoke(window, manifest.output) : undefined
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera, minimap, scalingDispatch })
+      const keyboard = count === 500 ? await keyboardSmoke(window, manifest.output) : undefined
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera, minimap, scalingDispatch, keyboard })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }

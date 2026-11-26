@@ -7,11 +7,11 @@ export function createCameraMotion({ read, change, reduceMotion }) {
   function stop() { animation = velocity = null; change({ needsFrame: false }) }
   return {
     stop,
-    animate(target, now) {
+    animate(target, now, { duration = 220, easeInOut = false } = {}) {
       stop()
       if (!target) return
       if (reduceMotion) { change({ camera: target }); return }
-      animation = { from: read().camera, to: target, start: now, duration: 220 }
+      animation = { from: read().camera, to: target, start: now, duration, easeInOut }
       time = now; change({ needsFrame: true })
     },
     slide(value, now) {
@@ -20,7 +20,8 @@ export function createCameraMotion({ read, change, reduceMotion }) {
     },
     tick(now) {
       if (animation) {
-        const { from, to, start, duration } = animation, progress = Math.min(1, (now - start) / duration), ease = 1 - (1 - progress) ** 3
+        const { from, to, start, duration, easeInOut } = animation, progress = Math.min(1, (now - start) / duration)
+        const ease = easeInOut ? progress < .5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2 : 1 - (1 - progress) ** 3
         const z = 1 / (1 / from.z + (1 / to.z - 1 / from.z) * ease)
         // Interpolate visible canvas centers and reciprocal scale together.
         const camera = { x: from.x + (to.x - from.x) * ease, y: from.y + (to.y - from.y) * ease, z }

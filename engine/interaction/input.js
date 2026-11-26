@@ -15,7 +15,7 @@ export function normalizeInput(input) {
     result.canvasPoint = { x: input.canvasPoint.x, y: input.canvasPoint.y }
   }
   for (const key of ['shiftKey', 'altKey', 'ctrlKey', 'metaKey']) result[key] = Boolean(input[key])
-  if (input.type.startsWith('key_')) return { ...result, key: String(input.key || ''), code: String(input.code || ''), repeat: Boolean(input.repeat) }
+  if (input.type.startsWith('key_')) return { ...result, key: String(input.key || ''), code: String(input.code || ''), repeat: Boolean(input.repeat), isComposing: Boolean(input.isComposing), keyCode: input.keyCode === 229 ? 229 : 0 }
   if (input.type !== 'pointer_cancel' || input.point) {
     if (![input.point?.x, input.point?.y].every(Number.isFinite)) throw new Error('指针需要有限屏幕坐标。')
     result.point = { x: input.point.x, y: input.point.y }

@@ -2,8 +2,18 @@
 // and tool transitions remain in the window-free interaction module.
 export function attachPreviewInput(host, interaction, { onError = () => {} } = {}) {
   const keys = host.ownerDocument?.defaultView || host
+  const document = host.ownerDocument
   const captured = new Set()
-  let lastTime = 0, animation = null, disposed = false
+  let lastTime = 0, animation = null, disposed = false, composing = false
+  const owner = target => {
+    if (target?.closest?.('[data-canvas-input-owner="text-editing"]')) return 'text-editing'
+    // Canvas-owned controls outside the canvas element (the minimap) keep keys on the canvas.
+    if (target?.closest?.('[data-canvas-input-owner="canvas"]')) return 'canvas'
+    if (target?.closest?.('[role="menu"], [role="listbox"], [role="dialog"], dialog')) return 'menu'
+    if (target?.closest?.('input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"])')) return 'form'
+    return !target || target === document?.body || target === host || host.contains?.(target) ? 'canvas' : 'form'
+  }
+  const reportContext = target => interaction.setInputContext({ owner: owner(target), isComposing: composing })
   const point = event => {
     const box = host.getBoundingClientRect?.() || { left: 0, top: 0 }
     return { x: event.clientX - box.left, y: event.clientY - box.top }
@@ -15,8 +25,10 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   }
   function send(input) {
     lastTime = Math.max(lastTime, Number.isFinite(input.time) ? input.time : lastTime)
-    try { Promise.resolve(interaction.dispatch({ ...input, time: lastTime })).catch(onError) } catch (error) { onError(error) }
+    let result
+    try { result = interaction.dispatch({ ...input, time: lastTime }); Promise.resolve(result).catch(onError) } catch (error) { onError(error) }
     wake()
+    return result
   }
   const pointer = type => event => {
     if (type === 'pointer_down') {
@@ -39,22 +51,27 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
     send({ type: 'wheel', time: event.timeStamp, point: point(event), delta: { x: event.deltaX * scale, y: event.deltaY * scale }, ...modifiers(event) })
   }
   const key = type => event => {
-    if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
-    if (event.target?.closest?.('button') && [' ', 'Enter'].includes(event.key)) return
+    reportContext(event.target)
     const name = event.code?.startsWith('Digit') && event.shiftKey ? event.code.slice(5) : event.key
-    if (['Escape', ' ', '=', '+', '-', 'h', 'v', 'z', 'H', 'V', 'Z'].includes(name) || event.shiftKey && ['0', '1', '2'].includes(name)) event.preventDefault()
-    send({ type, time: event.timeStamp, key: name, code: event.code, repeat: event.repeat, ...modifiers(event) })
+    const result = send({ type, time: event.timeStamp, key: name, code: event.code, repeat: event.repeat, isComposing: event.isComposing, keyCode: event.keyCode, ...modifiers(event) })
+    if (result) event.preventDefault()
   }
   const blur = () => {
-    for (const id of captured) if (host.hasPointerCapture?.(id)) host.releasePointerCapture(id)
-    captured.clear(); send({ type: 'key_down', time: 0, key: 'Escape' })
+    for (const id of captured) {
+      if (host.hasPointerCapture?.(id)) host.releasePointerCapture(id)
+      send({ type: 'pointer_cancel', time: 0, pointerId: id })
+    }
+    captured.clear(); composing = false; interaction.setInputContext({ owner: 'form' })
   }
+  const focus = event => reportContext(event.target === keys ? document?.activeElement || host : event.target)
+  const focusout = event => reportContext(event.relatedTarget || document?.body)
+  const composition = active => event => { composing = active; reportContext(event.target) }
   const resize = () => { if (host.clientWidth && host.clientHeight) interaction.setViewport({ w: host.clientWidth, h: host.clientHeight }) }
   const pointerListeners = { pointerdown: pointer('pointer_down'), pointermove: pointer('pointer_move'), pointerup: pointer('pointer_up'), pointercancel: pointer('pointer_cancel'), lostpointercapture: lost }
-  const keyListeners = { keydown: key('key_down'), keyup: key('key_up'), blur, resize }
+  const keyListeners = { keydown: key('key_down'), keyup: key('key_up'), focus, focusin: focus, focusout, compositionstart: composition(true), compositionend: composition(false), blur, resize }
   for (const [type, listener] of Object.entries(pointerListeners)) host.addEventListener(type, listener)
   for (const [type, listener] of Object.entries(keyListeners)) keys.addEventListener(type, listener)
-  host.addEventListener('wheel', wheel, { passive: false }); resize()
+  host.addEventListener('wheel', wheel, { passive: false }); resize(); reportContext(document?.activeElement || host)
   return {
     wake,
     dispatch: send,
@@ -66,6 +83,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
     getCamera: () => ({ ...interaction.state.get().camera }),
     resetCamera(camera) { interaction.setCamera(camera) },
     dispose() {
+      if (disposed) return
       blur(); disposed = true
       if (animation !== null) keys.cancelAnimationFrame?.(animation)
       for (const [type, listener] of Object.entries(pointerListeners)) host.removeEventListener(type, listener)
