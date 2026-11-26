@@ -3,6 +3,7 @@ import { react } from '@tldraw/state'
 import { createEditorSession, createCanvasInteraction } from '../../engine/index.js'
 import { mountCanvasRenderer } from '../../renderer/index.js'
 import { createGallery } from './gallery.js'
+import { createConnectionGallery } from './arrow-gallery.js'
 import { attachPreviewInput } from './input.js'
 import { memoryTransport, previewTransport } from './transport.js'
 
@@ -25,7 +26,8 @@ Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.f
 
 try {
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
-  if (gallery) metadata = createGallery(gallery)
+  if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
+  else if (gallery) metadata = createGallery(gallery)
   else {
     const response = await fetch(`/__renderer_fixture?count=${encodeURIComponent(params.get('count') || '500')}`)
     if (!response.ok) throw new Error('合成规模仅支持 500、2000、5000。')

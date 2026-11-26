@@ -6,8 +6,10 @@ import { Geometry } from './geo.js'
 import { colorPaint } from './palette.js'
 import { Embed } from './embed.js'
 import { FrameState } from './frame-state.js'
+import { Connection } from './connection.js'
 
 const colorOf = props => colorPaint(props).stroke
+const connectionTypes = { line: Connection, arrow: Connection }
 
 const Children = memo(function Children({ scene, parentId }) {
   const ids = useValue('child ids', () => scene.ids(parentId), [scene, parentId])
@@ -32,7 +34,8 @@ const Shape = memo(function Shape({ scene, id }) {
     h(FrameState, { shape, key: 'generation-state' })
   ]
   else {
-    if (getShapeBounds(shape)) body = ['embed', 'bookmark'].includes(shape.type) ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : h(Geometry, { shape, key: 'body' })
+    if (connectionTypes[shape.type]) body = h(connectionTypes[shape.type], { scene, shape, key: 'body' })
+    else if (getShapeBounds(shape)) body = ['embed', 'bookmark'].includes(shape.type) ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : h(Geometry, { shape, key: 'body' })
     body = [body, h(Children, { scene, parentId: id, key: 'children' })]
   }
   return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: shape.opacity ?? 1 } }, body)
