@@ -9,6 +9,10 @@ const projectRoot = fileURLToPath(new URL('../', import.meta.url))
 const dataPackages = /^@tldraw\/(?:store|tlschema|state|state-react|utils|validate)(?:\/|$)/
 const textPackages = /^(?:fontkit|linebreak|unicode-segmenter)(?:\/|$)/
 const reactPackages = /^(?:react|react-dom)(?:\/|$)/
+const captureImports={
+  'capture-render.js':['html2canvas/dist/lib/dom/document-cloner.js'],
+  'capture-clip-fix.js':['html2canvas/dist/lib/index.js','html2canvas/dist/lib/render/stacking-context.js','html2canvas/dist/lib/render/effects.js','html2canvas/dist/lib/render/bound-curves.js','html2canvas/dist/lib/render/path.js'],
+}
 const domGlobals = new Set(['window', 'document', 'navigator', 'self', 'location', 'history', 'screen', 'Element', 'Node', 'Text', 'Image', 'Audio', 'Event', 'EventTarget', 'ImageData', 'Path2D', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver', 'OffscreenCanvas', 'customElements', 'localStorage', 'sessionStorage', 'CSS'])
 const isDomName = name => domGlobals.has(name) || /^(?:DOM|HTML|SVG|Canvas|WebGL|CSS|XML|XPath)[A-Z][A-Za-z0-9]*$/.test(name || '') || /^(?:Mouse|Pointer|Keyboard|Wheel|Touch|Input|Focus|Drag|Clipboard|Custom|Animation|Transition|Message)Event$/.test(name || '')
 
@@ -45,7 +49,7 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
       const imported=/^(?:ImportDeclaration|ExportAllDeclaration|ExportNamedDeclaration|ImportExpression)$/.test(node.type)?node.source:node.type==='CallExpression'&&node.callee?.type==='Import'?node.arguments[0]:null
       if(imported){
         const target=typeof imported.value==='string'&&imported.value.startsWith('.')?relative(channelRoot,resolve(channelRoot,dirname(file),imported.value)):null
-        if(!target||target.startsWith('..')||target.startsWith('/'))throw new Error(`内容通道越界引用：${file}`)
+        if((!target||target.startsWith('..')||target.startsWith('/'))&&!captureImports[file]?.includes(imported.value))throw new Error(`内容通道越界引用：${file}`)
       }
       for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value)
     }

@@ -13,6 +13,7 @@ import { creationSmoke } from './creation-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
 import { imageSmoke } from './image-smoke.mjs'
+import {captureSmoke} from '../content-host/capture-smoke.mjs'
 import {channelSmoke} from '../content-host/channel-smoke.mjs'
 import { drawSmoke } from './draw-smoke.mjs'
 
@@ -128,6 +129,14 @@ async function run() {
       samples.push({ handles: await handleSmoke(window, manifest.output), cameraLayout: await cameraLayoutProbe(true) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if(manifest.contentCaptureOnly){
+      window=createWindow('content-capture')
+      const result=await captureSmoke(window,manifest)
+      check(blocked.length===0,`截图回归不应请求公网：${blocked.join('; ')}`)
+      check(errors.length===0,`截图回归控制台错误：${errors.join('; ')}`)
+      await writeFile(manifest.result,JSON.stringify({...result,errors,blocked,runtime:process.versions},null,2))
+      window.destroy();app.exit(0);return
     }
     if(manifest.contentChannelOnly){
       window=createWindow('content-channel')

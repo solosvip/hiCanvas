@@ -11,9 +11,10 @@ const stage = join(root, 'build', 'desktop-stage')
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 await mkdir(join(stage, 'runtime'), { recursive: true })
 await mkdir(join(stage, 'desktop'), { recursive: true })
-// 所有服务端依赖打入应用；仅 Node 内建模块与 Electron 保持外部引用。
+// 服务端依赖打入应用；Node/Electron 保持外部引用。esbuild 只用于源码宿主，
+// 桌面已预打包 capture.js，运行时不会导入它（独立新进程回归守住）。
 for (const [entry, output] of [['desktop/main.mjs', 'desktop/main.mjs'], ['bin/hicanvas-service.mjs', 'runtime/service.mjs'], ['bin/hicanvas-mcp.mjs', 'runtime/mcp.mjs']]) {
-  await build({ entryPoints: [join(root, entry)], outfile: join(stage, output), bundle: true, platform: 'node', format: 'esm', target: 'node24', external: ['electron'], banner: { js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);" } })
+  await build({ entryPoints: [join(root, entry)], outfile: join(stage, output), bundle: true, platform: 'node', format: 'esm', target: 'node24', external: ['electron','esbuild'], banner: { js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);" } })
 }
 await cp(join(root, 'desktop/preload.cjs'), join(stage, 'desktop/preload.cjs'))
 await cp(join(root, 'skills'), join(stage, 'skills'), { recursive: true })

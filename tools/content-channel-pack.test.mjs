@@ -1,7 +1,7 @@
 import './test-sandbox.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {mkdtemp,mkdir,rm,readdir} from 'node:fs/promises'
+import {mkdtemp,mkdir,rm,readdir,readFile} from 'node:fs/promises'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {join} from 'node:path'
 import {execFile} from 'node:child_process'
@@ -14,12 +14,15 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
   t.after(()=>rm(stage,{recursive:true,force:true}))
   await mkdir(join(stage,'runtime'))
   await stageContentChannelAssets(stage)
-  assert.deepEqual((await readdir(join(stage,'content-channel'))).sort(),['bootstrap.js','child.js','film-controller.js','film-time.js','protocol.js'])
-  await build({entryPoints:[fileURLToPath(new URL('../server/content-host.mjs',import.meta.url))],outfile:join(stage,'runtime/host.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
+  assert.deepEqual((await readdir(join(stage,'content-channel'))).sort(),['bootstrap.js','capture-protocol.js','capture.js','child.js','film-controller.js','film-time.js','protocol.js'])
+  await build({entryPoints:[fileURLToPath(new URL('../server/content-host.mjs',import.meta.url))],outfile:join(stage,'runtime/host.mjs'),bundle:true,platform:'node',format:'esm',external:['esbuild'],logLevel:'silent'})
   // Fresh Node process also proves the packaged module is independent of the
   // source process' module cache. The generated script has a fixed literal import.
   const script=`
-    import {createContentHost} from ${JSON.stringify(pathToFileURL(join(stage,'runtime/host.mjs')).href)};
+    import {registerHooks} from 'node:module';
+    import {fileURLToPath} from 'node:url';
+    registerHooks({resolve(specifier,context,next){const result=next(specifier,context);if(!result.url.startsWith('node:')&&!fileURLToPath(result.url).startsWith(${JSON.stringify(stage+'/')}))throw new Error('禁止借用源码或node_modules: '+result.url);return result}});
+    const {createContentHost}=await import(${JSON.stringify(pathToFileURL(join(stage,'runtime/host.mjs')).href)});
     import http from 'node:http';
     const host=createContentHost();
     try {
@@ -27,7 +30,7 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
       const url=new URL(instance.url);
       const get=path=>new Promise((resolve,reject)=>{http.get({hostname:'127.0.0.1',port:url.port,path,headers:{host:url.host}},res=>{let text='';res.on('data',part=>{text+=part});res.on('end',()=>resolve({status:res.statusCode,text}))}).once('error',reject)});
       const page=await get(url.pathname),bootstrap=page.text.match(/src="([^"]+)"/)[1];
-      console.log(JSON.stringify({script:await get(bootstrap),privateStatus:(await get('/.hicanvas-channel/'+instance.id+'/parent.js')).status}));
+      console.log(JSON.stringify({script:await get(bootstrap),capture:await get('/.hicanvas-channel/'+instance.id+'/capture.js'),privateStatus:(await get('/.hicanvas-channel/'+instance.id+'/parent.js')).status}));
     }finally{await host.close()}
   `
   const {stdout}=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{timeout:10000})
@@ -35,4 +38,10 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
   assert.equal(result.script.status,200)
   assert.match(result.script.text,/installContentChild/)
   assert.equal(result.privateStatus,404)
+  const {readChannelAssets}=await import('../server/content-channel-assets.mjs')
+  const source=new Map(await readChannelAssets()).get('capture.js')
+  assert.equal(result.capture.status,200)
+  assert.equal(result.capture.text,source.toString('utf8'))
+  assert.equal(await readFile(join(stage,'content-channel/capture.js'),'utf8'),source.toString('utf8'))
+  assert.match(result.capture.text,/hiCanvas capture-bundle sha256:[a-f0-9]{64}/)
 })

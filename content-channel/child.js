@@ -1,25 +1,27 @@
+import {CAPTURE_TIMEOUT} from './capture-protocol.js'
 import {attachCowartFilmController} from './film-controller.js'
 import {PROTOCOL_VERSION,MAX_MESSAGE_BYTES,messageSize,validMessage,createRateLimit} from './protocol.js'
 
 // This code runs in the content realm. It never receives a parent object or a
 // callable capability over the wire; CowartFilm and DOM stay in this realm.
 export function installContentChild(host,{instanceId,parentOrigin}){
-  let current=null,disposed=false
+  let current=null,disposed=false,capturing=false
   const allowConnect=createRateLimit()
   function disconnect(){
     const session=current
     if(!session)return
     current=null;clearTimeout(session.statusTimer);clearInterval(session.legacyTimer)
+    for(const task of session.pending.values())task.abort?.abort()
     session.pending.clear();session.controller?.dispose()
     try{session.port.postMessage({...session.base,type:'close'})}catch{/* Port already detached. */}
-    session.port.close()
+    if(!session.captures)session.port.close()
   }
   function connect(event){
     const data=event.data
     if(disposed||event.source!==host.parent||event.origin!==parentOrigin||!allowConnect()||messageSize(data)>MAX_MESSAGE_BYTES||!validMessage(data,instanceId)||data.type!=='connect'||event.ports?.length!==1)return
     disconnect()
     const port=event.ports[0],base={protocol:PROTOCOL_VERSION,instance:instanceId,generation:data.generation}
-    const session={port,base,pending:new Map(),statusTimer:null,legacyTimer:null,lastStatusAt:-Infinity,controller:null,status:null,legacy:false,receiveLegacy:null}
+    const session={port,base,pending:new Map(),statusTimer:null,legacyTimer:null,lastStatusAt:-Infinity,controller:null,status:null,legacy:false,receiveLegacy:null,captures:0}
     current=session
     const allow=createRateLimit(),allowLegacy=createRateLimit(),allowPoll=createRateLimit(1)
     const post=message=>{if(current===session)port.postMessage({...base,...message})}
@@ -37,12 +39,34 @@ export function installContentChild(host,{instanceId,parentOrigin}){
       const message=event.data
       if(current!==session||messageSize(message)>MAX_MESSAGE_BYTES||!validMessage(message,instanceId,data.generation))return
       if(message.type==='close'){disconnect();return}
-      if(message.type==='cancel'){session.pending.delete(message.id);return}
+      if(message.type==='cancel'){session.pending.get(message.id)?.abort?.abort();session.pending.delete(message.id);return}
       if(message.type==='pause'){session.controller?.command('pause');return}
       if(message.type==='legacy-status'){if(session.legacy&&allowLegacy())session.receiveLegacy?.(message.value);return}
       if(message.type==='legacy-poll'){if(session.legacy&&allowPoll())messageTransport.post('status');return}
       if(!allow())return
       if(message.type!=='request'||session.pending.has(message.id))return
+      if(message.command==='capture'){
+        if(capturing){post({type:'response',id:message.id,ok:false,error:'截图忙，请稍后重试。'});post({type:'capture-end',id:message.id});return}
+        capturing=true;session.captures++
+        const task={abort:new AbortController()};session.pending.set(message.id,task)
+        const timer=setTimeout(()=>{
+          if(!task.abort.signal.aborted){post({type:'response',id:message.id,ok:false,error:'截图等待素材或渲染超时。'});task.abort.abort()}
+        },CAPTURE_TIMEOUT)
+        import('./capture.js').then(({captureDocument})=>captureDocument(host,message.value,task.abort.signal)).then(value=>{
+          if(current!==session||task.abort.signal.aborted||session.pending.get(message.id)!==task){value.pixels.transfer?.(0);return}
+          try{port.postMessage({...base,type:'capture-result',id:message.id,value},[value.pixels])}catch{disconnect()}
+        },error=>{
+          if(current===session&&!task.abort.signal.aborted&&session.pending.get(message.id)===task)post({type:'response',id:message.id,ok:false,error:String(error.message||error).slice(0,256)})
+        }).finally(()=>{
+          clearTimeout(timer);if(session.pending.get(message.id)===task)session.pending.delete(message.id)
+          capturing=false;session.captures--
+          // Retired sessions send only this receipt. No old pixels or status can
+          // cross back after close; the parent keeps its memory lease until here.
+          try{port.postMessage({...base,type:'capture-end',id:message.id})}catch{/* Detached. */}
+          if(current!==session&&!session.captures)port.close()
+        })
+        return
+      }
       // The list is validated by protocol.js before any film code is called.
       const task={};session.pending.set(message.id,task)
       Promise.resolve().then(()=>{
