@@ -11,6 +11,7 @@ import { Note } from './note.js'
 import { Connection } from './connection.js'
 import { Stroke } from './stroke.js'
 import { BackgroundLayer } from './backgrounds.js'
+import { ImageShape as Image } from './image.js'
 
 const drawings = Object.freeze({ draw: { body: Stroke }, highlight: { body: Stroke, background: Stroke } })
 
@@ -21,11 +22,6 @@ const Children = memo(function Children({ scene, parentId, camera }) {
   const ids = useValue('child ids', () => scene.ids(parentId), [scene, parentId])
   return ids.map(id => h(Shape, { scene, id, camera, key: id }))
 })
-
-function Image({ scene, props }) {
-  const asset = useValue('image asset', () => props.assetId ? scene.store.get(props.assetId) : undefined, [scene, props.assetId])
-  return h('img', { src: asset?.props.src || undefined, alt: props.altText || '', width: props.w, height: props.h, draggable: false, decoding: 'async' })
-}
 
 const Shape = memo(function Shape({ scene, id, camera }) {
   const shape = useValue('shape record', () => scene.store.get(id), [scene, id])

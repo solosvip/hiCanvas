@@ -19,3 +19,12 @@ html, body { margin: var(--spacing-none); overflow: hidden; background: var(--co
 .hicanvas-minimap-canvas[data-dragging='true'] { cursor: grabbing; }
 .hicanvas-minimap-canvas:focus-visible { outline: var(--spacing-overlay-selection-stroke) solid var(--color-primary); outline-offset: var(--spacing-xs); }
 #navigation:has(.minimap-panel:not([hidden])) button[data-action='return-content'] { bottom: calc(100% + var(--spacing-minimap-height) + var(--spacing-sm) * 4); }
+#image-tools { position: fixed; bottom: calc(var(--image-navigation-height, calc(var(--spacing-xl) * 3)) + var(--spacing-sm) * 2); left: var(--spacing-sm); display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-xs); padding: var(--spacing-sm); border-radius: var(--radius-md); background: var(--color-surface); max-width: calc(100% - var(--spacing-xl)); }
+#image-tools button, #image-tools select { font: inherit; color: var(--color-on-surface); background: var(--color-neutral); border: none; border-radius: var(--radius-sm); padding: var(--spacing-sm); min-height: calc(var(--spacing-xl) + var(--spacing-lg) + var(--spacing-xs)); cursor: pointer; }
+#image-tools button:hover { background: var(--color-on-neutral); color: var(--color-surface); }
+#image-tools :is(button, select, input):focus-visible { outline: var(--spacing-xs) solid var(--color-on-neutral); outline-offset: var(--spacing-xs); }
+#image-tools :disabled { color: var(--color-secondary); cursor: default; }
+#image-tools [hidden] { display: none; }
+#image-tools label { display: flex; align-items: center; gap: var(--spacing-xs); min-height: calc(var(--spacing-xl) + var(--spacing-lg) + var(--spacing-xs)); }
+#image-tools input[type='range'] { width: calc(var(--spacing-xl) * 5); accent-color: var(--color-primary); }
+#image-tools input[type='checkbox'] { accent-color: var(--color-primary); }

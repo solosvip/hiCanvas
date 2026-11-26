@@ -11,6 +11,8 @@ import { createFrameTitleFixture } from './frame-title-fixture.js'
 import { attachPreviewInput } from './input.js'
 import { attachNavigationUi } from './navigation-ui.js'
 import { attachMinimapUi } from './minimap-ui.js'
+import { createImageGallery } from './image-fixtures.js'
+import { attachImageUi } from './image-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 
 let ready = false, renderer, controls, metadata, interaction, session, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0
@@ -21,7 +23,8 @@ const getState = () => {
   const state = interaction?.state.get()
   return Object.freeze({ ready, error: failure, count: metadata?.count || 0, counts: metadata ? Object.freeze({ ...metadata.counts }) : null, camera: state ? { ...state.camera } : null,
     selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling, shortcutsEnabled: state?.shortcutsEnabled, inputContext: state ? { ...state.inputContext } : null,
-    selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h } }).filter(Boolean),
+    croppingId: state?.croppingId || null, cropZoom: state?.cropZoom || 0,
+    selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
     revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
     overlays: state ? structuredClone(state.overlays) : [], snapshotReads, renderedShapes: host.querySelectorAll('[data-shape-id]').length, imageCount: host.querySelectorAll('img').length, decodedImages })
@@ -39,6 +42,7 @@ try {
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
   else if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
+  else if (gallery === 'images') metadata = createImageGallery()
   else if (gallery?.startsWith('note-') || gallery === 'frame-titles') metadata = createNoteGallery(gallery)
   else if (gallery) metadata = gallery.startsWith('stroke-') ? createStrokeGallery(gallery) : createGallery(gallery)
   else {
@@ -59,7 +63,7 @@ try {
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
   interaction = createCanvasInteraction({ session, camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
-  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame })
+  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1' })
   disposers.push(() => renderer.unmount())
   const instructions = `${metadata.count} 个合成元素 · 点选／Shift 加减选 · 空白拖框 · 拖动移动 · 角点／边线缩放 · 角外旋转 · Shift 等比／15° · Alt 中心缩放 · H 手形／空格平移 · Z 缩放 · ⇧0/1/2 · ⌘/Ctrl Z 撤销 · Esc 取消${metadata.persistent ? ' · 松手保存' : ' · 临时预览，刷新还原'}`
   const showError = error => { status.textContent = `操作失败：${error.message}` }
@@ -69,10 +73,12 @@ try {
   disposers.push(() => controls.dispose())
   const minimap = attachMinimapUi(navigation.element, host, interaction, { store: session.store, pageId: metadata.viewState.currentPageId, dispatch: input => controls.dispatch(input), onError: showError })
   disposers.push(() => minimap.dispose())
+  const images = gallery === 'images' ? attachImageUi(host, interaction, session, renderer, showError, params.get('reduceMotion') === '1') : null
+  if (images) disposers.push(() => images.dispose())
   const stop = react('preview interaction view', () => {
     const state = interaction.state.get()
     renderer.setCamera(state.camera); renderer.setOverlays(state.overlays)
-    navigation.update(state); controls?.wake()
+    navigation.update(state); images?.update(state); controls?.wake()
     minimap.update(state)
     const error = state.lastError || session.state.get().lastError
     const message = error ? `操作失败：${error.message}` : ready ? instructions : status.textContent

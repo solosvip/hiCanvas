@@ -67,12 +67,18 @@ export function attachMinimapUi(toolbar, host, interaction, { store, pageId, dis
   const click = () => { wanted = !wanted; safeSync() }
   const blur = () => { const ids = [...captured]; release(); for (const pointerId of ids) dispatch({ type: 'pointer_cancel', time: 0, target: 'minimap', pointerId }) }
   button.addEventListener('click', click); win.addEventListener('blur', blur)
-  const resize = new win.ResizeObserver(safeSync); resize.observe(host); safeSync()
+  // Mounting the minimap resizes #navigation, which sits outside the observed
+  // host. Doing that inside this callback leaves other observers of #navigation
+  // undelivered (Chromium reports a ResizeObserver loop error), so run it in the
+  // next task. Not requestAnimationFrame: an idle offscreen window may produce
+  // no further frame, and the button would never appear (#139 smoke).
+  let pending = null
+  const resize = new win.ResizeObserver(() => { if (pending === null) pending = win.setTimeout(() => { pending = null; safeSync() }, 0) }); resize.observe(host); safeSync()
   return {
     update(state) { if (view && state.minimap) { view.setView(state.minimap.layout, state.selectedIds); view.element.dataset.dragging = String(state.minimap.dragging) } },
     dispose() {
       if (disposed) return
-      disposed = true; resize.disconnect(); release(); interaction.setMinimap(null)
+      disposed = true; resize.disconnect(); if (pending !== null) win.clearTimeout(pending); release(); interaction.setMinimap(null)
       for (const stop of stops.splice(0)) stop()
       view?.unmount(); button.removeEventListener('click', click); win.removeEventListener('blur', blur); button.remove(); panel.remove()
     },

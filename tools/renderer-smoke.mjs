@@ -16,20 +16,26 @@ const executable = process.env.HICANVAS_TEST_ELECTRON || join(electronDir, 'dist
 await access(executable, constants.X_OK)
 await mkdir(output, { recursive: true })
 const runtime = await mkdtemp(join(output, 'runtime-'))
-let preview
+let preview, child, childClosed
 try {
   await runContentHostSmoke()
   preview = await startRendererPreview({ geometryFixtures: true })
   const manifest = join(runtime, 'manifest.json')
   await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(runtime, 'profile'), output, result: join(output, 'result.json') }))
   const code = await new Promise((accept, reject) => {
-    const child = spawn(executable, [resolve(root, 'tools/renderer-preview/electron.mjs'), manifest], { cwd: root, env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined }, stdio: 'inherit' })
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('离屏验证超过 120 秒。')) }, 120000)
+    child = spawn(executable, [resolve(root, 'tools/renderer-preview/electron.mjs'), manifest], { cwd: root, env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined }, stdio: 'inherit' })
+    childClosed = new Promise(resolve => child.once('close', resolve))
+    // Each merged gallery adds settled native captures; a loaded machine pushed
+    // the full run past 120 s (#139). Keep every assertion, allow the run to finish.
+    let timedOut = false
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, 240000)
     child.once('error', error => { clearTimeout(timer); reject(error) })
-    child.once('exit', code => { clearTimeout(timer); accept(code) })
+    child.once('close', code => { clearTimeout(timer); timedOut ? reject(new Error('离屏验证超过 240 秒。')) : accept(code) })
   })
   if (code !== 0) throw new Error(`离屏验证失败（${code}），详见 ${join(output, 'result.json')}。`)
   console.log(`结果、三档画板与两张图鉴截图：${output}`)
 } finally {
+  if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+  await childClosed
   try { await preview?.close() } finally { await rm(runtime, { recursive: true, force: true }) }
 }
