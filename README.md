@@ -231,6 +231,10 @@ npm run renderer:smoke
 
 文字合成图鉴用 `/?gallery=text-editing`，完整格式保留样本用 `/?gallery=text-formatted`：双击文字、几何、箭头标签或画框标题进入编辑，选中后 Enter 也可进入；双击空白直接写字，T 点击自动宽、长拖固定宽。Esc、Mod+Enter 和画布外部点击保存当前会话，画框标题也支持普通 Enter；组字期间不完成。清空普通文字会删除它，清空标签或标题只清字段；新空文字退出不留历史。一次编辑、样式切换和自动大小合为一次画板撤销；编辑内撤销由文本视图处理。保存等待期间只读，失败恢复草稿。这里的 Esc 保存与画笔 Esc 丢弃分别遵循各自事务。
 
+便签合成图鉴用 `/?gallery=note-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `note` 后，N 或工具栏创建固定纸面便签，双击编辑。选中便签四边的「+」在邻位创建并编辑；编辑时 Tab/Shift+Tab 横向续建（尊重 RTL），Mod+Enter/Mod+Shift+Enter 向下/上续建，已有邻居直接复用。源文与一次键盘续建合为一次提交/撤销；下一张便签的输入另算一次。拖动单张便签时，在同层、同角度、同比例便签的相邻位置局部吸附，半径严格小于10 CSS px，Esc 取消移动及指示；全局吸附开关归 #128。
+
+宿主可传 `displayName: string | null`；第一次实际输入（含空格）才写入首位编辑者，显示首名、提示完整名，清空移除署名。仅查看已有无署名文字不会认领；后续编辑保留已有作者。缺少显示名保持空值，编辑层不查询账号、系统或运行时身份。预览可用 `displayName` 查询参数传合成姓名。登记专用端口并设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_NOTE_PORT=43386 node tools/renderer-preview/note-check.mjs`；原生创建、署名、续建、缩放布局和吸附守卫写入 `.scratch/note-smoke/`，也纳入 `npm run renderer:smoke`。`npm run check` 自动执行便签事务回归。正式应用尚未切换，署名 SVG 导出不在本单。
+
 连接线合成图鉴用 `/?gallery=connection-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `line`、`arrow` 后，可从工具栏创建，L 选择线条（A 继续用于 AI 图片）。拖端点移动或绑定，Alt 精确绑定、Ctrl 忽略绑定；拖中柄调整弧度或折肘，拖线条段间圆点加顶点。拖标签沿现有路径移动，双击继续使用同一文字会话；双击箭头端点在 none/arrow 间切换。线条点击创建后可 Shift 连续点击延伸；Q 保持工具后，拖画的线条也可继续加点。每次手势单次撤销，Esc 取消活动预览。
 
 可选 `controlPointSnapping: boolean` 默认 false，Ctrl 在当前手势中反转它；吸附自身非邻接顶点/线段及其他可见几何控制点和轮廓，指示只在会话覆盖层。它暂不提供 #128 的总开关或偏好系统。停留约 300ms 转精确锚点；控制点吸附半径为8 CSS px，落在旧版原生样本测得的7.62–8.54px区间内，精确阈值未断言。绑定对象移动/缩放后连接跟随，删除时保留可见端点，撤销恢复绑定；独立无界面命令宿主须先按下文准备字体，尤其是删除文字、便签或含文字组的绑定目标时，真实轮廓依赖其排版。

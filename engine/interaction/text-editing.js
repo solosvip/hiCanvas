@@ -4,14 +4,15 @@ import { isEqual } from '@tldraw/utils'
 import { captureCreationParent } from './creation-parent.js'
 import { getShapeTextLayout } from '../../renderer/geometry.js'
 import { textCreationProps } from './creation-presets.js'
+import { createNoteAuthor } from './note-author.js'
 
-const supported = new Set(['text', 'geo', 'arrow', 'frame'])
+const supported = new Set(['text', 'geo', 'arrow', 'frame', 'note'])
 const contentOf = shape => shape.type === 'frame' ? shape.props.name : shape.props.richText
 const propsFor = (shape, content) => shape.type === 'frame' ? { name: content } : { richText: content }
 const containers = new Set(['doc', 'paragraph', 'heading', 'hardBreak', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock'])
 const hasContent = node => node?.type === 'text' ? Boolean(node.text?.trim()) : !containers.has(node?.type) || (node.content || []).some(hasContent)
 const styleValues = { size: ['s', 'm', 'l', 'xl'], font: ['draw', 'sans', 'serif', 'mono'], textAlign: ['start', 'middle', 'end'], align: ['start', 'middle', 'end'], verticalAlign: ['start', 'middle', 'end'] }
-const styleKeys = { text: ['size', 'font', 'textAlign'], geo: ['size', 'font', 'align', 'verticalAlign'], arrow: ['size', 'font'] }
+const styleKeys = { text: ['size', 'font', 'textAlign'], geo: ['size', 'font', 'align', 'verticalAlign'], arrow: ['size', 'font'], note: ['size', 'font', 'align', 'verticalAlign'] }
 function freeze(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value) }
   return value
@@ -21,6 +22,7 @@ function freeze(value) {
 // only when `epoch` changes, never from each Store preview or state update.
 export function createTextEditing(context) {
   const { session, index, targets, read, change, report, prepare, inputContext } = context
+  const noteAuthor = createNoteAuthor(context.displayName)
   let active = null, epoch = 0
   const publish = () => change({ textEditing: active && freeze(structuredClone({ id: active.id, kind: active.kind, epoch: active.epoch, content: active.content, selection: active.selection, conflict: active.conflict, isSaving: Boolean(active.saving) })), mode: active ? 'text-editing' : 'idle' })
   const canBegin = id => supported.has(index.getRecord(id)?.type) && targets.isSelectable(id)
@@ -29,7 +31,7 @@ export function createTextEditing(context) {
     const shape = index.getRecord(id)
     if (!canBegin(id)) return false
     if (!adopt) { prepare(); session.beginGesture() }
-    active = { id, kind: shape.type, epoch: ++epoch, content: structuredClone(contentOf(shape)), original: structuredClone(contentOf(shape)), previewed: structuredClone(contentOf(shape)), revision: session.state.get().revision, selection: null, conflict: null }
+    active = { id, kind: shape.type, epoch: ++epoch, content: structuredClone(contentOf(shape)), original: structuredClone(contentOf(shape)), previewed: structuredClone(contentOf(shape)), originalAuthor: shape.props.textFirstEditedBy ?? null, previewedAuthor: shape.props.textFirstEditedBy ?? null, revision: session.state.get().revision, authorExisted: session.store.has(noteAuthor.recordId), selection: null, conflict: null }
     change({ selectedIds: [id] }); publish()
     inputContext({ owner: 'text-editing' })
     return true
@@ -60,13 +62,25 @@ export function createTextEditing(context) {
     const shape = index.getRecord(active.id)
     if (!shape || shape.type !== active.kind) active.conflict = { type: 'deleted', revision: status.revision }
     else if (!isEqual(contentOf(shape), active.original) && (!status.isGestureActive || !isEqual(contentOf(shape), active.previewed))) active.conflict = { type: 'content', revision: status.revision, remote: structuredClone(contentOf(shape)) }
+    // A refreshed attribution is part of the remote baseline too. A local
+    // erase/restore may return the text to its original value; it must neither
+    // remove the original author nor overwrite a newly received author.
+    if (shape?.type === 'note' && (!status.isGestureActive || shape.props.textFirstEditedBy !== active.previewedAuthor)) active.originalAuthor = shape.props.textFirstEditedBy ?? null
     publish()
   }
   function preview() {
     if (!session.state.get().isGestureActive) session.beginGesture()
     const shape = index.getRecord(active.id)
-    session.preview([{ type: 'update', id: active.id, changes: { props: propsFor(shape, active.content) } }])
+    const changedText = !isEqual(active.content, active.original)
+    const attribution = shape.type !== 'note' ? null : changedText ? noteAuthor.describe(shape, active.content, session.store) : {
+      author: active.originalAuthor, commands: [],
+    }
+    // A draft typed then erased must not leave an unused, newly-previewed
+    // author as its only saved change. Never delete a previously saved user.
+    const removeUnused = attribution && attribution.author !== noteAuthor.id && !active.authorExisted && session.store.has(noteAuthor.recordId)
+    session.preview([...(attribution?.commands || []), { type: 'update', id: active.id, changes: { props: { ...propsFor(shape, active.content), ...(attribution && { textFirstEditedBy: attribution.author }) } } }, ...(removeUnused ? [{ type: 'delete', ids: [noteAuthor.recordId] }] : [])])
     active.previewed = structuredClone(active.content)
+    active.previewedAuthor = attribution?.author ?? null
   }
   function changeProps(id, props) {
     if (active && active.id !== id) throw new CanvasEditError('请先结束当前文字编辑。', 'busy')
@@ -90,7 +104,7 @@ export function createTextEditing(context) {
     preview()
     if (active.kind === 'text' && !hasContent(active.content)) session.preview([{ type: 'delete', ids: [active.id] }])
   }
-  async function finish() {
+  async function finish(extraCommands = []) {
     if (!active) return false
     const editing = active
     sync()
@@ -101,6 +115,8 @@ export function createTextEditing(context) {
       // then replay over the latest record with its revision, at most once.
       for (let attempt = 0; ; attempt++) {
         finalPreview()
+        const extra = typeof extraCommands === 'function' ? extraCommands() : extraCommands
+        if (extra.length) session.preview(extra)
         active.saving = true; publish()
         try {
           const result = await session.commitGesture()

@@ -3,6 +3,7 @@ import { CanvasEditError } from '../errors.js'
 import { createScribble } from './scribble.js'
 import { createHandleGesture } from './handle-gesture.js'
 import { hitSelectionHandle, selectionHandleCursor } from './selection-handles.js'
+import { connectionCoordinates } from './connection-coordinates.js'
 
 // Screen CSS pixels, independent of zoom. 2026-11-25 对照运行中的旧版逐帧观察。
 const threshold = 4
@@ -13,6 +14,7 @@ export function createSelectionTool(context) {
   const handles = createHandleGesture(context)
   let gesture = null
   function cancel() {
+    context.noteSnapping.clear()
     handles.cancel()
     if (!gesture) return
     const previous = gesture; gesture = null
@@ -42,7 +44,7 @@ export function createSelectionTool(context) {
     gesture.starts = selectedIds.filter(id => {
       for (let r = index.getRecord(index.getRecord(id)?.parentId); r?.typeName === 'shape'; r = index.getRecord(r.parentId)) if (selected.has(r.id)) return false
       return targets.isSelectable(id)
-    }).map(id => { const r = index.getRecord(id); return { id, x: r.x, y: r.y } })
+    }).map(id => { const r = index.getRecord(id); return { id, x: r.x, y: r.y, page: connectionCoordinates(index, id).page({ x: 0, y: 0 }) } })
     gesture.expected = captureRecords(gesture.starts)
   }
   function move(input) {
@@ -71,9 +73,10 @@ export function createSelectionTool(context) {
     // unrelated remote records may change without cancelling this gesture.
     if (!session.state.get().isGestureActive || [...gesture.expected].some(([id, value]) => JSON.stringify(index.getRecord(id)) !== value)) throw new CanvasEditError('拖动目标已被其他操作更改，本次拖动已取消。', 'conflict')
     gesture.kind = 'dragging'
-    const delta = { x: point.x - gesture.start.x, y: point.y - gesture.start.y }
+    let delta = { x: point.x - gesture.start.x, y: point.y - gesture.start.y }
     // Legacy native Shift toggles live and can change dominant axis mid-drag.
     if (input.shiftKey) delta[Math.abs(delta.x) > Math.abs(delta.y) ? 'y' : 'x'] = 0
+    delta = context.noteSnapping.preview(gesture.starts, delta)
     gesture.lastInput = input
     const commands = gesture.starts.map(start => {
       const local = index.parentDelta(start.id, delta)
@@ -89,6 +92,7 @@ export function createSelectionTool(context) {
     // Pointerup can carry the last coalesced position even without a move frame.
     if (input.point) move(input)
     gesture = null
+    context.noteSnapping.clear()
     if (previous.kind === 'pointing' && previous.hit) {
       if (!previous.additive) change({ selectedIds: [previous.hit] })
       else if (previous.toggle) change({ selectedIds: read().selectedIds.filter(id => id !== previous.hit) })

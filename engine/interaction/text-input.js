@@ -25,9 +25,9 @@ export function createTextInput(context, editing) {
     }
     if (!input.type.startsWith('key_') || state.inputContext.owner !== 'text-editing') return { handled: false }
     if (state.inputContext.isComposing || input.isComposing || input.keyCode === 229) return { handled: false }
-    // A second native/CDP observation (2026-11-26, explicit Meta/Ctrl and
-    // Return char) did not finish the old editor. E21 requires Mod+Enter;
-    // implement that inventory contract, pending real-user confirmation.
+    // 2026-11-26 native Mod+Enter on notes finishes the source and continues
+    // below (handled by note editing). Ordinary text still had no legacy
+    // completion positive; retain E21's explicit Mod+Enter finish contract.
     const complete = input.key === 'Escape' || input.key === 'Enter' && (state.textEditing.kind === 'frame' || input.metaKey || input.ctrlKey)
     return complete ? { handled: true, result: input.type === 'key_down' && !input.repeat ? editing.finish() : true } : { handled: false }
   }

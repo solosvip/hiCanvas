@@ -23,6 +23,7 @@ import { checkShapeCompositing } from './compositing-guard.mjs'
 import { checkCameraGeometry } from './camera-geometry-guard.mjs'
 import { checkOpaqueBorderCut } from './clip-negative-guard.mjs'
 import { actionsSmoke } from './actions-smoke.mjs'
+import { noteSmoke } from './note-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -104,6 +105,14 @@ function createWindow(key) {
 async function run() {
   try {
     app.dock?.hide()
+    if (manifest.notesOnly) {
+      window = createWindow('note-editing')
+      await window.loadURL(`${manifest.url}/?gallery=note-editing&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ notes: await noteSmoke(window, manifest.output) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.connectionsOnly) {
       window = createWindow('connection-editing')
       await window.loadURL(`${manifest.url}/?gallery=connection-editing&edgeScrolling=0`)
@@ -303,6 +312,13 @@ async function run() {
       await window.loadURL(`${manifest.url}/?gallery=connection-editing&edgeScrolling=0`)
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
       samples.push({ connections: await connectionSmoke(window, manifest.output) })
+      window.destroy(); window = undefined
+    }
+    if (!manifest.galleries || manifest.galleries.includes('note-editing')) {
+      window = createWindow('note-editing')
+      await window.loadURL(`${manifest.url}/?gallery=note-editing&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ notes: await noteSmoke(window, manifest.output) })
       window.destroy(); window = undefined
     }
     for (const gallery of ['stroke-styles', 'stroke-details', 'stroke-highlights', 'stroke-transforms']) {

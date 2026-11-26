@@ -1,11 +1,16 @@
 import { textLayout } from './text.js'
 import { geoLabelLayout } from './geo-label.js'
 import { getConnectionGeometry } from './connection-geometry.js'
+import { noteLayout } from './note-layout.js'
 
 // Pure local-coordinate text placement, shared by painting and editing.
 // Title natural width is a host measurement (ADR0011), never saved geometry.
 export function getShapeTextLayout(shape, context, { zoom = 1, titleWidth } = {}) {
   if (shape.type === 'geo') return geoLabelLayout(shape.props)
+  if (shape.type === 'note') {
+    const layout = noteLayout(shape.props)
+    return { ...layout, x: 16, y: layout.lines[0]?.top ?? 16, w: layout.paperWidth - 32, h: layout.lines.length * layout.lineHeight, font: shape.props.font, align: shape.props.align, autoSize: false }
+  }
   if (shape.type === 'text') {
     const layout = textLayout(shape.props)
     return { ...layout, x: 0, y: 0, w: layout.w / layout.scale, h: layout.h / layout.scale, font: shape.props.font, align: shape.props.textAlign, autoSize: shape.props.autoSize }

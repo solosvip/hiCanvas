@@ -2,7 +2,7 @@ import { Editor } from '@tiptap/core'
 import { canvasTextExtensions } from './text-schema.js'
 import { canvasFontStyle } from './font-families.js'
 import { getShapeTextLayout, shapeToPagePoint, createConnectionContext } from './geometry.js'
-import { colorPaint } from './palette.js'
+import { colorPaint, noteLabelPaint } from './palette.js'
 import { measureFrameTitle } from './frame-title-measure.js'
 
 // A view owns its live document/selection. update() seeds it only on entry;
@@ -78,7 +78,8 @@ export function createTextEditingView(element, store, callbacks = {}) {
     for (let record = shape; record?.typeName === 'shape'; record = store.get(record.parentId)) records[record.id] = record
     const layout = getShapeTextLayout(shape, connections, { zoom: camera.z, titleWidth: shape.type === 'frame' ? measureFrameTitle(shape.props.name) : undefined })
     const geo = shape.type === 'geo', scale = layout.scale || 1
-    const origin = shapeToPagePoint({ store: records }, shape.id, { x: geo ? layout.padding : layout.x, y: layout.y })
+    const originScale = shape.type === 'note' ? scale : 1
+    const origin = shapeToPagePoint({ store: records }, shape.id, { x: (geo ? layout.padding : layout.x) * originScale, y: layout.y * originScale })
     const angle = Object.values(records).reduce((sum, record) => sum + (record.rotation || 0), 0)
     const paint = colorPaint({ color: ['geo', 'arrow'].includes(shape.type) ? shape.props.labelColor : shape.props.color })
     Object.assign(view.node.style, {
@@ -89,7 +90,7 @@ export function createTextEditingView(element, store, callbacks = {}) {
       fontFamily: layout.font ? canvasFontStyle(layout.font).fontFamily : 'system-ui',
       fontSize: `${layout.size}px`, lineHeight: `${layout.lineHeight}px`,
       textAlign: layout.align?.includes('middle') ? 'center' : layout.align?.startsWith('end') ? 'end' : 'start',
-      color: paint.text,
+      color: shape.type === 'note' ? noteLabelPaint(shape.props) : paint.text,
     })
     for (const [name, weight, italic] of [['bold', 700, 'normal'], ['italic', 400, 'italic'], ['bold-italic', 700, 'italic']]) view.node.style.setProperty(`--canvas-text-${name}-axes`, canvasFontStyle(layout.font, weight, italic).fontVariationSettings)
     view.node.dataset.textConflict = value.conflict?.type || ''
