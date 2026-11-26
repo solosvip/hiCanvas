@@ -2,14 +2,22 @@ import { executeCanvasCommands } from '../../engine/index.js'
 
 // Used only by the original fixture/gallery preview. Persistent editing uses
 // the same interaction/runtime through the isolated HTTP host below.
-export function memoryTransport(snapshot) {
+export function memoryTransport(snapshot, { history = false } = {}) {
   let saved = snapshot, revision = 0
+  const past = [], future = []
   const read = async () => ({ snapshot: saved, revision: String(revision) })
+  const move = (from, to) => async ({ expectedRevision }) => {
+    if (expectedRevision !== String(revision)) throw Object.assign(new Error('合成画板版本已改变。'), { code: 'conflict' })
+    if (from.length) { to.push(saved); saved = from.pop(); revision++ }
+    return { ...await read(), changes: { added: {}, updated: {}, removed: {} }, results: [] }
+  }
   return {
     read, subscribe: () => () => {},
+    ...(history && { undo: move(past, future), redo: move(future, past) }),
     async commit({ expectedRevision, commands }) {
       if (expectedRevision !== String(revision)) throw Object.assign(new Error('合成画板版本已改变。'), { code: 'conflict' })
       const result = executeCanvasCommands(saved, commands)
+      if (history) { past.push(saved); future.length = 0 }
       saved = result.snapshot; revision++
       return { ...result, revision: String(revision) }
     },

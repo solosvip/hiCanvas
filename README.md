@@ -210,6 +210,8 @@ npm run renderer:smoke
 
 需要验证松手保存和刷新恢复时，先登记另一个专用端口，再运行 `node tools/renderer-preview/service.mjs --port 43368`，打开 `http://127.0.0.1:43368/?count=500`（也支持 2000、5000）。这个独立宿主只监听 `127.0.0.1`，只用本工作区 `.scratch/interaction-preview/` 下的合成资料；支持点选、Shift 加减选、空白拖框、拖动移动和 Esc 取消，松手整次保存，刷新恢复位置。撤销和重做统一由后续 #82 接入。
 
+手绘验证使用同一隔离宿主的 `/?gallery=draw-input`：D/B/X 画笔，Shift+D 荧光笔，Shift 自由／直线接段，Esc 丢弃当前未提交笔画；检测到笔输入后可用「退出手写笔模式」恢复鼠标。该合成图鉴只保存在内存中，刷新还原，支持整笔撤销和重做。设置 `HICANVAS_TEST_ELECTRON` 指向已有 Electron 可执行文件并登记专用端口后，运行 `HICANVAS_DRAW_PORT=43398 node tools/renderer-preview/draw-check.mjs`；原生手绘、CDP pen 压感、真实退出按钮、叠色和三档缩放结果写入 `.scratch/draw-smoke/`。高频硬件采样与真实手写板仍需人工验收。
+
 预览入口是 `tools/renderer-preview/index.html`，独立 Vite 配置只扫描这个入口；正式构建仍从根 `index.html` 进入，桌面只复制正式 `dist/`，因此预览页不进入应用产物。合成规则复用性能基线的坐标、相机、尺寸、60% 几何／20% 文本／20% 图片构成及 16 张本地 PNG；保留三角形、菱形和 semi 填充，不再转换为矩形和实心。滚轮平移、Ctrl+滚轮或触控板捏合缩放只实现在预览页。只读观察接口 `window.__HICANVAS_RENDERER_PREVIEW__.getState()` 返回 `ready`、`error`、`camera`、`count`、`counts`、`renderedShapes`、`imageCount`、`decodedImages` 的副本，不暴露存储或修改接口；`ready` 等到全部形状、字体和图片解码完成后置为真，供后续测量工具读取。
 
 本地字体由 `renderer/index.js` 的 `prepareCanvasFonts(document, { onWarning })` 准备：宿主先等待成功，再挂载。它从 `renderer/fonts/files/` 加载13份作者原始字体，为16种粗细／斜体注册样式；任一失败会拒绝，宿主应显示错误并允许重试。手写字体使用作者 Shantell 1.011 可变字体的 C 拟合实例，CSS 和 fontkit 共用 `renderer/font-families.js` 的轴值，字形接近旧版但不完全一致。来源、固定提交、SHA-256、轴值及许可见 `licenses/fonts-sources.txt`。启动时用少量合成字复核系统字体类常量，偏差超过0.5px会在控制台警告；宿主通过 `onWarning` 保存本机日志，预览会写入 `.scratch/renderer-font-calibration.log`，日志失败不阻止使用。

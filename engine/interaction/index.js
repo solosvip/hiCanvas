@@ -15,6 +15,8 @@ import { createMinimapInteraction } from './minimap.js'
 import { checkedInputContext, createKeyboardInput } from './keyboard-input.js'
 import { createImageCrop } from './image-crop.js'
 import { createClickCounter } from './click-count.js'
+import { createDrawTool, createHighlightTool } from './draw.js'
+import { createDrawShortcuts } from './draw-shortcuts.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -23,7 +25,7 @@ import { createClickCounter } from './click-count.js'
 // setter on focus/composition changes. Only canvas-owned keys reach tools.
 // Products choose allowed tools from this registry; tool state never enters the
 // document Store. Future tools get the same normalized input and context.
-export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool })
+export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, draw: createDrawTool, highlight: createHighlightTool })
 
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
@@ -35,7 +37,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const initial = session.store.allRecords(), activePage = pageId || initial.find(r => r.typeName === 'page')?.id
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage, initial)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
-  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
+  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
   let disposed = false, tool, navigation, minimap, keyboard, cropTool, selectionKeys, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
@@ -77,8 +79,10 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
   selectionKeys = createSelectionShortcuts(context)
+  const drawKeys = createDrawShortcuts({ toolIds, setTool })
   tool = canvasToolRegistry[read().toolId](context)
   keyboard = createKeyboardInput({ read, change, releaseKeys: () => { cancelTool(); navigation.releaseKeys() },
+    releaseKey: key => tool.releaseKey?.(key),
     cancelPointer: () => { cancelTool(); cropTool.cancel(); minimap.cancel(); navigation.cancelPan() }, dispatchPointer: dispatchCore,
     isBusy: () => session.state.get().isGestureActive || session.state.get().isSubmitting })
   const stop = session.store.addHistoryInterceptor(({ changes }) => {
@@ -106,6 +110,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (input.type === 'key_down' && input.key === 'Escape') countClicks = createClickCounter()
     if (minimap.handle(input)) { navigation.finishFrame(); return input.type.startsWith('key_') ? true : undefined }
     if (selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
+    if (drawKeys.handle(input)) { navigation.finishFrame(); return true }
     if (input.type === 'frame') tool.frame?.(input.time)
     const routed = navigation.handle(input)
     const event = routed.replay || input
@@ -120,6 +125,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   return Object.freeze({
     state: Object.freeze({ get: read }),
     setTool(id) { assertActive(); setTool(id) },
+    setPenMode(enabled) { assertActive(); cancelTool(); change({ isPenMode: Boolean(enabled) }) },
     setWrapMode(enabled) { assertActive(); change({ isWrapMode: Boolean(enabled) }) },
     select(action) { assertActive(); if (session.state.get().isSubmitting) return false; navigation.cancel(); cancelTool(); return selectionNavigation.run(action) },
     setInputContext(value) { assertActive(); keyboard.context(value) },

@@ -6,7 +6,7 @@ export function checkedInputContext(value = { owner: 'canvas' }) {
 
 // Hosts report focus/composition; this module owns routing, including future
 // #132 text editing. No host event or document record enters this state.
-export function createKeyboardInput({ read, change, releaseKeys, cancelPointer, dispatchPointer, isBusy }) {
+export function createKeyboardInput({ read, change, releaseKeys, releaseKey, cancelPointer, dispatchPointer, isBusy }) {
   let point = null, virtualPointer = false
   const onCanvas = () => read().inputContext.owner === 'canvas' && !read().inputContext.isComposing
   function cancel() {
@@ -32,6 +32,9 @@ export function createKeyboardInput({ read, change, releaseKeys, cancelPointer, 
       return { input }
     }
     if (!input.type.startsWith('key_')) return { input }
+    // Release session-local continuation even if a form/composition, disabled
+    // shortcut gate or pending commit will reject the key as an action.
+    if (input.type === 'key_up') releaseKey?.(input.key)
     if (!onCanvas() || input.isComposing || input.keyCode === 229) { cancel(); return { handled: false } }
     // Legacy #122 (native focused canvas, 2026-11-26): disabling ordinary
     // shortcuts retains Space+Arrow panning and Escape cancellation (H24).
