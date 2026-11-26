@@ -2,6 +2,9 @@
 // CSS screen coordinates relative to the canvas host; never raw host events.
 // pointer_*: point, pointerId, pointerType, pressure, button, buttons, modifiers.
 // key_*: key, code, repeat, modifiers. wheel: point, delta in CSS pixels, modifiers.
+// clickCount is editor-derived after normalization (click-count.js); hosts do not supply it.
+// double_click is only for the minimap widget: the host forwards the native dblclick there
+// so the OS double-click speed applies. Canvas tools must use clickCount instead.
 const types = new Set(['pointer_down', 'pointer_move', 'pointer_up', 'pointer_cancel', 'key_down', 'key_up', 'wheel', 'frame', 'double_click'])
 export function normalizeInput(input) {
   if (!input || !types.has(input.type)) throw new Error('未知画布输入。')

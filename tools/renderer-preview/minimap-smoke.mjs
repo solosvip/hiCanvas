@@ -16,7 +16,11 @@ export async function minimapSmoke(window, output) {
   const center = box => ({ x: Math.round(box.x + box.w / 2), y: Math.round(box.y + box.h / 2) })
   const reset = async camera => { await evaluate(`window.__HICANVAS_RENDERER_PREVIEW__.resetCamera(${JSON.stringify(camera)});void 0`); await frames() }
   const toggler = '[data-action="minimap"]', canvas = '[data-minimap-canvas]'
-  await click(center(await rect(toggler))); await until(async () => (await state()).minimap)
+  // The previous step may have just restored a wide window. The button reappears
+  // in the task after the host resize (minimap-ui defers its resize sync), so a
+  // rect read straight away can still be the hidden, zero-sized button (#139).
+  const shown = await until(async () => { const box = await rect(toggler); return box.w > 0 && box.h > 0 && box })
+  await click(center(shown)); await until(async () => (await state()).minimap)
   const revision = (await state()).revision, selected = (await state()).selectedIds, cases = []
   const clean = async () => { const value = await state(); check(value.revision === revision && JSON.stringify(value.selectedIds) === JSON.stringify(selected) && !value.submitting && !value.lastError, '小地图输入改变了文档、选择或出错') }
   for (const camera of [{ x: 0, y: 0, z: 1 }, { x: 100, y: 50, z: 1 }, { x: 0, y: 0, z: 2 }]) {
