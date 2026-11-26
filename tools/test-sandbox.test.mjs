@@ -4,7 +4,7 @@ import test from 'node:test'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { canvasDir } from '../server/storage.mjs'
 import { imageSettingsDirectory } from '../server/image-settings-path.mjs'
 import { desktopConfigDir } from '../mcp/connection.mjs'
@@ -92,4 +92,19 @@ test('npm 使用的强制测试退出方式也会清理沙箱', t => {
   assert.equal(result.status, 0, result.stdout + result.stderr)
   const root = JSON.parse(readFileSync(record, 'utf8'))
   assert.equal(existsSync(root), false, '测试结束后不能遗留被强制退出进程的临时资料')
+})
+
+test('导入沙箱时建好仓库 .scratch，干净检出里的测试可以直接在其中建临时目录', () => {
+  const checkout = mkdtempSync(join(tmpdir(), 'hicanvas-clean-checkout-'))
+  try {
+    mkdirSync(join(checkout, 'tools'))
+    writeFileSync(join(checkout, 'tools', 'test-sandbox.mjs'), readFileSync(new URL('./test-sandbox.mjs', import.meta.url)))
+    assert.equal(existsSync(join(checkout, '.scratch')), false)
+    const probe = `await import(${JSON.stringify(new URL('file://' + join(checkout, 'tools', 'test-sandbox.mjs')).href)}); const { mkdtempSync } = await import('node:fs'); mkdtempSync(${JSON.stringify(join(checkout, '.scratch', 'probe-'))})`
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(existsSync(join(checkout, '.scratch')), true)
+  } finally {
+    rmSync(checkout, { recursive: true, force: true })
+  }
 })

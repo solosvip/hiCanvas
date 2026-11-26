@@ -26,5 +26,7 @@ if (!globalThis[initialized]) {
     const suffix = name.replace(/^(?:HICANVAS|COWART)_/, '')
     process.env[name] = directories[suffix] || join(root, 'directories', name)
   }
+  // 测试的临时材料放仓库 .scratch/（不进 Git）。干净检出（如 CI）里没有这个目录，在这里统一建好，测试可以直接 mkdtemp。
+  mkdirSync(new URL('../.scratch/', import.meta.url), { recursive: true })
   globalThis[initialized] = root
 }
