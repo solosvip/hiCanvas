@@ -173,14 +173,15 @@ test('图片翻转切换像素方向，文字保持可读；双次镜像逐值�
   }
 })
 
-test('紧凑排布确定落点、间隔与选择顺序无关；已对齐只返回实际变化', () => {
+test('紧凑排布整体居中、同尺寸保留选择顺序；已对齐只返回实际变化', () => {
   const initial = executeCanvasCommands(createCanvasSnapshot(), [shape('A', { x: 10.25, y: 20.125 }), shape('B', { x: 100, y: 80 }), shape('C', { x: 180, y: 140 })]).snapshot
   const command = { type: 'pack_shapes', gap: 10, ids: selected }
   const result = run(initial, command)
-  close(bounds(result.snapshot, 'A').x, 10.25); close(bounds(result.snapshot, 'A').y, 20.125)
-  close(bounds(result.snapshot, 'B').x, 10.25); close(bounds(result.snapshot, 'B').y, 60.125)
-  close(bounds(result.snapshot, 'C').x, 10.25); close(bounds(result.snapshot, 'C').y, 100.125)
-  assert.deepEqual(run(initial, { ...command, ids: [...selected].reverse() }).snapshot, result.snapshot)
+  close(bounds(result.snapshot, 'A').x, 45.125); close(bounds(result.snapshot, 'A').y, 80.0625)
+  close(bounds(result.snapshot, 'B').x, 95.125); close(bounds(result.snapshot, 'B').y, 80.0625)
+  close(bounds(result.snapshot, 'C').x, 145.125); close(bounds(result.snapshot, 'C').y, 80.0625)
+  const reversed = run(initial, { ...command, ids: [...selected].reverse() }).snapshot
+  close(bounds(reversed, 'A').x, 145.125); close(bounds(reversed, 'B').x, 95.125); close(bounds(reversed, 'C').x, 45.125)
   const aligned = run(initial, { type: 'align_shapes', ids: selected, alignment: 'left' })
   assert.deepEqual(aligned.results, [{ shapeIds: [id('B'), id('C')] }])
   const repeat = run(aligned.snapshot, { type: 'align_shapes', ids: selected, alignment: 'left' })

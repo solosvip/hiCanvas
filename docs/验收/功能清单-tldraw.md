@@ -468,7 +468,7 @@ H27 的全部 locale：`id, ms, ca, cs, da, de, en, es, tl, fr, gl, hr, it, hu, 
 | TL-B27 | 已实现适用状态 | 活动移动／缩放／画笔Enter不提前完成，松手提交；Esc只取消当前预览。画笔／荧光笔空闲Esc退选择工具、保留选择。`action-history.test.mjs`、`selection-actions.test.mjs`及既有工具取消回归。 |
 | TL-B31/B32 | 已实现 | 适配框动作显式留白50，内容画布位置不动；移除框选直接内容。命令padding默认0不变。`action-commands.test.mjs`、`action-history.test.mjs`。 |
 | TL-C01–C12 | 已实现 | 六对齐、双轴拉伸／分布／堆排，堆排显式间距10；分布和堆排至少三项，双选仍可拉伸。`action-history.test.mjs`、`selection-actions.test.mjs`及既有命令层排版回归。 |
-| TL-C13 | 部分 | 动作接现有`pack_shapes`，间距10；旧版原生菜单同输入的排列次序与整体位置仍不同，交 #154 补齐。这是未完成项，不是有意差异。 |
+| TL-C13 | 已实现 | `pack_shapes`按画布外框高度、宽度升序，同尺寸保留选择顺序；原选择宽度约束换行，结果整体居中。动作间距10，直接命令默认间距仍16；两者使用同一排法。#154隔离旧版原生菜单28组读数（不同数量／尺寸／位置、重叠、旋转、缩放及换行临界值）逐组由`server/engine-pack.test.mjs`守住坐标、一次撤销重做和重复执行；原生动作守卫检查精确落点及整次撤销重做。 |
 | TL-C14/C15 | 已实现 | 双轴镜像复用既有命令，旋转组的既定有意差异仍见上表。`action-history.test.mjs`及既有组镜像回归。 |
 | TL-C16–C19 | 已实现 | 置顶置底不变；前移／后移传`mode:overlapping`，只跨过碰到任一已选对象的下一同级对象，保留已选相对顺序；边角接触算重叠，选择外框空隙不算。命令默认adjacent不变。`action-commands.test.mjs`、`action-history.test.mjs`。 |
 | TL-I12及跨工具冲突 | 已实现编辑层接线 | 表单、菜单、组字和关闭快捷键先拦截键盘；程序动作拒绝提交中／活动手势／裁剪／文字编辑。Option+A的key=å用code识别；Shift H/V、旋转逗号、对象缩放组合各有唯一拥有者。`action-shortcuts.test.mjs`枚举真实声明表，联合既有键盘／选择／创建／画笔／裁剪／视角回归。 |
