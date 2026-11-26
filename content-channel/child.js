@@ -1,3 +1,4 @@
+import {installSlideNavigation} from './slides.js'
 import {releaseBinary,filmAudioStepBudget} from './film-export-protocol.js'
 import {CAPTURE_TIMEOUT} from './capture-protocol.js'
 import {editCommand,largeResultCommand,releaseEditSnapshot} from './edit-protocol.js'
@@ -13,7 +14,7 @@ export function installContentChild(host,{instanceId,parentOrigin}){
     const session=current
     if(!session)return
     current=null;clearTimeout(session.statusTimer);clearTimeout(session.editTimer);clearInterval(session.legacyTimer)
-    session.editAbort.abort();session.editController?.dispose()
+    session.stopSlides?.();session.editAbort.abort();session.editController?.dispose()
     for(const task of session.pending.values())task.abort?.abort()
     session.pending.clear();session.controller?.dispose();session.filmExport?.disposeFilmExport(host)
     try{session.port.postMessage({...session.base,type:'close'})}catch{/* Port already detached. */}
@@ -122,6 +123,7 @@ export function installContentChild(host,{instanceId,parentOrigin}){
     }
     port.onmessageerror=()=>{if(current===session)disconnect()}
     port.start()
+    if(data.options.slides)session.stopSlides=installSlideNavigation(host,value=>{if(allow())post({type:'slide-nav',value})})
     // Only old cowart-film message films use this compatibility entry. New
     // content uses Port. #118 must review this sole remaining window ingress.
     const messageTransport={

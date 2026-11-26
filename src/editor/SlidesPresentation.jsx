@@ -62,7 +62,12 @@ function CowartSlidesPresentationOverlay() {
     (delta) => setIndex((value) => Math.max(0, Math.min(total - 1, value + delta))),
     [total]
   )
-  const handleUnhandledHtmlClick = useCallback(() => go(1), [go])
+  const handleUnhandledHtmlClick = useCallback((direction = 'next') => {
+    const delta = direction === 'previous' ? -1 : 1
+    if (index + delta < 0 || index + delta >= total) return false
+    go(delta)
+    return true
+  }, [go, index, total])
   useEffect(() => {
     if (!slidesShapeId) return undefined
     function handleKeyDown(event) {

@@ -13,12 +13,14 @@ function CowartExportMenu({ disabled = false, onExportHtml, onExportImage, onExp
   const [status, setStatus] = useState('idle')
   const [progress, setProgress] = useState(null)
   const [exportError, setExportError] = useState(null)
+  const [exportNotice, setExportNotice] = useState(null)
   const exportAbortRef = useRef(null)
   useEffect(() => {
     setIsOpen(false)
     setStatus('idle')
     setProgress(null)
     setExportError(null)
+    setExportNotice(null)
     return () => exportAbortRef.current?.abort()
   }, [targetKey])
   useEffect(() => {
@@ -48,11 +50,13 @@ function CowartExportMenu({ disabled = false, onExportHtml, onExportImage, onExp
     setStatus('sending')
     setProgress(null)
     setExportError(null)
+    setExportNotice(null)
     const controller = new AbortController()
     exportAbortRef.current = controller
     try {
-      await exporter(setProgress, controller.signal)
+      const result = await exporter(setProgress, controller.signal)
       if (controller.signal.aborted) return
+      if (result?.externalResources?.length) setExportNotice(`导出完成；${result.externalResources.length} 项在线资源需要联网：${result.externalResources.join('，')}`)
       setStatus('sent')
     } catch (error) {
       if (controller.signal.aborted) return
@@ -66,7 +70,7 @@ function CowartExportMenu({ disabled = false, onExportHtml, onExportImage, onExp
   const title = status === 'sending'
     ? progress === null ? '正在导出' : `正在渲染影片 ${Math.round(progress * 100)}%`
     : status === 'sent'
-      ? '导出完成'
+      ? exportNotice || '导出完成'
       : status === 'error'
         ? exportError || '导出失败，请重试'
         : COWART_EXPORT_LABEL

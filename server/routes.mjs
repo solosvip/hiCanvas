@@ -43,7 +43,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
         return events.subscribe(id, req, res)
       }
       requireLocalRequest(req)
-      if (path === '/api/content-host/instances') return await content.handle(req, res)
+      if (['/api/content-host/instances','/api/content-host/slides-export'].includes(path)) return await content.handle(req, res)
       if (path === '/api/conversations' && req.method === 'GET') return sendJson(res, 200, { conversations: await workspace.list() })
       if (path === '/api/conversations/open' && req.method === 'POST') {
         const conversation = await workspace.open(await jsonBody(req))

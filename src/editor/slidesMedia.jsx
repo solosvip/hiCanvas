@@ -1,3 +1,4 @@
+import {isInteractiveSlideClick,contentSandbox} from '../../content-channel/index.js'
 import { loadGeneratedFrame } from '../../renderer/index.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { useEditor } from "tldraw"
@@ -5,36 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import { hasCowartWidgetBridge, readCowartPageAsset } from "../cowartClient.js"
 import { hydrateCowartHtmlDraftLocalImages, isCowartHtmlDraftDataUrl, cowartHtmlDraftAssetUrlFromVirtualUrl, blobFromBase64 } from './assets.jsx'
 import { isCowartHtmlDraftEmbedShape, isImageShape } from './holderMeta.jsx'
-function isInteractiveHtmlClick(event) {
-  if (event.defaultPrevented || event.cancelBubble) return true
-  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return true
-  const interactiveSelector = [
-    'a[href]',
-    'button',
-    'input',
-    'select',
-    'textarea',
-    'summary',
-    'video',
-    'audio',
-    'canvas',
-    '[contenteditable="true"]',
-    '[onclick]',
-    '[role="button"]',
-    '[role="link"]',
-    '[role="menuitem"]',
-    '[role="tab"]'
-  ].join(',')
-  const target = event.target
-  if (target?.closest?.(interactiveSelector)) return true
-  const win = target?.ownerDocument?.defaultView
-  let element = target?.nodeType === 1 ? target : target?.parentElement
-  while (element && element !== target?.ownerDocument?.documentElement) {
-    if (win?.getComputedStyle(element).cursor === 'pointer') return true
-    element = element.parentElement
-  }
-  return false
-}
+const isInteractiveHtmlClick=isInteractiveSlideClick
 function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
   const editor = useEditor()
   const iframeClickCleanupRef = useRef(null)
@@ -118,6 +90,13 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
   function handleHtmlFrameLoad(event) {
     iframeClickCleanupRef.current?.()
     iframeClickCleanupRef.current = null
+    if(source?.frame?.bind){
+      // The isolated channel intentionally unifies data: and file-backed
+      // slides. OFF retains data: opacity and its inherited click limitation.
+      const channel=source.frame.bind(event.currentTarget,{slides:!!onUnhandledHtmlClick})
+      if(onUnhandledHtmlClick)iframeClickCleanupRef.current=channel.subscribeNavigation(direction=>onUnhandledHtmlClick(direction))
+      return
+    }
     if (!onUnhandledHtmlClick) return
     try {
       const iframeDocument = event.currentTarget.contentDocument
@@ -150,7 +129,7 @@ function CowartSlidesMedia({ onUnhandledHtmlClick, shape, title }) {
         className="cowart-slides-media"
         frameBorder="0"
         onLoad={handleHtmlFrameLoad}
-        sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
+        sandbox={contentSandbox(true)}
         {...source.frame?.attributes}
         tabIndex={-1}
         title={title}

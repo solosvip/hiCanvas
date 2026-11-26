@@ -7,7 +7,7 @@ export const MAX_MESSAGES_PER_SECOND=60
 export const MAX_REPLY_MESSAGES_PER_SECOND=120
 export const MAX_PENDING_REQUESTS=32
 export const REQUEST_TIMEOUT=3000
-export const CHILD_ASSETS=Object.freeze(['bootstrap.js','child.js','protocol.js','film-controller.js','film-time.js','capture-protocol.js','capture.js','film-export-protocol.js','film-export.js','edit-protocol.js','edit.js'])
+export const CHILD_ASSETS=Object.freeze(['bootstrap.js','child.js','protocol.js','film-controller.js','film-time.js','capture-protocol.js','capture.js','film-export-protocol.js','film-export.js','edit-protocol.js','edit.js','slides.js','content-policy.js','offline-slides.js'])
 
 const plain=value=>value!==null&&typeof value==='object'&&[Object.prototype,null].includes(Object.getPrototypeOf(value))
 const exact=(value,keys)=>plain(value)&&Object.keys(value).every(key=>keys.includes(key))
@@ -38,9 +38,10 @@ export function validMessage(value,instance,generation){
   if(value.type==='ready')return exact(value,[...base,'legacy'])&&(value.legacy===undefined||typeof value.legacy==='boolean')
   if(['close','pause','legacy-poll','edit-exit'].includes(value.type))return exact(value,base)
   if(value.type==='legacy-status')return exact(value,[...base,'value'])&&validLegacyStatus(value.value)
-  if(value.type==='connect')return exact(value,[...base,'options'])&&exact(value.options,['duration','muted','film'])&&finite(value.options.duration)&&value.options.duration>0&&value.options.duration<=86400&&typeof value.options.muted==='boolean'&&typeof value.options.film==='boolean'
+  if(value.type==='connect')return exact(value,[...base,'options'])&&exact(value.options,['duration','muted','film','slides'])&&finite(value.options.duration)&&value.options.duration>0&&value.options.duration<=86400&&typeof value.options.muted==='boolean'&&typeof value.options.film==='boolean'&&(value.options.slides===undefined||typeof value.options.slides==='boolean')
   if(value.type==='request')return exact(value,[...base,'id','command','value'])&&identifier(value.id)&&validCommand(value.command,value.value)
   if(['cancel','capture-end'].includes(value.type))return exact(value,[...base,'id'])&&identifier(value.id)
+  if(value.type==='slide-nav')return exact(value,[...base,'value'])&&['next','previous'].includes(value.value)
   if(value.type==='status')return exact(value,[...base,'value'])&&validStatus(value.value)
   if(value.type==='edit-status')return exact(value,[...base,'value'])&&validEditState(value.value)
   if(value.type==='edit-state-result')return exact(value,[...base,'id','value'])&&identifier(value.id)&&validEditState(value.value)
