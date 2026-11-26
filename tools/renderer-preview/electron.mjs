@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { measureFrameTitlePerformance } from './frame-title-performance.mjs'
 import { handleSmoke } from './handle-smoke.mjs'
 import { cameraSmoke } from './camera-smoke.mjs'
+import { minimapSmoke } from './minimap-smoke.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
@@ -150,7 +151,8 @@ async function run() {
       }
       const camera = count === 500 ? await cameraSmoke(window, manifest.output) : undefined
       const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera })
+      const minimap = count === 500 ? await minimapSmoke(window, manifest.output) : undefined
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera, minimap })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }

@@ -10,6 +10,7 @@ import { createNoteGallery } from './note-fixtures.js'
 import { createFrameTitleFixture } from './frame-title-fixture.js'
 import { attachPreviewInput } from './input.js'
 import { attachNavigationUi } from './navigation-ui.js'
+import { attachMinimapUi } from './minimap-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 
 let ready = false, renderer, controls, metadata, interaction, session, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0
@@ -22,6 +23,7 @@ const getState = () => {
     selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling,
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h } }).filter(Boolean),
     revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, lastError: state?.lastError || session?.state.get().lastError || null,
+    minimap: state?.minimap ? structuredClone(state.minimap) : null,
     overlays: state ? structuredClone(state.overlays) : [], snapshotReads, renderedShapes: host.querySelectorAll('[data-shape-id]').length, imageCount: host.querySelectorAll('img').length, decodedImages })
 }
 Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.freeze({ getState, getCamera: () => controls?.getCamera() || null, resetCamera: camera => {
@@ -63,10 +65,15 @@ try {
   const showError = error => { status.textContent = `操作失败：${error.message}` }
   const navigation = attachNavigationUi(host, interaction, showError, (...args) => controls.navigate(...args))
   disposers.push(() => navigation.dispose())
+  controls = attachPreviewInput(host, interaction, { onError: showError })
+  disposers.push(() => controls.dispose())
+  const minimap = attachMinimapUi(navigation.element, host, interaction, { store: session.store, pageId: metadata.viewState.currentPageId, dispatch: input => controls.dispatch(input), onError: showError })
+  disposers.push(() => minimap.dispose())
   const stop = react('preview interaction view', () => {
     const state = interaction.state.get()
     renderer.setCamera(state.camera); renderer.setOverlays(state.overlays)
     navigation.update(state); controls?.wake()
+    minimap.update(state)
     const error = state.lastError || session.state.get().lastError
     const message = error ? `操作失败：${error.message}` : ready ? instructions : status.textContent
     if (status.textContent !== message) status.textContent = message
@@ -74,8 +81,6 @@ try {
     if (metadata.persistent) cameraTimer = setTimeout(() => { void transport.saveCamera({ ...metadata.viewState, camera: state.camera }).catch(showError) }, 200)
   })
   disposers.push(stop)
-  controls = attachPreviewInput(host, interaction, { onError: showError })
-  disposers.push(() => controls.dispose())
   window.addEventListener('pagehide', cleanup, { once: true })
   await document.fonts.ready
   await Promise.all([...host.querySelectorAll('img')].map(async image => { await image.decode(); decodedImages++ }))
