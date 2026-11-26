@@ -68,11 +68,11 @@
 | C29 | 按指定页数生成幻灯片（适配） | 界面：幻灯片提示面板，页数菜单/自定义页数→发送 | 页数与参考图进入请求；自定义页数 1–50，Agent 逐页 HTML 写进同一容器，页序元数据明确。 | `CowartAiSlidesGenerationPanel`；[generationRequests.jsx](../../src/editor/generationRequests.jsx) `sendAiSlidesGenerationRequest`；[generationPrompts.jsx](../../src/editor/generationPrompts.jsx) `buildAiSlidesGenerationPrompt` | 部分 T01：多页 HTML 归属及排列；无页数面板、生成页数满足要求的回归。 |
 | C30 | 图片与 HTML 混排、拖入与粘贴 | 界面：将图片/网页拖进 Slides；选中 Slides 后粘贴 | 同一套 Slides 可含图片与 HTML；粘贴内容归入选中的容器，保留作品资源；不只是截图拼图。 | [slidesLayout.jsx](../../src/editor/slidesLayout.jsx) `preparePastedItemForAiSlides`、`movePastedItemsIntoAiSlides`、`copySelectedCowartContent` | 无：拖入、复制粘贴及混排。 |
 | C31 | 幻灯片自动排版与页序 | 界面：增删/移动容器内页面；后台：HTML 插入 | 按页面横向位置确定顺序，统一间隔排列并扩展容器；生成页面可按父容器元数据被收纳。 | `getAiSlidesItems`、`layoutAiSlides`、`adoptGeneratedAiSlidesItems`；[media-placement.js](../../engine/media-placement.js) `placeMedia` | 部分 T01：服务端插入三页横排；无拖动重排及前端收纳回归。 |
-| C32 | 预览、缩略图与翻页 | 界面：Slides「演示」；侧栏缩略图、上下页或键盘 | 演示器显示当前页和总页数；缩略图跳页；左右键/空格翻页、Esc 退出，首末页不越界。 | [slidesToolbar.jsx](../../src/editor/slidesToolbar.jsx) `CowartSlidesToolbar`；[SlidesPresentation.jsx](../../src/editor/SlidesPresentation.jsx) `CowartSlidesPresentationOverlay` | 无。 |
-| C33 | 全屏播放与交互页面 | 界面：演示器「播放」 | 请求浏览器全屏，失败仍保留干净演示视图；空白区域点击翻页，HTML 中按钮、表单等交互点击不当作普通翻页。 | `CowartSlidesPresentationOverlay`；[slidesMedia.jsx](../../src/editor/slidesMedia.jsx) `isInteractiveHtmlClick`、`CowartSlidesMedia` | 无。 |
+| C32 | 预览、缩略图与翻页 | 界面：Slides「演示」；侧栏缩略图、上下页或键盘 | 演示器显示当前页和总页数；缩略图跳页；左右键/空格翻页、Esc 退出，首末页不越界。 | [slidesToolbar.jsx](../../src/editor/slidesToolbar.jsx) `CowartSlidesToolbar`；[SlidesPresentation.jsx](../../src/editor/SlidesPresentation.jsx) `CowartSlidesPresentationOverlay` | 部分：[原生守卫](../../tools/content-slides-smoke.mjs)验证上下页按钮、父子页键盘差异和首末边界；未覆盖缩略图与Esc。 |
+| C33 | 全屏播放与交互页面 | 界面：演示器「播放」 | 请求浏览器全屏，失败仍保留干净演示视图；空白区域点击翻页，HTML 中按钮、表单等交互点击不当作普通翻页。 | `CowartSlidesPresentationOverlay`；[slidesMedia.jsx](../../src/editor/slidesMedia.jsx) `isInteractiveHtmlClick`、`CowartSlidesMedia` | 部分：原生守卫对照开关两侧29类点击和两种保存地址；[通道回归](../../tools/slides-channel.test.mjs)验证方向、旧代、额度和突发。使用真实全屏失败后的演示视图，未占用系统全屏。 |
 | C34 | 幻灯片按标注生成新套稿 | 界面：有内容 Slides→按标注修改 | 截图包含源 Slides/HTML 与标注；原稿保留，下方创建新 Slides 供 Agent 写入同页数修订稿；提交失败清理本次新建空目标。 | [htmlAnnotations.jsx](../../src/editor/htmlAnnotations.jsx) `sendAiSlidesAnnotationEditRequest`、`createAiSlidesBelowSource` | 无：截图、新目标及失败清理；T01/T03 只覆盖通用写回和队列。 |
 | C35 | 整套逐页 PNG 导出 | 界面：Slides 导出菜单→图片 | 按页序导出 `page-01.png` 等到同一新目录；HTML 页用 DOM 截图，图片页按页渲染，防止覆盖另一套导出。 | [exports.jsx](../../src/editor/exports.jsx) `exportCowartSlides`；[exports.mjs](../../server/exports.mjs) `saveExport` | 部分 T02：共同目录与安全路径；无逐页截图内容与顺序回归。 |
-| C36 | 整套 HTML 与离线播放器导出 | 界面：Slides 导出菜单→HTML | 导出 `pages/page-01.html` 等与 `Play.html`；图片页包装成 HTML，播放器按键/点击翻页；不输出原生 PPTX。 | [exports.jsx](../../src/editor/exports.jsx) `exportCowartSlides`、`cowartImageSlideHtml`、`cowartSlidesPlayerHtml` | 部分 T02：目录与文件保存；无实际播放器打开、资源内联及翻页回归。 |
+| C36 | 整套 HTML 与离线播放器导出 | 界面：Slides 导出菜单→HTML | 导出 `pages/page-01.html` 等与 `Play.html`；图片页包装成 HTML，播放器按键/点击翻页；不输出原生 PPTX。开启隔离后打包本画板静态资源，外部在线引用保留并提示需联网。 | [exports.jsx](../../src/editor/exports.jsx) `exportCowartSlides`、`cowartImageSlideHtml`、`cowartSlidesPlayerHtml` | T02及[导出回归](../../server/slides-export.test.mjs)覆盖授权、递归资源和超限失败；原生守卫实际导出并断服以file://打开，检查翻页、父窗口读写拒绝、本地素材及外部CDN不可用时仍可翻页。未覆盖任意动态依赖或图片混排。 |
 | C37 | 移动主工具栏 | 界面：拖工具栏把手；把手获得焦点后方向键/Shift+方向键 | 在画布范围内移动工具栏，窗口变小时保持可达；偏移不写进画板快照或浏览器存储。 | [CowartDraggableToolbar.jsx](../../src/CowartDraggableToolbar.jsx) `CowartDraggableToolbar` | 无。 |
 | C38 | 定制图片替代文本编辑器 | 界面：图片工具栏「文」进入，确认/点外部完成，Esc 取消 | 编辑选中图片 `altText`，只读状态禁用修改；切换图片退出编辑。此条只覆盖 Cowart 替换的编辑器，默认裁剪等在 #20。 | [imageToolbar.jsx](../../src/editor/imageToolbar.jsx) `CowartAltTextEditor` | 无。 |
 
@@ -227,6 +227,7 @@
 
 | 编号 | 差异 | 原因 | 工单 |
 | --- | --- | --- | --- |
+| C33（data URL 保存的幻灯片） | 开启隔离时，data URL 与文件地址按同一规则点击翻页；旧版这类 data URL 页面只能通过父页按键或按钮翻页。关闭隔离仍保持旧行为。 | 旧限制来自 opaque 来源使父页监听无法挂载；实例通道使保存方式不再影响交互判断。 | #117 |
 | C01–C04（工具栏拖入） | 拖到画布外或界面按钮上松手取消；旧版在 x=-20 松手仍保存矩形 x=-120/y=330/w=200/h=200。 | 将界面外松手作为放弃，避免隐藏对象。 | #126 |
 | C01–C04（拖入首帧） | 第一帧预览直接跟随指针；旧版第一帧停在工具栏起手位置，下一帧或松手才跟上。 | 避免首帧在工具栏闪现。 | #126 |
 | C01（星形、云形、心形边界） | (500,350)→(650,430) 时，旧版星形 x=499.82110936132005/y=350/w=150.35778127735986/h=80.72700079076078；云形 x=500/y=346.24659754821914/w=150/h=87.50680490356174；心形 x=500/y=349.5531112507849/w=150/h=80.44688874921506。新版三种均为 x=500/y=350/w=150/h=80。 | 新轮廓按完整宽高归一化，创建框与指针框一致；默认点击尺寸和 Shift/Alt 规则保留。 | #126 |

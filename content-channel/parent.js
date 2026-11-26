@@ -1,3 +1,4 @@
+import {createSlideGate} from './slides.js'
 import {armDeadline} from './film-deadline.js'
 import {editCommand,editStateCommand,largeResultCommand,releaseEditSnapshot} from './edit-protocol.js'
 import {filmFrameSize,releaseBinary,filmStageOrder,filmFrameBudget,filmAudioStageOrder,filmAudioStepBudget,filmAudioBudget,MAX_FILM_TASK_TIMEOUT} from './film-export-protocol.js'
@@ -7,9 +8,10 @@ import {PROTOCOL_VERSION,MAX_MESSAGE_BYTES,MAX_PENDING_REQUESTS,MAX_REPLY_MESSAG
 const channels=new WeakMap(),pageCaptures=new WeakMap()
 export const getContentChannel=iframe=>channels.get(iframe)||null
 
-export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=false,film=false}){
+export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=false,film=false,slides=false}){
   const host=iframe.ownerDocument.defaultView,target=new URL(url),origin=target.origin
   if(!/^[a-f0-9]{48}$/.test(instanceId)||target.protocol!=='http:'||target.username||target.password||target.hostname!==instanceId+'.localhost'||!target.port)throw new Error('内容实例来源无效。')
+  const navigationSubscribers=new Set()
   const subscribers=new Set(),editSubscribers=new Set(),pending=new Map(),captureJobs=new Map(),retired=new Map(),invalidators=new Set()
   let session=null,disposed=false,sequence=0,lastStatus=null
   const notify=status=>{lastStatus={...status};for(const subscriber of subscribers)subscriber({...status})}
@@ -56,6 +58,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
     // Replies also carry status and handshake messages; they need their own
     // allowance so all admitted commands can complete within the request quota.
     const active={port:channel.port1,base,ready,resolve,reject,timer:null,frame:iframe.contentWindow,legacy:false,allowLegacy:createRateLimit(),allowIncoming:createRateLimit(MAX_REPLY_MESSAGES_PER_SECOND),allowOutgoing:createRateLimit()};session=active
+    const navigate=createSlideGate(direction=>{let accepted=false;for(const listener of navigationSubscribers)if(listener(direction)!==false)accepted=true;return accepted})
     active.timer=setTimeout(()=>{if(session===active)invalidate(new Error('内容通道握手超时。'))},REQUEST_TIMEOUT)
     active.port.onmessage=event=>{
       const data=event.data
@@ -109,7 +112,8 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
       if(data?.type==='response'&&bounded&&!data.ok&&(largeResultCommand(pending.get(data.id)?.command)||editCommand(pending.get(data.id)?.command))){pending.get(data.id).finish(new Error(data.error),undefined,false);return}
       if(!active.allowIncoming()){releaseBinary(data?.value);return}
       if(!bounded)return
-      if(data.type==='ready'){clearTimeout(active.timer);active.resolve();if(data.legacy&&!active.legacy){active.legacy=true;active.port.postMessage({...base,type:'legacy-poll'})}return}
+      if(data.type==='slide-nav'){if(slides&&active.connected)navigate(data.value);return}
+      if(data.type==='ready'){active.connected=true;clearTimeout(active.timer);active.resolve();if(data.legacy&&!active.legacy){active.legacy=true;active.port.postMessage({...base,type:'legacy-poll'})}return}
       if(data.type==='capture-end'){releaseCapture(data.id);return}
       if(data.type==='close'){invalidate();return}
       if(data.type==='status'){notify(data.value);return}
@@ -119,7 +123,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
     }
     active.port.onmessageerror=()=>{if(session===active)invalidate()}
     active.port.start()
-    try{iframe.contentWindow.postMessage({...base,type:'connect',options:{duration,muted,film}},origin,[channel.port2])}
+    try{iframe.contentWindow.postMessage({...base,type:'connect',options:{duration,muted,film,...slides?{slides:true}:{}}},origin,[channel.port2])}
     catch(error){channel.port2.close();invalidate(error)}
   }
   async function request(command,value,{signal,timeout=command==='film-frame'?(session?.exportConfig?.timeout||15000):command==='film-audio'?(value.taskTimeout||15000):command==='capture'?CAPTURE_TIMEOUT:REQUEST_TIMEOUT}={}){
@@ -190,7 +194,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
   const observer=host.MutationObserver?new host.MutationObserver(()=>invalidate()):null
   observer?.observe(iframe,{attributes:true,attributeFilter:['src','srcdoc']})
   start()
-  const api={request,subscribe(listener){subscribers.add(listener);if(lastStatus)listener({...lastStatus});return ()=>subscribers.delete(listener)},
+  const api={request,subscribeNavigation(listener){navigationSubscribers.add(listener);return ()=>navigationSubscribers.delete(listener)},subscribe(listener){subscribers.add(listener);if(lastStatus)listener({...lastStatus});return ()=>subscribers.delete(listener)},
     subscribeEditing(listener){editSubscribers.add(listener);return ()=>editSubscribers.delete(listener)},
     attachFilmController({onStatus=()=>{}}={}){
       const unsubscribe=this.subscribe(onStatus)
@@ -218,7 +222,7 @@ export function bindContentChannel(iframe,{url,instanceId,duration=15,muted=fals
         if(!disposed&&session)try{session.port.postMessage({...session.base,type:'pause'})}catch{/* Detached. */}
       }}
     },
-    dispose(){if(disposed)return;disposed=true;if(channels.get(iframe)===api)channels.delete(iframe);iframe.removeEventListener('load',loaded);host.removeEventListener('pagehide',pagehide);host.removeEventListener('message',legacyStatus);observer?.disconnect();invalidate();subscribers.clear();editSubscribers.clear()},
+    dispose(){if(disposed)return;disposed=true;if(channels.get(iframe)===api)channels.delete(iframe);iframe.removeEventListener('load',loaded);host.removeEventListener('pagehide',pagehide);host.removeEventListener('message',legacyStatus);observer?.disconnect();invalidate();subscribers.clear();editSubscribers.clear();navigationSubscribers.clear()},
   }
   channels.set(iframe,api)
   return api

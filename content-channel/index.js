@@ -11,3 +11,6 @@ export {waitForFilmTask,waitForFilmAPI,prepareFilmAssets,seekFilmFrame} from './
 export {drawFittedVideo,createFilmVideoFrames} from './film-video-frames.js'
 export {createContentEditorSession} from './edit-parent.js'
 export { COWART_DOM_EDITOR_STYLE_ID, COWART_DOM_EDITOR_ACTIVE_ATTRIBUTE, COWART_DOM_EDITOR_HOVER_ATTRIBUTE, COWART_DOM_EDITOR_SELECTED_ATTRIBUTE, COWART_DOM_EDITOR_EDITABLE_ATTRIBUTE, COWART_DOM_EDITOR_ADDED_CONTENTEDITABLE_ATTRIBUTE, cowartHtmlDraftDataUrl, serializeHtmlDoctype, serializeCowartHtmlDraftDocument, isCowartDomTextElement, cowartDomSelectionTarget, placeCowartDomCaret, captureCowartDomTextSelection, restoreCowartDomTextSelection, createCowartHtmlDraftDomEditorSession } from './dom-editor.js'
+
+export {isInteractiveSlideClick} from './slides.js'
+export {contentSandbox} from './content-policy.js'

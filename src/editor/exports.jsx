@@ -1,3 +1,4 @@
+import {contentHostEnabled} from '../../renderer/index.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { Box } from "tldraw"
 import { renderCowartFilmMp4 } from "../filmExport.js"
@@ -7,7 +8,7 @@ import { trackFilmExport } from "../analytics.js"
 import { downloadCowartFile, hasCowartWidgetBridge } from "../cowartClient.js"
 import { AI_SLIDES_LABEL, PAGE_ASSETS_ROUTE } from './configuration.jsx'
 import { readFileAsDataUrl } from './readFileAsDataUrl.jsx'
-import { hydrateCowartHtmlDraftLocalImages } from './assets.jsx'
+import { cowartHtmlDraftAssetUrlFromVirtualUrl, hydrateCowartHtmlDraftLocalImages } from './assets.jsx'
 import { isCowartFilmShape, isAiSlidesShape, isCowartHtmlDraftEmbedShape } from './holderMeta.jsx'
 import { getAnnotationEditExportPixelRatio } from './annotationRequests.jsx'
 import { renderCowartHtmlDraftCanvas, htmlDraftExportFileName, textDataUrl, readCowartHtmlDraftContent, readCowartImageDataUrl } from './htmlCapture.jsx'
@@ -43,10 +44,10 @@ function cowartImageSlideHtml(dataUrl, title) {
 </script>
 </html>`
 }
-function cowartSlidesPlayerHtml(slidesName, pageFiles) {
+function cowartSlidesPlayerHtml(slidesName, pageFiles, isolatedScript) {
   const safeTitle = JSON.stringify(slidesName).replaceAll('<', '\\u003c')
   const safePages = JSON.stringify(pageFiles).replaceAll('<', '\\u003c')
-  return `<!doctype html>
+  const legacy = `<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -85,7 +86,17 @@ function cowartSlidesPlayerHtml(slidesName, pageFiles) {
   </script>
 </body>
 </html>`
+  if (!isolatedScript) return legacy
+  const bootstrap = isolatedScript + `
+    document.title=${safeTitle}+' · Play';
+    const canvas=document.getElementById('canvas');
+    function layout(){const scale=Math.min(innerWidth/1024,innerHeight/576);canvas.style.left=(innerWidth-1024*scale)/2+'px';canvas.style.top=(innerHeight-576*scale)/2+'px';canvas.style.transform='scale('+scale+')'}
+    addEventListener('resize',layout);layout();
+    hiCanvasOfflineSlides({pages:${safePages}});
+  `
+  return legacy.replace(/<script>[\s\S]*<\/script>/,()=>'<script>'+bootstrap.replaceAll('</script','<\\/script')+'</script>')
 }
+
 function downloadDataUrl(dataUrl, fileName) {
   const link = document.createElement('a')
   link.href = dataUrl
@@ -207,11 +218,26 @@ async function exportCowartSlides(editor, slidesShapeId, format) {
     }
     return { directoryName, filePath: results[0]?.directoryPath, results }
   }
+  let prepared
+  if (await contentHostEnabled()) {
+    const pages=[]
+    let bytes=0
+    for (const [index,item] of items.entries()) {
+      const html=isCowartHtmlDraftEmbedShape(item)?await readCowartHtmlDraftContent(item):cowartImageSlideHtml(await readCowartImageDataUrl(editor,item),`${directoryName} · ${index+1}`)
+      bytes+=new TextEncoder().encode(html).length
+      if(pages.length>=200||bytes>20*1024*1024)throw new Error('离线幻灯片超过200页或20 MiB原始HTML。')
+      pages.push({html,sourceUrl:isCowartHtmlDraftEmbedShape(item)?cowartHtmlDraftAssetUrlFromVirtualUrl(item.meta?.cowartHtmlDraftAssetUrl)||cowartHtmlDraftAssetUrlFromVirtualUrl(item.props.url)||undefined:undefined})
+    }
+    const response=await window.fetch('/api/content-host/slides-export',{method:'POST',credentials:'same-origin',mode:'same-origin',redirect:'error',headers:{'content-type':'application/json','x-hicanvas-client':'1'},body:JSON.stringify({pages,conversationId:new URLSearchParams(location.search).get('conversation')||'legacy'})})
+    prepared=await response.json()
+    if(!response.ok)throw new Error(prepared.error||'离线幻灯片资源打包失败。')
+  }
   const pageFiles = []
   for (const [index, item] of items.entries()) {
     const fileName = `page-${String(index + 1).padStart(2, '0')}.html`
     let htmlContent
-    if (isCowartHtmlDraftEmbedShape(item)) {
+    if(prepared)htmlContent=prepared.pages[index]
+    else if (isCowartHtmlDraftEmbedShape(item)) {
       htmlContent = await hydrateCowartHtmlDraftLocalImages(await readCowartHtmlDraftContent(item))
     } else {
       const imageDataUrl = await readCowartImageDataUrl(editor, item)
@@ -219,7 +245,7 @@ async function exportCowartSlides(editor, slidesShapeId, format) {
     }
     pageFiles.push(`pages/${fileName}`)
     const result = await downloadCowartFile({
-      dataUrl: textDataUrl(htmlContent, 'text/html'),
+      dataUrl: prepared?await readFileAsDataUrl(new Blob([htmlContent],{type:'text/html'})):textDataUrl(htmlContent, 'text/html'),
       directoryName,
       subdirectory: 'pages',
       fileName,
@@ -231,12 +257,12 @@ async function exportCowartSlides(editor, slidesShapeId, format) {
     results.push(result)
   }
   results.push(await downloadCowartFile({
-    dataUrl: textDataUrl(cowartSlidesPlayerHtml(directoryName, pageFiles), 'text/html'),
+    dataUrl: textDataUrl(cowartSlidesPlayerHtml(directoryName, pageFiles, prepared?.playerScript), 'text/html'),
     directoryName,
     fileName: 'Play.html',
     mimeType: 'text/html',
     overwrite: true
   }))
-  return { directoryName, filePath: results.at(-1)?.directoryPath, results }
+  return { directoryName, filePath: results.at(-1)?.directoryPath, results, ...prepared?{externalResources:prepared.externalResources}:{} }
 }
 export { cowartSlidesExportName, escapeHtmlText, cowartImageSlideHtml, cowartSlidesPlayerHtml, downloadDataUrl, downloadCowartImageShape, exportCowartHtmlDraft, exportCowartFilm, exportCowartSlides }

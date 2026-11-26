@@ -69,3 +69,13 @@ test('关闭主服务同时停止内容端口',async t=>{
   // can instead report ECONNRESET while shutdown is correctly closing it.
   await assert.rejects(contentGet(created.body.url),e=>e.code==='ECONNREFUSED')
 })
+
+test('离线准备接口仅接受隔离开关打开的父客户端，不给子来源读取资源',async t=>{
+  const payload={pages:[{html:'<p>合成离线页</p>'}]}
+  const off=await setup(t)
+  assert.equal((await off.api('/api/content-host/slides-export','POST',payload)).status,404)
+  const on=await setup(t,true)
+  for(const headers of [{origin:'http://attacker.localhost:1'},{'x-hicanvas-client':'0'}])assert.equal((await on.api('/api/content-host/slides-export','POST',payload,headers)).status,403)
+  const result=await on.api('/api/content-host/slides-export','POST',payload)
+  assert.equal(result.status,200);assert.ok(result.body.pages[0].endsWith(payload.pages[0].html));assert.deepEqual(result.body.externalResources,[])
+})

@@ -1,3 +1,4 @@
+import {contentBase,contentReferences} from './content-references.mjs'
 import {open,realpath} from 'node:fs/promises'
 import {constants} from 'node:fs'
 import {join,relative,sep,extname} from 'node:path'
@@ -23,25 +24,20 @@ function localPath(value,base,parentOrigin,id) {
 }
 // This is a conservative literal-reference allowlist, not an HTML sanitizer.
 // Missing/dynamic references are denied, never fetched or served by directory fallback.
-function references(text) {
-  const values=[]
-  for(const match of text.matchAll(/\b(?:src|href|poster|data)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))|url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]*))\s*\)|@import\s+["']([^"']+)["']/gi))values.push(match.slice(1).find(value=>value!==undefined))
-  for(const match of text.matchAll(/\bsrcset\s*=\s*["']([^"']*)["']/gi))for(const item of match[1].split(','))values.push(item.trim().split(/\s+/)[0])
-  return values.map(value=>value.replaceAll('&amp;','&'))
-}
 function projectUrls(text,parentOrigin) {
   for(const origin of ['http://cowart.local','https://cowart.local',parentOrigin]) {
     text=text.replaceAll(origin+'/c/','/c/').replaceAll(origin+'/assets/','/assets/').replaceAll(origin+'/page-assets/','/page-assets/')
   }
   return text
 }
-export function createContentAssets(workspace,{maxFileBytes=20*1024*1024,maxBytes=32*1024*1024,maxFiles=128}={}) {
+export function createContentAssets(workspace,{maxFileBytes=20*1024*1024,maxBytes=32*1024*1024,maxFiles=128,recursiveText=false,preserveUrls=false}={}) {
   return async (html,{parentOrigin,sourceUrl,conversationId='legacy'})=>{
     const source=sourceUrl?localPath(sourceUrl,virtual+'/',parentOrigin,conversationId):null
     if(sourceUrl&&!source)throw httpError('内容来源不是本画板资源。',403)
     const path=source?.path||'/document.html',files=new Map(),queue=[],discovered=new Set()
     let size=Buffer.byteLength(html)
-    const discover=(text,base)=>{for(const value of references(text)){
+    const discover=(text,base,kind='html')=>{if(kind==='html')base=contentBase(text,base);for(const value of contentReferences(text,{modules:recursiveText,kind})){
+      if(kind==='javascript'&&!/^(?:[./]|[a-z][a-z\d+.-]*:)/i.test(value))continue
       const ref=localPath(value,base,parentOrigin,conversationId)
       if(!ref||discovered.has(ref.path)||ref.path===path)continue
       if(discovered.size>=maxFiles)throw httpError('内容资源集合超过上限。',413)
@@ -70,14 +66,14 @@ export function createContentAssets(workspace,{maxFileBytes=20*1024*1024,maxByte
       }finally{await file.close()}
       const extension=extname(ref.path).toLowerCase(),type=types[extension]||'application/octet-stream'
       size+=bytes.length
-      if(extension==='.css'){
-        const text=bytes.toString('utf8');files.set(ref.path,{bytes,type});discover(text,virtual+ref.path)
-        bytes=Buffer.from(projectUrls(text,parentOrigin))
+      if(extension==='.css'||recursiveText&&['.js','.mjs','.html','.htm','.svg'].includes(extension)){
+        const text=bytes.toString('utf8');files.set(ref.path,{bytes,type});discover(text,virtual+ref.path,extension==='.css'?'css':['.js','.mjs'].includes(extension)?'javascript':'html')
+        bytes=Buffer.from(preserveUrls?text:projectUrls(text,parentOrigin))
       }
       files.set(ref.path,{bytes,type})
     }
     if(size>maxBytes)throw httpError('内容资源集合超过上限。',413)
-    files.set(path,{bytes:Buffer.from(projectUrls(html,parentOrigin)),type:'text/html; charset=utf-8'})
+    files.set(path,{bytes:Buffer.from(preserveUrls?html:projectUrls(html,parentOrigin)),type:'text/html; charset=utf-8'})
     return {path,files}
   }
 }

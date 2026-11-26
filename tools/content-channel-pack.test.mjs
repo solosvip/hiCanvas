@@ -14,7 +14,7 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
   t.after(()=>rm(stage,{recursive:true,force:true}))
   await mkdir(join(stage,'runtime'))
   await stageContentChannelAssets(stage)
-  assert.deepEqual((await readdir(join(stage,'content-channel'))).sort(),['bootstrap.js','capture-protocol.js','capture.js','child.js','edit-protocol.js','edit.js','film-controller.js','film-export-protocol.js','film-export.js','film-time.js','protocol.js'])
+  assert.deepEqual((await readdir(join(stage,'content-channel'))).sort(),['bootstrap.js','capture-protocol.js','capture.js','child.js','content-policy.js','edit-protocol.js','edit.js','film-controller.js','film-export-protocol.js','film-export.js','film-time.js','offline-slides.js','protocol.js','slides.js'])
   await build({entryPoints:[fileURLToPath(new URL('../server/content-host.mjs',import.meta.url))],outfile:join(stage,'runtime/host.mjs'),bundle:true,platform:'node',format:'esm',external:['esbuild'],logLevel:'silent'})
   // Fresh Node process also proves the packaged module is independent of the
   // source process' module cache. The generated script has a fixed literal import.
@@ -54,4 +54,7 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
   assert.equal(result.edit.status,200);assert.equal(result.edit.text,edit)
   assert.equal(await readFile(join(stage,'content-channel/edit.js'),'utf8'),edit)
   assert.match(edit,/hiCanvas edit-bundle sha256:[a-f0-9]{64}/)
+  const offline=new Map(await readChannelAssets()).get('offline-slides.js').toString('utf8')
+  assert.equal(await readFile(join(stage,'content-channel/offline-slides.js'),'utf8'),offline)
+  assert.match(offline,/hiCanvas offline-slides-bundle sha256:[a-f0-9]{64}/)
 })

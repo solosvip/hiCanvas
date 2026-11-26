@@ -1,3 +1,4 @@
+import {contentSandbox} from '../content-channel/index.js'
 import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { httpError } from './file-lock.mjs'
@@ -19,7 +20,7 @@ export function createContentHost({now=Date.now,ttl=30*60*1000,maxHtmlBytes=5*10
     try{path=new URL(req.url,'http://localhost').pathname}catch{res.writeHead(400).end();return}
     const file=instance.files.get(path)
     if(!file){res.writeHead(404).end();return}
-    res.writeHead(200,{'content-type':file.type,'content-length':file.bytes.length,'cache-control':'no-store','content-security-policy':`sandbox allow-scripts allow-same-origin allow-forms allow-popups; frame-ancestors ${instance.parentOrigin} 'self'`,'x-content-type-options':'nosniff','referrer-policy':'no-referrer','cross-origin-resource-policy':'same-origin'})
+    res.writeHead(200,{'content-type':file.type,'content-length':file.bytes.length,'cache-control':'no-store','content-security-policy':`${'sandbox '+contentSandbox(true)}; frame-ancestors ${instance.parentOrigin} 'self'`,'x-content-type-options':'nosniff','referrer-policy':'no-referrer','cross-origin-resource-policy':'same-origin'})
     res.end(req.method==='HEAD'?undefined:file.bytes)
   })
   async function info() {

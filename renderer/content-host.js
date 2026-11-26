@@ -55,3 +55,5 @@ export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUr
     },
   }
 }
+
+export async function contentHostEnabled(fetcher=globalThis.fetch){return (await readStartup(fetcher)).contentHost?.enabled===true}
