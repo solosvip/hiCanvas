@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { measureFrameTitlePerformance } from './frame-title-performance.mjs'
+import { cameraSmoke } from './camera-smoke.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
@@ -81,6 +82,14 @@ function createWindow(key) {
 async function run() {
   try {
     app.dock?.hide()
+    if (manifest.cameraOnly) {
+      window = createWindow('camera')
+      await window.loadURL(`${manifest.url}/?count=500`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ camera: await cameraSmoke(window, manifest.output, { persistent: true }) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.selectionOnly) {
       window = createWindow('selection')
       await window.loadURL(`${manifest.url}/?count=500`)
@@ -112,8 +121,9 @@ async function run() {
         lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
         text = await evaluate("import('/tools/renderer-preview/text-probe.js').then(module => module.runTextProbe())")
       }
+      const camera = count === 500 ? await cameraSmoke(window, manifest.output) : undefined
       const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, selection, frameTitles })
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, selection, frameTitles, camera })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }

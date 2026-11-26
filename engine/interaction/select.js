@@ -10,7 +10,7 @@ export function createSelectionTool({ session, index, targets, read, change, rep
   function cancel() {
     if (!gesture) return
     const previous = gesture; gesture = null
-    if (previous.kind !== 'pan' && session.state.get().isGestureActive && !session.state.get().isSubmitting) session.cancelGesture()
+    if (session.state.get().isGestureActive && !session.state.get().isSubmitting) session.cancelGesture()
     change({ mode: 'idle', marquee: null, ...(previous.kind === 'marquee' && { selectedIds: previous.before }) })
   }
   function captureRecords(starts) {
@@ -19,12 +19,8 @@ export function createSelectionTool({ session, index, targets, read, change, rep
     return expected
   }
   function down(input) {
-    if (gesture || session.state.get().isSubmitting || ![0, 1].includes(input.button)) return
+    if (gesture || session.state.get().isSubmitting || input.button !== 0) return
     const state = read(), start = screenToCanvas(input.point, state.camera)
-    if (input.button === 1) {
-      gesture = { kind: 'pan', pointerId: input.pointerId, startScreen: input.point, camera: state.camera }
-      change({ mode: 'panning', hoveredId: null }); return
-    }
     const hit = targets.hitTest(start, 4 / state.camera.z), before = state.selectedIds
     session.beginGesture()
     gesture = { kind: 'pointing', pointerId: input.pointerId, startScreen: input.point, start, before, hit, toggle: input.shiftKey && before.includes(hit), additive: input.shiftKey }
@@ -45,10 +41,6 @@ export function createSelectionTool({ session, index, targets, read, change, rep
     const state = read(), point = screenToCanvas(input.point, state.camera)
     if (!gesture) { change({ hoveredId: targets.hitTest(point, 4 / state.camera.z) }); return }
     if (input.pointerId !== gesture.pointerId) return
-    if (gesture.kind === 'pan') {
-      const { camera, startScreen } = gesture
-      change({ camera: { ...camera, x: camera.x + (input.point.x - startScreen.x) / camera.z, y: camera.y + (input.point.y - startScreen.y) / camera.z } }); return
-    }
     if (gesture.kind === 'pointing' && Math.hypot(input.point.x - gesture.startScreen.x, input.point.y - gesture.startScreen.y) <= threshold) return
     if (!gesture.hit) {
       gesture.kind = 'marquee'
@@ -80,7 +72,6 @@ export function createSelectionTool({ session, index, targets, read, change, rep
       else if (previous.toggle) change({ selectedIds: read().selectedIds.filter(id => id !== previous.hit) })
     }
     change({ mode: 'idle', marquee: null })
-    if (previous.kind === 'pan') return
     if (previous.kind === 'dragging' && session.state.get().isGestureActive) return session.commitGesture().catch(error => { report(error); throw error })
     if (session.state.get().isGestureActive) session.cancelGesture()
   }

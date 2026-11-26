@@ -27,6 +27,8 @@ export function previewTransport(conversationId) {
   }
   return {
     read: () => request('/api/canvas'),
+    undo: ({ expectedRevision, actor }) => request('/api/canvas/undo', 'POST', { expectedRevision }, actor),
+    redo: ({ expectedRevision, actor }) => request('/api/canvas/redo', 'POST', { expectedRevision }, actor),
     commit: ({ expectedRevision, commands, actor }) => request('/__interaction/commit', 'POST', { expectedRevision, commands }, actor),
     subscribe(listener) {
       const events = new EventSource('/api/canvas-events' + query)

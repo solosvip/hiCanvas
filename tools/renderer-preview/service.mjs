@@ -9,7 +9,7 @@ import { prepareFixture } from '../perf/prepare.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 // Separate development host: production service and user data are never used.
-// A browser reload preserves records on disk. Undo transport belongs to #82.
+// A browser reload preserves records on disk. Undo/redo reuse the #82 host routes and actor-owned history.
 export async function startInteractionPreview({ port = 0, dataDir = resolve(root, '.scratch/interaction-preview') } = {}) {
   if (port !== 0 && (!Number.isInteger(port) || port < 43300 || port > 65535)) throw new Error('隔离预览端口须在 43300–65535。')
   const base = await scratchPath(dataDir, root)
@@ -67,7 +67,8 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
         return sendJson(res, 200, result)
       }
       if (path.startsWith('/api/')) {
-        if (!['/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || path === '/api/canvas' && req.method !== 'GET') { res.writeHead(403); res.end(); return }
+        if (['/api/canvas/undo', '/api/canvas/redo'].includes(path) && !(await Promise.all(boards.values())).some(board => board.conversationId === url.searchParams.get('conversation'))) { res.writeHead(404); res.end(); return }
+        if (!['/api/canvas/undo', '/api/canvas/redo', '/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || path === '/api/canvas' && req.method !== 'GET') { res.writeHead(403); res.end(); return }
         return canvas(req, res, () => { res.writeHead(404); res.end() })
       }
       if (path === '/') req.url = `/tools/renderer-preview/index.html${url.search}`

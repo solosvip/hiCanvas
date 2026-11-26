@@ -278,7 +278,7 @@ G05–G22 各自是一种服务。触发均为「主菜单 → 插入嵌入（Mo
 | H07 | 适合全部内容 | 缩放/视图菜单；Shift+1 | 当前页全部内容进入视口 | `U/context/actions.tsx#ActionsProvider(zoom-to-fit)` | 是（H4、H6） |
 | H08 | 适合所选 | 缩放/视图菜单；Shift+2 | 将选择范围放入视口 | `U/context/actions.tsx#ActionsProvider(zoom-to-selection)` | 是（H4、H6） |
 | H09 | 缩放工具 | 按 Z；单击或拖框；Alt 反向 | 点击缩放或缩放到框选区域，结束回原工具 | `U/context/actions.tsx#ActionsProvider(select-zoom-tool)`；`T/tools/ZoomTool/childStates/ZoomBrushing.ts#ZoomBrushing` | 是（H1、H4） |
-| H10 | 快速缩放概览 | Shift+Z/缩放工具中按 Shift，移动指针后释放 | 临时展示全局；释放返回原视口或移到新的区域 | `T/tools/ZoomTool/childStates/ZoomQuick.ts#ZoomQuick` | 是（H1、H4） |
+| H10 | 快速缩放概览 | Shift+Z/缩放工具中按 Shift，移动指针后释放 | 临时展示全局；释放返回原视口或移到新的区域 | `T/tools/ZoomTool/childStates/ZoomQuick.ts#ZoomQuick` | 是（H1、H4） 2026-11-25 运行中的旧版按上述方式未能触发（步骤见 #85），新版暂不实现，验收时由用户确认是否需要。 |
 | H11 | 小地图 | 导航面板展开小地图；点击/拖动/双击、滚轮；Shift 拖动 | 显示内容概览；双击将目标置中，Shift 拖动锁定单轴，滚轮沿用画布导航规则；可折叠 | `U/components/NavigationPanel/DefaultNavigationPanel.tsx#DefaultNavigationPanel`；`U/components/Minimap/DefaultMinimap.tsx#DefaultMinimap`；`U/components/Minimap/MinimapManager.ts#MinimapManager(minimapScreenPointToPagePoint)` | 是（H6）；小窗口按断点隐藏 |
 | H12 | 返回内容 | 平移到作品全在视口外 → 返回内容按钮 | 回到选择或当前页内容，缩放不过度放大 | `U/context/actions.tsx#ActionsProvider(back-to-content)`；`U/components/HelperButtons/DefaultHelperButtons.tsx#DefaultHelperButtons` | 是（H4、H6） |
 | H13 | 吸附偏好 | 主菜单 → 偏好 → 吸附 | 保存 isSnapMode，影响直接变换 | `U/components/MainMenu/DefaultMainMenuContent.tsx#PreferencesGroup`；`U/context/actions.tsx#ActionsProvider(toggle-snap-mode)` | 是（H4、H6、H8） |
