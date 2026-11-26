@@ -1,5 +1,7 @@
 # Cowart 继承与 hiCanvas 新增功能清单
 
+新编辑底座文字（#132）：普通文字、几何标签、箭头标签和画框标题接同一编辑会话，正式Cowart界面尚未切换；不是C14/C25的HTML内页文字编辑。Esc保存文字会话，与画笔Esc丢弃未提交笔画分开；现有富文本JSON的节点、标记和属性保留，专用格式工具栏与精确排版归#150。公开动作及原生回归见 `tools/text-editing.test.mjs`、`tools/renderer-preview/text-editing-smoke.mjs`；详细条目、A38/E21旧版观察限制及手写字体差异见[文字覆盖](功能清单-tldraw.md#新编辑底座文字覆盖132)。
+
 对应工单：[#21](https://github.com/solosvip/hiCanvas/issues/21)。用于更换画板底座时逐项验收；功能编号不随排序改变。此文记录已找到的入口和契约，不表示这些功能已全部通过真人或浏览器验收。
 
 ## 核对范围与读法

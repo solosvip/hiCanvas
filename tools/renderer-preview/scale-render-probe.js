@@ -15,6 +15,9 @@ export async function runScaleRenderProbe() {
   const records = [page, video, synthetic, geo], byId = new Map(records.map(r => [r.id, r]))
   const store = {
     get: id => byId.get(id), allRecords: () => records, getStoreSnapshot: () => ({ store: Object.fromEntries(byId) }), listen: () => () => {},
+    // The renderer mounts its text-editing view on every mount (#132), and that
+    // view observes changes; a readonly Store has none to report.
+    addHistoryInterceptor: () => () => {},
     query: { ids: (type, expression) => ({ get: () => new Set(records.filter(r => r.typeName === type && Object.entries(expression()).every(([key, value]) => r[key] === value.eq)).map(r => r.id)) }) },
     createComputedCache: (_name, derive) => ({ get: id => byId.has(id) ? derive(byId.get(id)) : undefined }),
   }

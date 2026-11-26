@@ -104,14 +104,18 @@ export function createSpatialIndex(initial, pageId) {
     }
     return left.length - right.length
   }
-  function hitsAtPoint(point, tolerance = 0) {
+  function hitsAtPoint(point, tolerance = 0, { geoInterior = false } = {}) {
     const ids = candidates({ x: point.x - tolerance, y: point.y - tolerance, w: tolerance * 2, h: tolerance * 2 }).sort(paintOrder).reverse()
-    return ids.filter(id => visible(id) && visiblePoint(id, point) && pointInShape(records[id], pageToShapePoint(snapshot, id, point), tolerance, connections))
+    return ids.filter(id => {
+      const record = records[id], shape = geoInterior && record.type === 'geo' ? { ...record, props: { ...record.props, fill: 'solid' } } : record
+      return visible(id) && visiblePoint(id, point) && pointInShape(shape, pageToShapePoint(snapshot, id, point), tolerance, connections)
+    })
   }
   function hitTest(point, tolerance = 0) { return hitsAtPoint(point, tolerance)[0] || null }
-  function query(box) {
+  function query(box, { ordered = false } = {}) {
     const area = boxPolygon(box)
-    return candidates(box).filter(id => visible(id) && clipPolygon(entries.get(id).polygon, area).length > 0)
+    const result = candidates(box).filter(id => visible(id) && clipPolygon(entries.get(id).polygon, area).length > 0)
+    return ordered ? result.sort(paintOrder).reverse() : result
   }
   function applyChanges(changes) {
     const dirty = new Set(), ancestors = new Set()
@@ -148,6 +152,7 @@ export function createSpatialIndex(initial, pageId) {
   for (const record of initial) { records[record.id] = record; link(record, true) }
   for (const record of initial) if (record.typeName === 'shape') reindex(record.id)
   return Object.freeze({ applyChanges, hitTest, hitsAtPoint, query, getBounds: id => { const box = getBounds(id); return box && { ...box } }, getRecord: id => records[id],
+    isPointVisible: (id, point) => visible(id) && visiblePoint(id, point),
     // Read-only diagnostics count refreshed entries, excluding initial build.
     getUpdateStats: () => Object.freeze({ updatedIds: Object.freeze([...lastUpdatedIds]), removedIds: Object.freeze([...lastRemovedIds]), totalUpdates }),
     // Convert a page displacement to the selected record's parent coordinates.

@@ -41,6 +41,7 @@
   --spacing-minimap-width: 152px;
   --spacing-minimap-height: 88px;
   --spacing-minimap-breakpoint: 840px;
+  --spacing-text-editor-min-width: 1px;
   --spacing-none: 0px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;

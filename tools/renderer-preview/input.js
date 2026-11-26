@@ -31,6 +31,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
     return result
   }
   const pointer = type => event => {
+    if (event.target?.closest?.('[data-canvas-input-owner="text-editing"]')) return
     if (type === 'pointer_down') {
       if (![0, 1].includes(event.button) || event.pointerType !== 'touch' && captured.size && !captured.has(event.pointerId)) return
       host.focus?.({ preventScroll: true }); host.setPointerCapture?.(event.pointerId); captured.add(event.pointerId)
@@ -75,7 +76,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   const pointerListeners = { pointerdown: pointer('pointer_down'), pointermove: pointer('pointer_move'), pointerup: pointer('pointer_up'), pointercancel: pointer('pointer_cancel'), lostpointercapture: lost }
   const keyListeners = { keydown: key('key_down'), keyup: key('key_up'), focus, focusin: focus, focusout, compositionstart: composition(true), compositionend: composition(false), blur, resize }
   for (const [type, listener] of Object.entries(pointerListeners)) host.addEventListener(type, listener)
-  for (const [type, listener] of Object.entries(keyListeners)) keys.addEventListener(type, listener)
+  for (const [type, listener] of Object.entries(keyListeners)) keys.addEventListener(type, listener, { capture: type.startsWith('key') })
   host.addEventListener('wheel', wheel, { passive: false }); resize(); reportContext(document?.activeElement || host)
   return {
     wake,
@@ -93,7 +94,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
       blur(); disposed = true
       if (animation !== null) keys.cancelAnimationFrame?.(animation)
       for (const [type, listener] of Object.entries(pointerListeners)) host.removeEventListener(type, listener)
-      for (const [type, listener] of Object.entries(keyListeners)) keys.removeEventListener(type, listener)
+      for (const [type, listener] of Object.entries(keyListeners)) keys.removeEventListener(type, listener, { capture: type.startsWith('key') })
       host.removeEventListener('wheel', wheel)
     },
   }

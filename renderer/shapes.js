@@ -1,6 +1,6 @@
 import { createElement as h, memo } from 'react'
 import { useValue } from '@tldraw/state-react'
-import { Text, FrameTitle } from './text-view.js'
+import { Text, FrameTitle, GeoLabel } from './text-view.js'
 import { getShapeBounds } from './bounds.js'
 import { Geometry } from './geo.js'
 import { colorPaint } from './palette.js'
@@ -25,6 +25,7 @@ const Children = memo(function Children({ scene, parentId, camera }) {
 
 const Shape = memo(function Shape({ scene, id, camera }) {
   const shape = useValue('shape record', () => scene.store.get(id), [scene, id])
+  const editingText = useValue('shape text editing', () => scene.editingId?.get() === id, [scene, id])
   if (!shape || shape.opacity === 0) return null
   const props = shape.props
   let body = null
@@ -39,8 +40,9 @@ const Shape = memo(function Shape({ scene, id, camera }) {
     if (connectionTypes[shape.type]) body = h(connectionTypes[shape.type], { scene, shape, key: 'body' })
     else if (getShapeBounds(shape)) body = shape.type === 'note' ? h(Note, { scene, shape, key: 'body' }) : shape.type === 'bookmark' ? h(Bookmark, { shape, scene, key: 'body' }) : shape.type === 'embed' ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : drawings[shape.type]?.body ? h(drawings[shape.type].body, { shape, key: 'body' }) : shape.type === 'geo' ? h(Geometry, { shape, key: 'body' }) : null
     body = [body, h(Children, { scene, parentId: id, camera, key: 'children' })]
+    if (shape.type === 'geo') body.push(h(GeoLabel, { key: 'label', props }))
   }
-  return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: shape.opacity ?? 1 } }, body)
+  return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, ...(editingText && { 'data-shape-editing-text': '' }), style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: shape.opacity ?? 1 } }, body)
 })
 
 export function CanvasWorld({ scene, camera }) {
