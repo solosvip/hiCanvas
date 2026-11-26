@@ -5,6 +5,7 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { createCanvasSnapshot } from '../model/index.js'
 import { executeCanvasCommands, CanvasEditError } from '../engine/index.js'
+import { createConnectionContext, getConnectionGeometry } from '../renderer/geometry.js'
 
 const legacy = JSON.parse(await readFile(new URL('./fixtures/legacy-canvas.json', import.meta.url), 'utf8'))
 
@@ -66,7 +67,10 @@ test('删除递归包含子形状及连接绑定，记录完整旧值，错误 I
     assert.equal(result.snapshot.store[id], undefined)
     assert.deepEqual(result.changes.removed[id], before.store[id])
   }
-  assert.deepEqual(result.snapshot.store['shape:arrow'], before.store['shape:arrow'])
+  const arrow = before.store['shape:arrow'], context = createConnectionContext(Object.values(before.store))
+  const end = getConnectionGeometry(arrow, context).path.at(1)
+  assert.deepEqual(result.snapshot.store[arrow.id], { ...arrow, props: { ...arrow.props, end } })
+  assert.deepEqual(result.changes.updated[arrow.id], [arrow, result.snapshot.store[arrow.id]])
   assert.deepEqual(result.snapshot.store['asset:synthetic'], before.store['asset:synthetic'])
   for (const ids of [['shape:frame', 'shape:missing'], [1], null]) {
     assert.throws(() => executeCanvasCommands(legacy, [{ type: 'delete', ids }]), CanvasEditError)

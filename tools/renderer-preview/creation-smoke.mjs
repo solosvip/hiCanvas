@@ -36,7 +36,7 @@ export async function creationSmoke(target, output) {
   const snapshot = await evaluate(`Array.from(document.querySelectorAll('nav button, nav select'),e=>{const b=e.getBoundingClientRect();return {tag:e.tagName,label:e.getAttribute('aria-label')||e.textContent,tool:e.dataset.tool,action:e.dataset.creationAction,x:b.x+b.width/2,y:b.y+b.height/2,w:b.width,h:b.height,options:e.options?.length}})`)
   await writeFile(join(output, 'creation-controls.json'), JSON.stringify(snapshot, null, 2))
   const tools = new Map(snapshot.filter(s => s.tool).map(s => [s.tool, s])), actions = new Map(snapshot.filter(s => s.action).map(s => [s.action, s]))
-  check(tools.size === 7 && ['text', 'geo', 'frame', 'ai-image', 'ai-draft', 'ai-film', 'ai-slides'].every(id => tools.has(id)) && snapshot.some(s => s.tag === 'SELECT' && s.options === 20), '创建预览没有七种工具和20种几何选择')
+  check(tools.size === 9 && ['text', 'line', 'arrow', 'geo', 'frame', 'ai-image', 'ai-draft', 'ai-film', 'ai-slides'].every(id => tools.has(id)) && snapshot.some(s => s.tag === 'SELECT' && s.options === 20), '创建预览没有九种工具和20种几何选择')
   check(snapshot.filter(s => s.tool || s.action).every(s => s.h >= 44), '创建按钮点击高度不足44像素')
   const toolClick = id => { const b = tools.get(id); return click(Math.round(b.x), Math.round(b.y)) }
   const actionClick = id => { const b = actions.get(id); return click(Math.round(b.x), Math.round(b.y)) }

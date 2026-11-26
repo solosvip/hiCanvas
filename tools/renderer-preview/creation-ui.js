@@ -11,7 +11,7 @@ export function attachCreationUi(host, interaction, controls, onError) {
   ]) { const option = doc.createElement('option'); option.value = value; option.textContent = label; geo.append(option) }
   listen(geo, 'change', safely(() => { interaction.setCreationOptions({ geo: geo.value }); interaction.setTool('geo'); host.focus({ preventScroll: true }) }))
   toolbar.append(geo)
-  for (const [toolId, label] of [['text','文字 T'],['geo','几何 G'],['frame','画框 F'],['ai-image','AI 图片 A'],['ai-draft','AI 网页'],['ai-film','AI 影片'],['ai-slides','AI 幻灯片']]) {
+  for (const [toolId, label] of [['text','文字 T'],['line','线条 L'],['arrow','连接箭头'],['geo','几何 G'],['frame','画框 F'],['ai-image','AI 图片 A'],['ai-draft','AI 网页'],['ai-film','AI 影片'],['ai-slides','AI 幻灯片']]) {
     const button = doc.createElement('button'); button.type = 'button'; button.textContent = label; button.dataset.tool = toolId
     listen(button, 'pointerdown', safely(event => { if (event.button === 0) controls().beginToolDrag(event, { toolId }) }))
     // Keyboard activation arms the tool for the next canvas pointer gesture.

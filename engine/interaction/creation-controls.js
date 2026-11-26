@@ -44,7 +44,7 @@ export function createCreationControls({ read, change, switchTool, canUseTool })
   }
   function handle(input) {
     if (input.type !== 'key_down' || input.repeat || input.metaKey || input.ctrlKey || input.altKey || input.shiftKey) return { handled: false }
-    const key = input.key.toLowerCase(), tool = { r: 'geo', o: 'geo', g: 'geo', f: 'frame', t: 'text' }[key]
+    const key = input.key.toLowerCase(), tool = { r: 'geo', o: 'geo', g: 'geo', f: 'frame', t: 'text', l: 'line' }[key]
     if (key === 'q' && creationToolIds.some(canUseTool)) { setOptions({ toolLocked: !read().creation.toolLocked }); return { handled: true } }
     if (key === 'a' && canUseTool('ai-image')) return { handled: true, result: switchTool('ai-image').activateAtCenter() }
     if (!tool || !canUseTool(tool)) return { handled: false }
