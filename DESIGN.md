@@ -9,6 +9,7 @@ colors:
   minimap-shape: "#6e7477"
   minimap-viewport: "#0000001a"
   overlay-crop-ghost: "#0000001a"
+  overlay-scribble-stroke: "#2f80ed52"
   secondary: "#596170"
   tertiary: "#0ea5e9"
   neutral: "#f7f5ef"
@@ -31,6 +32,7 @@ typography:
 spacing:
   overlay-selection-stroke: 2px
   overlay-brush-stroke: 1px
+  overlay-scribble-stroke: 12px
   overlay-handle-size: 10px
   overlay-handle-stroke: 2px
   overlay-handle-hit: 12px
@@ -106,6 +108,7 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 基础画板、拖动手柄、标注工具、颜色与样式面板、图片工具栏、AI 框及生成面板、HTML 编辑工具栏、Slides 工具栏与演示层均复用上游组件。默认、悬停、焦点、选中、禁用、加载、错误状态沿用已有实现。
 
 图片裁剪复用主色选择框与现有手柄尺寸；边中点加短柄，屏幕尺寸不随画布缩放变化。裁剪框外的原图按约 10% 显示，对照旧版合成图片的裁剪状态取样；`overlay-crop-ghost` 的透明度用于原图预览的透明蒙版。裁剪控件沿用浮层、按钮、间距、焦点与禁用令牌，不增加永久侧栏。
+2026-11-26 隔离旧版原生 Alt 拖动观察：涂抹轨迹使用约 12 CSS px 主色笔迹、透明度约 32%，线端圆润，停住时留下末端圆点；轨迹随时间缩短，已经选中的对象不随轨迹消失。像素尺寸与透明度置信度高；尾迹寿命按逐帧观察约 100ms 近似，置信度中。颜色与线宽分别放入 overlay-scribble-stroke 色彩、尺寸令牌，屏幕线宽不随缩放变化。
 
 ## Do's and Don'ts
 

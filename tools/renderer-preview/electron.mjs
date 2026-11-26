@@ -7,6 +7,7 @@ import { handleSmoke } from './handle-smoke.mjs'
 import { cameraSmoke } from './camera-smoke.mjs'
 import { minimapSmoke } from './minimap-smoke.mjs'
 import { keyboardSmoke } from './keyboard-smoke.mjs'
+import { selectionSemanticsSmoke } from './selection-semantics-smoke.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
@@ -92,10 +93,12 @@ function createWindow(key) {
 async function run() {
   try {
     app.dock?.hide()
-    if (manifest.keyboardOnly) {
-      window = createWindow('keyboard')
-      await window.loadURL(`${manifest.url}/?count=500`)
-      samples.push({ keyboard: await keyboardSmoke(window, manifest.output) })
+    if (manifest.keyboardOnly || manifest.selectionSemanticsOnly) {
+      const selectionOnly = manifest.selectionSemanticsOnly
+      window = createWindow(selectionOnly ? 'selection-semantics' : 'keyboard')
+      await window.loadURL(`${manifest.url}/?${selectionOnly ? 'gallery=selection-semantics' : 'count=500'}`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push(selectionOnly ? { selectionSemantics: await selectionSemanticsSmoke(window, manifest.output) } : { keyboard: await keyboardSmoke(window, manifest.output) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }
@@ -224,7 +227,7 @@ async function run() {
     app.exit(0)
   } catch (error) {
     await writeFile(manifest.result, JSON.stringify({ error: error.stack, samples, errors, blocked, simulated }, null, 2))
-    if (window && !window.isDestroyed()) await writeFile(join(manifest.output, 'failure.png'), (await window.webContents.capturePage()).toPNG())
+    if (window && !window.isDestroyed()) { window.webContents.invalidate(); await writeFile(join(manifest.output, 'failure.png'), (await window.webContents.capturePage()).toPNG()) }
     window?.destroy(); console.error(error); app.exit(1)
   }
 }

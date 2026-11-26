@@ -80,7 +80,7 @@
 | 编号 | 名称 | 用户怎么触发 | 预期行为 | 来源（文件与符号） | hiCanvas 当前露出 |
 | --- | --- | --- | --- | --- | --- |
 | B01 | 点选及取消选择 | V 后点对象/空白处；Esc | 选中对象；点击空白或取消清除选择/退出当前组 | `T/tools/SelectTool/childStates/PointingShape.ts#PointingShape`；`PointingCanvas.ts#PointingCanvas`；`Idle.ts#Idle(onCancel)`（同目录） | 是（H1） |
-| B02 | 加选/减选 | Shift 点击或 Shift 框选 | 保留原选择，并增减命中的对象 | `T/tools/SelectTool/childStates/PointingShape.ts#PointingShape`；`Brushing.ts#Brushing`（同目录） | 是（H1） |
+| B02 | 加选/减选 | Shift 点击或 Shift 框选 | Shift 点击增减；Shift 框选只追加（2026-11-26 旧版实测） | `T/tools/SelectTool/childStates/PointingShape.ts#PointingShape`；`Brushing.ts#Brushing`（同目录） | 是（H1） |
 | B03 | 矩形框选 | 在空白处拖框 | 选中与框相交的对象，或按环绕选择偏好要求完全包含 | `T/tools/SelectTool/childStates/Brushing.ts#Brushing(hitTestShapes)` | 是（H1） |
 | B04 | 临时反转环绕选择 | 框选时按 Ctrl | 临时反转「相交/完全包含」判据 | `T/tools/SelectTool/childStates/Brushing.ts#Brushing(isWrapping)` | 是（H1） |
 | B05 | 自由轨迹选择 | 空白处 Alt 拖动 | 以涂抹轨迹命中对象并选择 | `T/tools/SelectTool/childStates/Brushing.ts#Brushing`；`ScribbleBrushing.ts#ScribbleBrushing`（同目录） | 是（H1） |

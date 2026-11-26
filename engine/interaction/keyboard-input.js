@@ -50,7 +50,9 @@ export function createKeyboardInput({ read, change, releaseKeys, cancelPointer, 
       const result = dispatchPointer({ ...input, type: input.type === 'key_down' ? 'pointer_down' : 'pointer_up', point: { ...point }, pointerId: -1, pointerType: 'mouse', button: 0, buttons: virtualPointer ? 1 : 0, pressure: virtualPointer ? .5 : 0 })
       return { handled: true, result }
     }
-    if (input.type === 'key_down' && input.key === 'Escape' && virtualPointer) { virtualPointer = false; cancelPointer() }
+    // This Escape belongs to the active virtual gesture. Consuming it avoids
+    // treating the newly idle state as a second, idle "clear selection" action.
+    if (input.type === 'key_down' && input.key === 'Escape' && virtualPointer) { cancel(); return { handled: true } }
     return { input }
   }
   return { route, context, shortcuts, cancel }

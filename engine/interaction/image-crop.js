@@ -122,7 +122,7 @@ export function createImageCrop(context) {
             return { handled: true, result: Promise.resolve(up(input)).then(() => handle && !temporary && this.action({ type: 'reset' })) }
           }
         } else if (read().mode === 'pointing') {
-          const id = targets.hitTest(point, 0)
+          const id = targets.hitTest(point, 0, read().focusedGroupId)
           if (session.store.get(id)?.type === 'image') return { handled: false, after: () => {
             // The selection tool must first finish/cancel its click gesture.
             if (!session.state.get().isGestureActive && !session.state.get().isSubmitting && read().mode === 'idle' && read().selectedIds.length === 1 && read().selectedIds[0] === id) begin(id)

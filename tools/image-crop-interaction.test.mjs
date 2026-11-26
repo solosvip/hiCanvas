@@ -177,3 +177,16 @@ test('裁剪中 Shift 保持起点比例，移图保持裁剪框，远端目标�
     assert.equal(f.shape().x,500); assert.equal(f.commits.length,2)
   } finally { f.close() }
 })
+
+test('进入组后，对内部图片真实两次点击仍进入裁剪，保留组焦点', async () => {
+  const f = await setup([{ type: 'create_shape', id: 'shape:crop-peer', shapeType: 'geo', x: 600, y: 160, props: { w: 80, h: 80 } }, { type: 'group_shapes', ids: ['shape:image-0', 'shape:crop-peer'], groupId: 'shape:crop-group' }])
+  try {
+    await f.click(220, 210); f.key('Enter'); f.input({ type: 'key_up', key: 'Enter' })
+    assert.equal(f.interaction.state.get().focusedGroupId, 'shape:crop-group')
+    f.pause(500); await f.click(220, 210); await f.click(220, 210)
+    assert.equal(f.interaction.state.get().croppingId, 'shape:image-0')
+    assert.equal(f.interaction.state.get().focusedGroupId, 'shape:crop-group'); assert.equal(f.commits.length, 0)
+    f.key('Escape'); assert.equal(f.interaction.state.get().croppingId, null)
+    assert.deepEqual(f.interaction.state.get().selectedIds, ['shape:image-0'])
+  } finally { f.close() }
+})
