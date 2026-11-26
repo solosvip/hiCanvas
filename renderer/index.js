@@ -4,3 +4,4 @@
 // Overlay descriptions and camera are copied; mounting/drawing never edits Store.
 export { canvasToScreen, screenToCanvas, hitTestCanvas } from './geometry.js'
 export { mountCanvasRenderer } from './mount.js'
+export { prepareCanvasFonts } from './fonts/prepare.js'

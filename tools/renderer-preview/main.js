@@ -1,7 +1,7 @@
 import './style.css'
 import { react } from '@tldraw/state'
 import { createEditorSession, createCanvasInteraction } from '../../engine/index.js'
-import { mountCanvasRenderer } from '../../renderer/index.js'
+import { mountCanvasRenderer, prepareCanvasFonts } from '../../renderer/index.js'
 import { createGallery } from './gallery.js'
 import { createConnectionGallery } from './arrow-gallery.js'
 import { createStrokeGallery, addStrokeLoad } from './stroke-fixtures.js'
@@ -29,6 +29,7 @@ Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.f
 } }), writable: false, configurable: false })
 
 try {
+  await prepareCanvasFonts(document)
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
   else if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
