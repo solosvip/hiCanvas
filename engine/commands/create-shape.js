@@ -8,6 +8,7 @@ function defaultProps(type) {
   switch (type) {
     case 'geo': return { ...text, w: 200, h: 120, geo: 'rectangle', dash: 'solid', growY: 0, url: '', labelColor: 'black', fill: 'none', align: 'middle', verticalAlign: 'middle' }
     case 'text': return { ...text, w: 200, textAlign: 'start', autoSize: true }
+    case 'note': return { ...text, font: 'draw', align: 'middle', verticalAlign: 'middle', labelColor: 'black', growY: 0, fontSizeAdjustment: 1, url: '', textFirstEditedBy: null }
     case 'arrow': return { ...text, kind: 'arc', elbowMidPoint: 0.5, dash: 'solid', fill: 'none', labelColor: 'black', bend: 0, start: { x: 0, y: 0 }, end: { x: 200, y: 0 }, arrowheadStart: 'none', arrowheadEnd: 'arrow', labelPosition: 0.5 }
     case 'line': return { color: 'black', size: 'm', dash: 'draw', spline: 'line', scale: 1, points: { a1: { id: 'a1', index: 'a1', x: 0, y: 0 }, a2: { id: 'a2', index: 'a2', x: .1, y: .1 } } }
     case 'image': return { w: 512, h: 512, assetId: null, playing: true, url: '', crop: null, flipX: false, flipY: false, altText: '' }

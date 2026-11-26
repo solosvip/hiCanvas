@@ -31,6 +31,7 @@ export const canvasShortcutBindings = Object.freeze([
   binding('create-geo', ['g'], { ...plain, group: 'creation', tool: 'geo' }),
   binding('create-frame', ['f'], { ...plain, group: 'creation', tool: 'frame' }),
   binding('create-text', ['t'], { ...plain, group: 'creation', tool: 'text' }),
+  binding('create-note', ['n'], { ...plain, group: 'creation', tool: 'note' }),
   binding('create-line', ['l'], { ...plain, group: 'creation', tool: 'line' }),
   binding('create-ai-image', ['a'], { ...plain, group: 'creation', tool: 'ai-image' }),
   binding('creation-lock', ['q'], { ...plain, group: 'creation' }),

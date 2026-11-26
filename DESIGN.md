@@ -100,6 +100,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 
 ## Components
 
+便签四边中点显示相邻续建的「+」柄，屏幕尺寸固定，复用 overlay-handle-size、overlay-handle-stroke、overlay-rotate-radius、primary、surface、full 圆角令牌；十字由两条既有线宽和半径尺寸的主色短线组成。编辑时只隐藏纸面文字，保留纸面和署名；便签编辑区复用统一富文本视图、原字体、标签颜色和16px文档内边距，不新增应用浮栏。
+
 线条和连接箭头的选中态显示圆形端点与段间控制柄，复用 overlay-handle-size、overlay-handle-stroke、primary、surface 和 full 圆角令牌；尺寸及点击范围保持屏幕 CSS 像素。单选连接线使用这些控制柄，多选仍用共同选择框。控制点吸附的临时指示使用同尺寸主色圆点，松手或取消即消失，不写入画板。
 
 选择动作的合成预览将无快捷键的拉伸、堆排、紧凑排布、全部解锁和适配画框按钮放进既有视角工具栏，沿用现有按钮、禁用、焦点与间距令牌。可用状态由编辑层提供，不新增正式菜单或视觉令牌。

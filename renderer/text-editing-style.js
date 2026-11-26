@@ -30,5 +30,6 @@ export const textEditingStyle = `[data-canvas-text-editor] {
 [data-canvas-text-editor] strong em, [data-canvas-text-editor] em strong { font-variation-settings: var(--canvas-text-bold-italic-axes); }
 [data-shape-editing-text] > [data-shape-text],
 [data-shape-editing-text] > [data-frame-title-root],
+[data-shape-editing-text] [data-note-line],
 [data-shape-editing-text] > svg > [data-connection-label] { visibility: hidden; }
 `
