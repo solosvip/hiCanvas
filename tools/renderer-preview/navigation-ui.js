@@ -29,6 +29,7 @@ export function attachNavigationUi(host, interaction, onError, navigate) {
       buttons.get('return-content').dataset.visible = String(state.contentOffscreen)
       buttons.get('return-content').disabled = !state.contentOffscreen
       buttons.get('return-content').setAttribute('aria-hidden', String(!state.contentOffscreen))
+      host.style.cursor = state.toolId === 'select' && !state.temporaryTool && state.mode !== 'panning' ? state.handleCursor || '' : ''
       host.dataset.cursor = state.mode === 'panning' ? 'grabbing' : state.temporaryTool === 'zoom' ? 'zoom-in' : state.toolId === 'hand' || state.temporaryTool === 'hand' ? 'grab' : 'default'
     },
     dispose() { for (const stop of listeners) stop(); toolbar.remove() },

@@ -38,6 +38,13 @@ export function stretchShapeProps(shape, scale) {
   return rules[shape.type].stretch(shape, scale)
 }
 
+// Read-only editing capability: consumers do not receive the mutable rule table.
+export function getShapeScalingCapabilities(shape, options = {}) {
+  const rule = shape && Object.hasOwn(rules, shape.type) && rules[shape.type]
+  const canScale = Boolean(rule && getShapeBounds(shape))
+  return Object.freeze({ canScale, lockAspectRatio: canScale && rule.lockAspectRatio(options) })
+}
+
 export function getShapeScalingRule(shape) {
   const rule = Object.hasOwn(rules, shape.type) && rules[shape.type]
   if (!rule || !getShapeBounds(shape)) throw new CanvasEditError(`这种形状尚未登记缩放规则：${shape.type}`)

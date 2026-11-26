@@ -16,6 +16,10 @@ async function screenStrokeProbe(target, output) {
   const original = await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.getCamera()')
   const selected = await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.getState().selectedShapes[0]')
   const visibility = await evaluate("document.querySelector('[data-renderer-world]').style.visibility")
+  // At low zoom the corner handles and opposite edge overlap the sampling
+  // strip. Isolate the top edge so their blue pixels cannot count as its width.
+  const hiddenSelector = '[data-selection-handle], [data-overlay-stroke]:not([data-overlay-stroke=top])'
+  const hiddenVisibility = await evaluate(`Array.from(document.querySelectorAll('${hiddenSelector}'), e => {const before=e.style.visibility;e.style.visibility='hidden';return before})`)
   try {
     await evaluate("document.querySelector('[data-renderer-world]').style.visibility='hidden'")
     for (const z of [.1, .5, 1, 1.5, 2, 8]) {
@@ -36,6 +40,7 @@ async function screenStrokeProbe(target, output) {
     }
     return measurements
   } finally {
+    await evaluate(`document.querySelectorAll('${hiddenSelector}').forEach((e,i)=>{e.style.visibility=${JSON.stringify(hiddenVisibility)}[i]});void 0`)
     await evaluate(`document.querySelector('[data-renderer-world]').style.visibility=${JSON.stringify(visibility)};window.__HICANVAS_RENDERER_PREVIEW__.resetCamera(${JSON.stringify(original)});void 0`)
     await delay(30)
   }

@@ -26,6 +26,12 @@
   --radius-full: 9999px;
   --spacing-overlay-selection-stroke: 2px;
   --spacing-overlay-brush-stroke: 1px;
+  --spacing-overlay-handle-size: 10px;
+  --spacing-overlay-handle-stroke: 2px;
+  --spacing-overlay-handle-hit: 12px;
+  --spacing-overlay-edge-hit: 8px;
+  --spacing-overlay-rotate-offset: 7px;
+  --spacing-overlay-rotate-radius: 6px;
   --spacing-none: 0px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;

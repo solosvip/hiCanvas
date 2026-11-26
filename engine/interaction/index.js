@@ -2,6 +2,8 @@ import { atom } from '@tldraw/state'
 import { checkedCamera, createSpatialIndex } from '../../renderer/geometry.js'
 import { normalizeInput } from './input.js'
 import { createSelectionTool } from './select.js'
+import { createSelectionFrame } from './selection-frame.js'
+import { describeSelection, checkedHandleMetrics } from './selection-handles.js'
 import { createSelectionTargets } from './targets.js'
 import { createHandTool } from './camera-pan.js'
 import { createCameraContent } from './camera-content.js'
@@ -15,37 +17,49 @@ import { checkedViewport } from './camera-math.js'
 // document Store. Future tools get the same normalized input and context.
 export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool })
 
-export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true }) {
+// Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
+// half-extents, rotationOffset is per-axis, rotationRadius is a radius.
+// Hosts may supply design tokens; the engine validates and copies the values.
+export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics }) {
   if (!session?.store || !toolIds.length || toolIds.some(id => !Object.hasOwn(canvasToolRegistry, id))) throw new Error('交互模块需要运行时和已登记工具。')
+  const metrics = checkedHandleMetrics(handleMetrics)
   const initial = session.store.allRecords(), activePage = pageId || initial.find(r => r.typeName === 'page')?.id
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage)
-  const content = createCameraContent(initial, index, activePage)
-  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], selectedIds: Object.freeze([]), hoveredId: null, marquee: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, overlays: Object.freeze([]), lastError: null }))
+  const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
+  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, overlays: Object.freeze([]), lastError: null }))
   let disposed = false, tool, navigation, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
     const previous = read(), next = { ...previous, ...patch }
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))
+    if (JSON.stringify(next.selectedIds) !== JSON.stringify(previous.selectedIds) && !Object.hasOwn(patch, 'selectionRotation')) next.selectionRotation = null
     if (next.hoveredId && !targets.isSelectable(next.hoveredId)) next.hoveredId = null
     next.camera = Object.freeze(checkedCamera(next.camera))
     next.contentOffscreen = content.offscreen(next.camera, next.viewport)
     next.marquee = next.marquee && Object.freeze({ ...next.marquee })
-    const overlays = next.selectedIds.map(id => ({ kind: 'selection', id, bounds: index.getBounds(id) })).filter(o => o.bounds)
+    const selected = describeSelection(selection, next.selectedIds, next.selectionRotation), overlays = selected ? [selected] : []
     if (next.marquee) overlays.push({ kind: 'marquee', bounds: next.marquee })
-    next.overlays = Object.freeze(overlays.map(o => Object.freeze({ ...o, bounds: Object.freeze({ ...o.bounds }) })))
+    next.overlays = Object.freeze(overlays.map(o => Object.freeze({ ...o, bounds: Object.freeze({ ...o.bounds }), ...(o.handles && { handles: Object.freeze(o.handles.map(h => Object.freeze(h))) }) })))
     if (JSON.stringify(next) !== JSON.stringify(previous)) state.set(Object.freeze(next))
   }
   function report(error) { change({ lastError: Object.freeze({ code: error.code || 'interaction', message: error.message }) }) }
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
-    navigation?.cancel(); tool?.cancel(); tool = canvasToolRegistry[id](context); change({ toolId: id })
+    navigation?.cancel(); tool?.cancel(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
   }
-  const context = { session, index, targets, read, change, report }
+  const context = { session, index, targets, selection, handleMetrics: metrics, read, change, report }
   navigation = createCameraNavigation({ session, read, change, content, cancelTool: () => tool.cancel(), setTool: id => { if (!toolIds.includes(id)) return false; setTool(id); return true }, inputDevice, invertZoom, reduceMotion })
   context.navigation = navigation
   tool = canvasToolRegistry[read().toolId](context)
-  const stop = session.store.addHistoryInterceptor(({ changes }) => { index.applyChanges(changes); content.apply(changes); change() })
+  const stop = session.store.addHistoryInterceptor(({ changes }) => {
+    const checkBasis = !session.state.get().isGestureActive && read().selectionRotation !== null
+    const before = checkBasis && selection.expected(read().selectedIds)
+    index.applyChanges(changes); content.apply(changes); selection.apply(changes)
+    const after = checkBasis && selection.expected(read().selectedIds)
+    const affected = checkBasis && [...Object.keys(changes.added), ...Object.keys(changes.updated), ...Object.keys(changes.removed)].some(id => before.has(id) || after.has(id))
+    change(!session.state.get().isGestureActive && affected ? { selectionRotation: null } : {})
+  })
   change()
   function assertActive() { if (disposed) throw new Error('交互模块已关闭。') }
   return Object.freeze({

@@ -4,3 +4,4 @@ export { recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction }
 export { pageFor, getMediaTarget } from './media-target.js'
 export { createEditorSession } from './runtime/index.js'
 export { createCanvasInteraction, canvasToolRegistry } from './interaction/index.js'
+export { getShapeScalingCapabilities } from './shape-scaling.js'
