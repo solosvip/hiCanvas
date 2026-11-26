@@ -1,8 +1,10 @@
 import { createElement as h, useMemo, useRef } from 'react'
-import { textLayout } from './text.js'
+import { textLayout, plainText } from './text.js'
 import { colorPaint, FRAME_TITLE_PAINT } from './palette.js'
 import { useValue } from '@tldraw/state-react'
 import { canvasFontStyle } from './font-families.js'
+import { measureFrameTitle } from './frame-title-measure.js'
+import { geoLabelLayout } from './geo-label.js'
 
 // Shape data supplies dimensions and font size. Each calculated line is kept
 // intact; the browser only paints glyphs, never chooses another line break.
@@ -17,27 +19,22 @@ export function TextLines({ layout, font, align = 'start' }) {
 
 export function Text({ props }) {
   const layout = textLayout(props)
-  return h('div', { style: { width: layout.w, height: layout.h, color: colorPaint(props).text } },
+  return h('div', { 'data-shape-text': '', style: { width: layout.w, height: layout.h, color: colorPaint(props).text } },
     h('div', { style: { position: 'relative', width: layout.w / layout.scale, height: layout.h / layout.scale, transformOrigin: '0 0', transform: `scale(${layout.scale})` } },
       h(TextLines, { layout, font: props.font, align: props.textAlign })))
 }
 
-let titleMeasure
+export function GeoLabel({ props }) {
+  if (!plainText(props.richText).trim()) return null
+  const layout = geoLabelLayout(props)
+  if (!layout.lines.some(line => line.text.trim())) return null
+  return h('div', { 'data-shape-text': '', 'data-geo-label': '', style: { position: 'absolute', left: layout.x, top: layout.y, width: layout.w, height: layout.h, color: colorPaint({ color: props.labelColor || props.color }).text } }, h(TextLines, { layout, font: props.font, align: props.align }))
+}
+
 export function FrameTitle({ text, width, camera }) {
   const { z } = useValue(camera)
   const label = text || 'Frame'
-  const naturalWidth = useMemo(() => {
-    // Canvas still compresses punctuation; measure the title's explicit
-    // space-all style. This display-only exception never enters saved bounds.
-    if (!titleMeasure) {
-      titleMeasure = document.createElement('span')
-      Object.assign(titleMeasure.style, { position: 'fixed', visibility: 'hidden', contain: 'layout style paint', width: 'max-content', font: '12px system-ui', whiteSpace: 'pre', textSpacingTrim: 'space-all', textAutospace: 'no-autospace' })
-    }
-    titleMeasure.textContent = label
-    document.body.append(titleMeasure)
-    try { return titleMeasure.getBoundingClientRect().width + 12 }
-    finally { titleMeasure.remove() }
-  }, [label])
+  const naturalWidth = useMemo(() => measureFrameTitle(label), [label])
   const desiredWidth = Math.min(naturalWidth, width * z + 16)
   const viewport = useRef({ label, frameWidth: width, width: desiredWidth })
   // Ignore subpixel zoom changes until their cumulative difference reaches

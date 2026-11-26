@@ -216,6 +216,12 @@ npm run renderer:smoke
 
 手绘验证使用同一隔离宿主的 `/?gallery=draw-input`：D/B/X 画笔，Shift+D 荧光笔，Shift 自由／直线接段，Esc 丢弃当前未提交笔画；检测到笔输入后可用「退出手写笔模式」恢复鼠标。该合成图鉴只保存在内存中，刷新还原，支持整笔撤销和重做。设置 `HICANVAS_TEST_ELECTRON` 指向已有 Electron 可执行文件并登记专用端口后，运行 `HICANVAS_DRAW_PORT=43398 node tools/renderer-preview/draw-check.mjs`；原生手绘、CDP pen 压感、真实退出按钮、叠色和三档缩放结果写入 `.scratch/draw-smoke/`。高频硬件采样与真实手写板仍需人工验收。
 
+文字合成图鉴用 `/?gallery=text-editing`，完整格式保留样本用 `/?gallery=text-formatted`：双击文字、几何、箭头标签或画框标题进入编辑，选中后 Enter 也可进入；双击空白直接写字，T 点击自动宽、长拖固定宽。Esc、Mod+Enter 和画布外部点击保存当前会话，画框标题也支持普通 Enter；组字期间不完成。清空普通文字会删除它，清空标签或标题只清字段；新空文字退出不留历史。一次编辑、样式切换和自动大小合为一次画板撤销；编辑内撤销由文本视图处理。保存等待期间只读，失败恢复草稿。这里的 Esc 保存与画笔 Esc 丢弃分别遵循各自事务。
+
+宿主通过 `interaction.editText({type:'begin',id})`、`update`（`content,selection?`）、`selection`、`finish`、`cancel` 管理会话；`style`（`id,changes`）只接受适用的 `size/font/textAlign/align/verticalAlign`，`auto-size` 接受 `id,enabled`。订阅 `state.textEditing`，交给 `renderer.setTextEditing(description)`；挂载渲染器时提供 `textEditing.onChange/onSelection/onInputContext/onError` 回调。`onChange` 单向调用编辑层，TipTap 内容和选区是输入权威，视图仅进入时初始化，不随预览回灌。标题写 `name`，其余写 `richText`。远端改位置或尺寸时只叠文字并携新版本重试一次；远端改原文或删除目标时保留草稿，`conflict` 给出纯数据状态，停止自动提交。`isSaving` 表示提交中。正式界面尚未切换，冲突选择界面由后续产品接入。
+
+登记文字验证端口并设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_TEXT_PORT=43386 node tools/renderer-preview/text-check.mjs`，结果在 `.scratch/text-smoke/`。完整 MIT TipTap schema 保留已有节点、标记和属性，依赖许可证见 [文字编辑依赖声明](licenses/text-editor-dependencies.txt)；格式工具栏、格式快捷键、富文本精确排版、链接、列表和编辑中粘贴归 #150，画布文本粘贴归 #136。实际 macOS 输入法候选窗及系统剪贴板需集中人工验证。
+
 预览入口是 `tools/renderer-preview/index.html`，独立 Vite 配置只扫描这个入口；正式构建仍从根 `index.html` 进入，桌面只复制正式 `dist/`，因此预览页不进入应用产物。合成规则复用性能基线的坐标、相机、尺寸、60% 几何／20% 文本／20% 图片构成及 16 张本地 PNG；保留三角形、菱形和 semi 填充，不再转换为矩形和实心。滚轮平移、Ctrl+滚轮或触控板捏合缩放只实现在预览页。只读观察接口 `window.__HICANVAS_RENDERER_PREVIEW__.getState()` 返回 `ready`、`error`、`camera`、`count`、`counts`、`renderedShapes`、`imageCount`、`decodedImages` 的副本，不暴露存储或修改接口；`ready` 等到全部形状、字体和图片解码完成后置为真，供后续测量工具读取。
 
 本地字体由 `renderer/index.js` 的 `prepareCanvasFonts(document, { onWarning })` 准备：宿主先等待成功，再挂载。它从 `renderer/fonts/files/` 加载13份作者原始字体，为16种粗细／斜体注册样式；任一失败会拒绝，宿主应显示错误并允许重试。手写字体使用作者 Shantell 1.011 可变字体的 C 拟合实例，CSS 和 fontkit 共用 `renderer/font-families.js` 的轴值，字形接近旧版但不完全一致。来源、固定提交、SHA-256、轴值及许可见 `licenses/fonts-sources.txt`。启动时用少量合成字复核系统字体类常量，偏差超过0.5px会在控制台警告；宿主通过 `onWarning` 保存本机日志，预览会写入 `.scratch/renderer-font-calibration.log`，日志失败不阻止使用。

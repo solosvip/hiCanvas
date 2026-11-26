@@ -6,6 +6,28 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkRendererBoundary } from './check-renderer-boundary.mjs'
 
+test('TipTap仅能由文字视图和schema引用；绘图、模型和几何不能借此放宽依赖', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'renderer-text-boundary-'))
+  try {
+    await mkdir(join(root, 'renderer')); await mkdir(join(root, 'model'))
+    await mkdir(join(root, 'node_modules/@tiptap/core'), { recursive: true })
+    await writeFile(join(root, 'node_modules/@tiptap/core/package.json'), JSON.stringify({ name: '@tiptap/core', main: 'index.js' }))
+    await writeFile(join(root, 'node_modules/@tiptap/core/index.js'), 'export const value = 1')
+    for (const file of ['text-editing-view', 'text-schema']) {
+      await writeFile(join(root, `renderer/${file}.js`), "export { value } from '@tiptap/core'")
+      await writeFile(join(root, 'renderer/index.js'), `export * from './${file}.js'`)
+      await checkRendererBoundary({ root })
+      await writeFile(join(root, 'renderer/geometry.js'), `export * from './${file}.js'`)
+      await assert.rejects(checkRendererBoundary({ root, geometry: true }), /几何/)
+    }
+    for (const [file, source] of [['renderer/drawing.js', "export * from '@tiptap/core'"], ['model/index.js', "export * from '@tiptap/core'"], ['renderer/text-schema.js', "export * from '@tiptap-pro/extension-ai'"]]) {
+      await writeFile(join(root, file), source)
+      await writeFile(join(root, 'renderer/index.js'), `export * from '../${file}'`)
+      await assert.rejects(checkRendererBoundary({ root }), /未允许|越界/)
+    }
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('真实渲染入口可浏览器打包，几何入口独立且没有 React/DOM', async () => {
   const inputs = await checkRendererBoundary()
   assert.ok(inputs.some(path => path.includes('@tldraw/state-react/')))

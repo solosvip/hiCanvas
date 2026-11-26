@@ -13,6 +13,8 @@ const captureImports={
   'capture-render.js':['html2canvas/dist/lib/dom/document-cloner.js'],
   'capture-clip-fix.js':['html2canvas/dist/lib/index.js','html2canvas/dist/lib/render/stacking-context.js','html2canvas/dist/lib/render/effects.js','html2canvas/dist/lib/render/bound-curves.js','html2canvas/dist/lib/render/path.js'],
 }
+const textViewPackages = /^@tiptap\/(?:core|starter-kit|extension-highlight|extension-code|pm)(?:\/|$)/
+const textViewImporters = new Set(['renderer/text-editing-view.js', 'renderer/text-schema.js'])
 const domGlobals = new Set(['window', 'document', 'navigator', 'self', 'location', 'history', 'screen', 'Element', 'Node', 'Text', 'Image', 'Audio', 'Event', 'EventTarget', 'ImageData', 'Path2D', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver', 'OffscreenCanvas', 'customElements', 'localStorage', 'sessionStorage', 'CSS'])
 const isDomName = name => domGlobals.has(name) || /^(?:DOM|HTML|SVG|Canvas|WebGL|CSS|XML|XPath)[A-Z][A-Za-z0-9]*$/.test(name || '') || /^(?:Mouse|Pointer|Keyboard|Wheel|Touch|Input|Focus|Drag|Clipboard|Custom|Animation|Transition|Message)Event$/.test(name || '')
 
@@ -65,6 +67,7 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
         if (specifier.startsWith('node:') || builtinModules.includes(specifier)) throw new Error(`渲染层不能引用 Node：${specifier}`)
         if (/^(?:tldraw|@tldraw\/)/.test(specifier) && !dataPackages.test(specifier)) throw new Error(`渲染层不能引用受限包：${specifier}`)
         if (geometry && reactPackages.test(specifier)) throw new Error('几何入口不能引用 React。')
+        if (geometry && /^@tiptap\//.test(specifier)) throw new Error('几何入口不能引用富文本视图依赖。')
         const importer = relative(root, args.importer)
         if (args.kind === 'entry-point' || !/^(?:renderer|model)\//.test(importer)) return
         if (specifier.startsWith('.') || specifier.startsWith('/')) {
@@ -72,7 +75,7 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
           const versionMetadata = importer === 'renderer/text-variable-metrics.js' && target === 'node_modules/fontkit/package.json'
           const allowed = importer.startsWith('model/') ? target.startsWith('model/') : target.startsWith('renderer/') || target === 'model/index.js' || target === 'content-channel/index.js' || versionMetadata
           if (!allowed) throw new Error(`渲染层越界引用：${target}`)
-        } else if (!dataPackages.test(specifier) && (importer.startsWith('model/') || (!reactPackages.test(specifier) && !textPackages.test(specifier)))) throw new Error(`渲染层未允许的依赖：${specifier}`)
+        } else if (!dataPackages.test(specifier) && (importer.startsWith('model/') || (!reactPackages.test(specifier) && !textPackages.test(specifier) && !(textViewImporters.has(importer) && textViewPackages.test(specifier))))) throw new Error(`渲染层未允许的依赖：${specifier}`)
       })
       if (geometry) builder.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async args => {
         const contents = await readFile(args.path, 'utf8')
