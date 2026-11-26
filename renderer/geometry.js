@@ -12,10 +12,11 @@ export function screenToCanvas(point, camera) {
   const { x, y, z } = checkedCamera(camera)
   return { x: point.x / z - x, y: point.y / z - y }
 }
-import { getShapeBounds, getShapeContour } from './bounds.js'
-import { strokeWidth } from './geo-metrics.js'
+import { getShapeBounds, getShapeContour, hitTestShape } from './bounds.js'
+import { createConnectionContext } from './connection-records.js'
 export { getShapeBounds, getShapeContour } from './bounds.js'
-
+export { getConnectionGeometry } from './connection-geometry.js'
+export { createConnectionContext, getBoundArrowIds } from './connection-records.js'
 
 export function orderedChildren(records) {
   const children = new Map()
@@ -41,32 +42,8 @@ function inBox(point, w, h, margin = 0) {
   return point.x >= -margin && point.y >= -margin && point.x <= w + margin && point.y <= h + margin
 }
 
-export function pointInShape(shape, point, tolerance = 0) {
-  const bounds = getShapeBounds(shape)
-  if (!bounds) return false
-  const { w, h } = bounds
-  if (w <= 0 || h <= 0) return false
-  const contour = getShapeContour(shape)
-  if (!contour) return false
-  const margin = shape.type === 'geo' ? Math.max(strokeWidth(shape.props) / 2, tolerance) : 0
-  const edgeHit = (points, closed) => points.some((end, i) => (i || closed) && segmentDistance(point, points[(i + points.length - 1) % points.length], end) <= margin)
-  return ((shape.type !== 'geo' || shape.props.fill !== 'none') && pointInPolygon(point, contour.outline))
-    || edgeHit(contour.outline, true) || contour.decorations.some(line => edgeHit(line, false))
-}
-
-function segmentDistance(point, a, b) {
-  const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy
-  const t = length ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length)) : 0
-  return Math.hypot(point.x - a.x - t * dx, point.y - a.y - t * dy)
-}
-
-function pointInPolygon(point, points) {
-  let inside = false
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const a = points[i], b = points[j]
-    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside
-  }
-  return inside
+export function pointInShape(shape, point, tolerance = 0, context) {
+  return hitTestShape(shape, point, tolerance, context)
 }
 
 // point is relative to the mounted viewport, in CSS pixels. No DOM, Store,
@@ -74,17 +51,18 @@ function pointInPolygon(point, points) {
 export function hitTestCanvas(snapshot, point, camera, pageId) {
   const view = checkedCamera(camera)
   const records = Object.values(snapshot.store || {})
+  const context = createConnectionContext(records)
   const page = pageId || records.find(r => r.typeName === 'page')?.id
   const children = orderedChildren(records), visited = new Set()
   const visit = (parentId, parentPoint) => {
     for (const shape of [...(children.get(parentId) || [])].reverse()) {
       if (visited.has(shape.id) || shape.opacity === 0) continue
       visited.add(shape.id)
-      const local = toLocal(parentPoint, shape), bounds = getShapeBounds(shape)
+      const local = toLocal(parentPoint, shape), bounds = getShapeBounds(shape, context)
       if (shape.type === 'frame' && !inBox(local, bounds.w, bounds.h)) continue
       const child = visit(shape.id, local)
       if (child) return child
-      if (pointInShape(shape, local, 4 / view.z)) return shape.id
+      if (pointInShape(shape, local, 4 / view.z, context)) return shape.id
     }
     return null
   }
@@ -124,9 +102,9 @@ export function getShapePageBounds(snapshot, shapeId) {
     const x = Math.min(...bounds.map(box => box.x)), y = Math.min(...bounds.map(box => box.y))
     return { x, y, w: Math.max(...bounds.map(box => box.x + box.w)) - x, h: Math.max(...bounds.map(box => box.y + box.h)) - y }
   }
-  const shape = snapshot.store[shapeId], bounds = shape && getShapeBounds(shape)
+  const shape = snapshot.store[shapeId], bounds = shape && getShapeBounds(shape, snapshot)
   if (!bounds) return null
-  const contour = getShapeContour(shape)
+  const contour = getShapeContour(shape, snapshot)
   if (!contour) return null
   if (contour.ellipse) {
     const center = shapeToPagePoint(snapshot, shapeId, { x: bounds.w / 2, y: bounds.h / 2 })

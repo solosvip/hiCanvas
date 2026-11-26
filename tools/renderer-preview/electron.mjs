@@ -108,12 +108,12 @@ async function run() {
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }
-    const galleryCounts = { shapes: 20, styles: 82, metrics: 22, 'metrics-long': 22, 'metrics-curves': 10, embeds: null }
+    const galleryCounts = { shapes: 20, styles: 82, metrics: 22, 'metrics-long': 22, 'metrics-curves': 10, embeds: null, arrows: null, routes: null, lines: null, bindings: null, 'bound-elbows': null }
     for (const [gallery, count] of Object.entries(galleryCounts)) {
       window = createWindow(gallery)
       await window.loadURL(`${manifest.url}/?gallery=${gallery}`)
       const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
-      check(initial.renderedShapes === initial.count && (gallery === 'embeds' ? initial.counts.embed === 6 && initial.counts.bookmark === 1 : initial.counts.geo === count), '图鉴元素未完整绘制')
+      check(initial.renderedShapes === initial.count && (gallery === 'embeds' ? initial.counts.embed === 6 && initial.counts.bookmark === 1 : count === null || initial.counts.geo === count), '图鉴元素未完整绘制')
       if (gallery === 'embeds') await until(() => evaluate("document.querySelector('[data-embed-content=\"shape:embed-web\"]')?.contentDocument?.documentElement.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-film\"]')?.contentDocument?.documentElement.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-slide\"]')?.contentDocument?.documentElement.dataset.instance"))
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
       const geometry = gallery === 'shapes' ? await evaluate("import('/tools/renderer-preview/geo-probe.js').then(module => module.runGeoProbe())") : undefined
@@ -124,7 +124,9 @@ async function run() {
         await delay(100)
         await writeFile(join(manifest.output, 'embeds-narrow.png'), (await window.webContents.capturePage()).toPNG())
       }
-      samples.push({ gallery, initial, geometry, embeds })
+      const connections = gallery === 'bindings' ? await evaluate("import('/tools/renderer-preview/arrow-probe.js').then(module => module.runConnectionProbe())") : undefined
+      samples.push({ gallery, initial, geometry, embeds, connections })
+
       window.destroy(); window = undefined
     }
     check(errors.length === 0 && blocked.length === 0, `浏览器错误：${errors.join('; ')}；外部请求：${blocked.join('; ')}`)
