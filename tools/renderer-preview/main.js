@@ -20,7 +20,7 @@ const host = document.querySelector('#canvas'), status = document.querySelector(
 const getState = () => {
   const state = interaction?.state.get()
   return Object.freeze({ ready, error: failure, count: metadata?.count || 0, counts: metadata ? Object.freeze({ ...metadata.counts }) : null, camera: state ? { ...state.camera } : null,
-    selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling,
+    selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling, shortcutsEnabled: state?.shortcutsEnabled, inputContext: state ? { ...state.inputContext } : null,
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h } }).filter(Boolean),
     revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
@@ -57,7 +57,7 @@ try {
   // Observation counter proves pointer hit queries do not serialize the board.
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
-  interaction = createCanvasInteraction({ session, camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  interaction = createCanvasInteraction({ session, camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame })
   disposers.push(() => renderer.unmount())

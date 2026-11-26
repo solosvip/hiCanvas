@@ -24,6 +24,9 @@ export function attachMinimapUi(toolbar, host, interaction, { store, pageId, dis
   function mount() {
     view = mountCanvasMinimap(panel, { store, pageId })
     const element = view.element
+    // The minimap lives in the navigation panel, outside the canvas host; its
+    // arrow keys still belong to the canvas input context (#122).
+    element.dataset.canvasInputOwner = 'canvas'
     function listen(type, listener, options) { element.addEventListener(type, listener, options); stops.push(() => element.removeEventListener(type, listener, options)) }
     for (const [name, type] of Object.entries({ pointerdown: 'pointer_down', pointermove: 'pointer_move', pointerup: 'pointer_up', pointercancel: 'pointer_cancel' })) {
       listen(name, event => {

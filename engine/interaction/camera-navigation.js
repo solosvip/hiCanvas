@@ -21,6 +21,10 @@ export function createCameraNavigation({ session, read, change, content, cancelT
   }
   const pan = createCameraPan({ read, change, motion, cancelTool, navigate, reduceMotion })
   const zoom = createZoomTool({ read, change, motion, navigate, viewport, content })
+  function releaseKeys() {
+    if (space || zoom.active()) { pan.cancel(); zoom.leave(); motion.stop() }
+    space = false; change({ temporaryTool: null })
+  }
   function cancel() { space = false; edgePointer = null; pan.cancel(); zoom.leave(lastFrame || 0, true); motion.stop(); change({ needsFrame: false, temporaryTool: null }) }
   function edgeActive() { return read().edgeScrolling && edgePointer && ['dragging', 'marquee'].includes(read().mode) }
   function edgeTick(input) {
@@ -65,6 +69,18 @@ export function createCameraNavigation({ session, read, change, content, cancelT
       const down = input.type === 'key_down', key = input.key.toLowerCase(), mod = input.ctrlKey || input.metaKey
       if (key === 'escape') { if (down) cancel(); return { handled: false } }
       if (key === ' ' || input.code === 'Space') { if (!session.state.get().isGestureActive) space = down; change({ temporaryTool: space ? 'hand' : null }); return { handled: true } }
+      if (space && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) {
+        if (down) {
+          // Native #122: Right/Left move ±1280 CSS px, Down/Up ±900 at
+          // 1280×900; z=2 halves page travel, z=.5 doubles it. The 320ms
+          // transition follows cubic ease-in/out; keyup does not stop it.
+          const camera = read().camera, { w, h } = viewport()
+          const dx = key === 'arrowleft' ? w : key === 'arrowright' ? -w : 0
+          const dy = key === 'arrowup' ? h : key === 'arrowdown' ? -h : 0
+          motion.animate({ ...camera, x: camera.x + dx / camera.z, y: camera.y + dy / camera.z }, input.time, { duration: 320, easeInOut: true })
+        }
+        return { handled: true }
+      }
       if (!down || input.repeat) return { handled: false }
       if (!mod && !input.altKey && (key === 'h' || key === 'v')) { return { handled: setTool(key === 'h' ? 'hand' : 'select') } }
       if (['=', '+', '-'].includes(key)) { navigate(key === '-' ? 'zoom-out' : 'zoom-in', input.shiftKey ? point : null, input.time); return { handled: true } }
@@ -77,7 +93,7 @@ export function createCameraNavigation({ session, read, change, content, cancelT
     if (['pointer_up', 'pointer_cancel'].includes(input.type)) edgePointer = null
     return { handled: false }
   }
-  return { handle, navigate, cancel, pan: pan.pan, cancelPan: pan.cancel,
+  return { handle, navigate, cancel, releaseKeys, pan: pan.pan, cancelPan: pan.cancel,
     centerOn(point, time) { const camera = read().camera, v = viewport(); motion.animate({ ...camera, x: v.w / (2 * camera.z) - point.x, y: v.h / (2 * camera.z) - point.y }, time) },
     reset: () => { cancel(); lastFrame = null },
     finishFrame() {
