@@ -1,68 +1,79 @@
+import { getEmbedService, getEmbedServiceConstraints } from '../model/index.js'
+
 // #70 保持继承权限；独立来源与消息通道的隔离迁移由 #78 负责。
 export const EMBED_FRAME_ATTRIBUTES = Object.freeze({ sandbox: 'allow-forms allow-popups allow-same-origin allow-scripts', referrerPolicy: 'no-referrer', tabIndex: -1, draggable: false, frameBorder: '0' })
 const virtualOrigin = 'https://cowart.local'
 
 const frame = extra => Object.freeze({ sandbox: `allow-popups ${extra ? extra + ' ' : ''}allow-scripts allow-same-origin allow-forms`, referrerPolicy: 'strict-origin-when-cross-origin', allowFullScreen: true, tabIndex: -1, draggable: false, frameBorder: '0' })
-const at = (url, host, path) => url.hostname === host && url.pathname.match(path)
 function appendQuery(raw, field) {
   const [base, ...hash] = raw.split('#')
   return base + (base.includes('?') ? '&' : '?') + field + (hash.length ? '#' + hash.join('#') : '')
 }
-function figma(url, raw) {
-  const file = value => at(value, 'www.figma.com', /^\/(?:file|design|proto)\/[A-Za-z0-9]{22}\/[^/]+\/?$/)
-  if (file(url)) return 'https://www.figma.com/embed?embed_host=share&url=' + raw
-  if (at(url, 'www.figma.com', /^\/embed$/)) {
-    try { if (file(new URL(url.searchParams.get('url')))) return raw } catch { /* Invalid nested URL falls back to a bookmark. */ }
-  }
-  return null
-}
 function youtube(url, raw) {
-  if (at(url, 'www.youtube.com', /^\/embed\/[A-Za-z0-9_-]+$/)) return raw
-  const short = at(url, 'youtu.be', /^\/([A-Za-z0-9_-]+)$/)
-  const id = short?.[1] || (at(url, 'www.youtube.com', /^\/watch$/) && url.searchParams.get('v'))
-  if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) return null
+  if (url.hostname === 'www.youtube.com' && url.pathname.startsWith('/embed/')) return raw
+  const id = url.hostname === 'youtu.be' ? url.pathname.slice(1) : url.searchParams.get('v')
   const params = new URLSearchParams()
   for (const [key, value] of url.searchParams) if (key !== 'v') params.append(key === 't' ? 'start' : key, value)
   return `https://www.youtube.com/embed/${id}${params.size ? '?' + params : ''}`
 }
-const entry = (id, name, size, minimumObserved, convert, extra = {}) => Object.freeze({ id, name, size: Object.freeze(size), minimumObserved: minimumObserved && Object.freeze(minimumObserved), canResize: true, lockAspectRatio: false, attributes: frame(''), convert, ...extra })
+// Inputs have already been identified by model's single matching table.
+// Only address construction and legacy frame permissions live here.
+const converters = {
+  G05: (_u, raw) => raw,
+  G06: (u, raw) => u.pathname === '/embed' ? raw : 'https://www.figma.com/embed?embed_host=share&url=' + raw,
+  G07: (u, raw) => u.searchParams.has('embed') ? raw : appendQuery(raw, 'embed='),
+  G08: (_u, raw) => raw,
+  G09: u => 'https://www.val.town/embed/' + u.pathname.split('/').slice(2).join('/'),
+  G10: u => 'https://codesandbox.io/embed/' + u.pathname.split('/')[2],
+  G11: u => `https://codepen.io/${u.pathname.split('/')[1]}/embed/${u.pathname.split('/')[3]}${u.search}${u.hash}`,
+  G12: u => 'https://scratch.mit.edu/projects/embed/' + u.pathname.split('/')[2],
+  G13: youtube,
+  G14: (u, raw) => u.pathname === '/calendar/embed' ? raw : 'https://calendar.google.com/calendar/embed?src=' + encodeURIComponent(u.searchParams.get('cid')),
+  G15: (u, raw) => u.pathname.endsWith('/embed') ? raw : `https://docs.google.com/presentation/d/e/${u.pathname.split('/')[4]}/embed${u.hash}`,
+  G16: () => null,
+  G17: (_u, raw) => appendQuery(raw, 'embed=true'),
+  G18: u => 'https://felt.com/embed/map/' + u.pathname.split('/').at(-1),
+  G19: u => 'https://open.spotify.com/embed/album/' + u.pathname.split('/').at(-1),
+  G20: (u, raw) => u.hostname === 'player.vimeo.com' ? raw : `https://player.vimeo.com/video/${u.pathname.split('/')[1]}?title=0&byline=0`,
+  G21: (u, raw) => u.pathname.startsWith('/embed/') ? raw : `https://observablehq.com/embed/${u.pathname.startsWith('/d/') ? u.pathname.slice(3) : u.pathname.slice(1)}?cell=*`,
+  G22: (u, raw) => u.search ? raw : raw + '?embed',
+}
+const entry = (id, name, size, minimumObserved, extra = {}) => {
+  const constraints = getEmbedServiceConstraints(id)
+  return Object.freeze({ id, name, size: Object.freeze(size), minimumObserved: minimumObserved && Object.freeze(minimumObserved), canResize: constraints.canResize, lockAspectRatio: constraints.lockAspectRatio, attributes: frame(''), convert: (url, raw) => getEmbedService(raw)?.id === id ? converters[id](url, raw) : null, ...extra })
+}
 
 // Independent black-box samples from the running legacy UI (2026-11-25).
 // The observed limits describe that probe, not independently inferred minW/minH.
 // Permissions preserve legacy behavior per #83's ruling; tightening belongs to #78.
 export const EXTERNAL_EMBED_SERVICES = Object.freeze([
-  entry('G05', 'tldraw', [720, 500], [300, 300], (u, raw) => at(u, 'www.tldraw.com', /^\/r\/[A-Za-z0-9_-]+\/?$/) ? raw : null, { attributes: frame('allow-top-navigation') }),
-  entry('G06', 'Figma', [720, 500], [200, 200], figma),
-  entry('G07', 'Canva', [720, 500], [200, 200], (u, raw) => at(u, 'www.canva.com', /^\/design\/[^/]+\/(?:[^/]+\/)?view\/?$/) ? u.searchParams.has('embed') ? raw : appendQuery(raw, 'embed=') : null),
-  entry('G08', 'Google Maps', [720, 500], [200, 200], (u, raw) => at(u, 'www.google.com', /^\/maps\/embed$/) && u.searchParams.get('pb') ? raw : null, { attributes: frame('allow-presentation') }),
-  entry('G09', 'Val Town', [720, 500], [260, 100], u => { const m = at(u, 'www.val.town', /^\/(?:v|embed)\/([^/]+(?:\/[^/]+)?)$/); return m ? 'https://www.val.town/embed/' + m[1] : null }),
-  entry('G10', 'CodeSandbox', [720, 500], [300, 300], u => { const m = at(u, 'codesandbox.io', /^\/(?:s|embed)\/([^/]+)$/); return m ? 'https://codesandbox.io/embed/' + m[1] : null }),
-  entry('G11', 'CodePen', [520, 400], [300, 300], u => { const m = at(u, 'codepen.io', /^\/([^/]+)\/(?:pen|embed)\/([^/]+)$/); return m ? `https://codepen.io/${m[1]}/embed/${m[2]}${u.search}${u.hash}` : null }),
-  entry('G12', 'Scratch', [520, 400], null, u => { const m = at(u, 'scratch.mit.edu', /^\/projects\/([A-Za-z0-9_-]+)(?:\/[^/]+)?\/?$/); return m ? 'https://scratch.mit.edu/projects/embed/' + m[1] : null }, { canResize: false }),
-  entry('G13', 'YouTube', [800, 450], [355.556, 200], youtube, { lockAspectRatio: true, attributes: frame('allow-popups-to-escape-sandbox allow-presentation') }),
-  entry('G14', 'Google Calendar', [720, 500], [460, 360], (u, raw) => at(u, 'calendar.google.com', /^\/calendar\/embed$/) && u.searchParams.get('src') ? raw : at(u, 'calendar.google.com', /^\/calendar\/u\/0\/r$/) && u.searchParams.get('cid') ? 'https://calendar.google.com/calendar/embed?src=' + encodeURIComponent(u.searchParams.get('cid')) : null, { attributes: frame('allow-popups-to-escape-sandbox') }),
-  entry('G15', 'Google Slides', [720, 500], [460, 360], (u, raw) => { const m = at(u, 'docs.google.com', /^\/presentation\/d\/e\/([^/]+)\/(pub|embed)$/); return m ? m[2] === 'embed' ? raw : `https://docs.google.com/presentation/d/e/${m[1]}/embed${u.hash}` : null }, { attributes: frame('allow-popups-to-escape-sandbox') }),
-  entry('G16', 'GitHub Gist', [720, 500], [200, 200], () => null, { fallbackIssue: 78, attributes: Object.freeze({ ...frame(''), sandbox: 'allow-popups allow-scripts allow-forms', allowFullScreen: false }) }),
-  entry('G17', 'Replit', [720, 500], [200, 200], (u, raw) => at(u, 'replit.com', /^\/@[^/]+\/[^/]+$/) ? appendQuery(raw, 'embed=true') : null),
-  entry('G18', 'Felt', [720, 500], [200, 200], u => { const m = at(u, 'felt.com', /^\/(?:embed\/)?map\/([^/]+)$/); return m ? 'https://felt.com/embed/map/' + m[1] : null }),
-  // Official full-audio guidance requires encrypted-media. The observed legacy
-  // frame has no allow attribute; #83 preserves it rather than claiming minimum permissions.
-  entry('G19', 'Spotify', [720, 500], [200, 500], u => { const m = at(u, 'open.spotify.com', /^\/(?:embed\/)?album\/([A-Za-z0-9]{22})$/); return m ? 'https://open.spotify.com/embed/album/' + m[1] : null }),
-  entry('G20', 'Vimeo', [640, 360], [355.556, 200], (u, raw) => { if (at(u, 'player.vimeo.com', /^\/video\/\d+$/)) return raw; const m = at(u, 'vimeo.com', /^\/(\d+)(?:\/[^/]+)?$/); return m ? `https://player.vimeo.com/video/${m[1]}?title=0&byline=0` : null }, { lockAspectRatio: true }),
-  entry('G21', 'Observable', [720, 500], [200, 200], (u, raw) => { if (at(u, 'observablehq.com', /^\/embed\/(?:@[^/]+\/[^/]+|[^/]+)$/)) return raw; const m = at(u, 'observablehq.com', /^\/(?:d\/([^/]+)|(@[^/]+\/[^/]+))$/); return m ? `https://observablehq.com/embed/${m[1] || m[2]}?cell=*` : null }),
-  entry('G22', 'Desmos', [700, 450], [200, 200], (u, raw) => at(u, 'www.desmos.com', /^\/calculator\/[a-z0-9]{10}$/) && !u.hash && ['', '?embed'].includes(u.search) ? u.search ? raw : raw + '?embed' : null)
+  entry('G05', 'tldraw', [720, 500], [300, 300], { attributes: frame('allow-top-navigation') }),
+  entry('G06', 'Figma', [720, 500], [200, 200]),
+  entry('G07', 'Canva', [720, 500], [200, 200]),
+  entry('G08', 'Google Maps', [720, 500], [200, 200], { attributes: frame('allow-presentation') }),
+  entry('G09', 'Val Town', [720, 500], [260, 100]),
+  entry('G10', 'CodeSandbox', [720, 500], [300, 300]),
+  entry('G11', 'CodePen', [520, 400], [300, 300]),
+  entry('G12', 'Scratch', [520, 400], null),
+  entry('G13', 'YouTube', [800, 450], [355.556, 200], { attributes: frame('allow-popups-to-escape-sandbox allow-presentation') }),
+  entry('G14', 'Google Calendar', [720, 500], [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
+  entry('G15', 'Google Slides', [720, 500], [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
+  entry('G16', 'GitHub Gist', [720, 500], [200, 200], { fallbackIssue: 78, attributes: Object.freeze({ ...frame(''), sandbox: 'allow-popups allow-scripts allow-forms', allowFullScreen: false }) }),
+  entry('G17', 'Replit', [720, 500], [200, 200]),
+  entry('G18', 'Felt', [720, 500], [200, 200]),
+  // #83 preserves observed permissions; changes belong to isolation work.
+  entry('G19', 'Spotify', [720, 500], [200, 500]),
+  entry('G20', 'Vimeo', [640, 360], [355.556, 200]),
+  entry('G21', 'Observable', [720, 500], [200, 200]),
+  entry('G22', 'Desmos', [700, 450], [200, 200]),
 ])
 
 export function resolveExternalEmbed(value) {
-  if (typeof value !== 'string') return null
-  let url
-  try { url = new URL(value) } catch { return null }
-  if (url.protocol !== 'https:' || url.port || url.username || url.password) return null
-  for (const service of EXTERNAL_EMBED_SERVICES) {
-    const src = service.convert(url, value)
-    if (src) return { service, src, attributes: service.attributes }
-  }
-  return null
+  const source = getEmbedService(value)
+  if (!source) return null
+  const service = EXTERNAL_EMBED_SERVICES.find(service => service.id === source.id)
+  const src = service.convert(new URL(value), value)
+  return src ? { service, src, attributes: service.attributes } : null
 }
 
 function assetUrl(value, extensions = /\.html?$/i) {

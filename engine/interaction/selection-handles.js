@@ -13,7 +13,8 @@ export function describeSelection(selection, ids, rotation) {
   if (!frame) return null
   const transformable = frame.w > 0 && frame.h > 0
   const handles = []
-  if (transformable && selection.capability(ids).canScale) for (const [id, [x, y]] of Object.entries(resizeHandles)) handles.push({ id, kind: 'resize', x: x * frame.w, y: y * frame.h, corner: x !== .5 && y !== .5 })
+  const capability = selection.capability(ids)
+  if (transformable && capability.canScale && !capability.hideResizeHandles) for (const [id, [x, y]] of Object.entries(resizeHandles)) handles.push({ id, kind: 'resize', x: x * frame.w, y: y * frame.h, corner: x !== .5 && y !== .5 })
   for (const [id, [x, y]] of Object.entries(resizeHandles)) if (selection.canRotate(ids) && x !== .5 && y !== .5) handles.push({ id, kind: 'rotate', x: x * frame.w, y: y * frame.h, directionX: x === 0 ? -1 : 1, directionY: y === 0 ? -1 : 1 })
   return { kind: 'selection', id: ids.join(','), bounds: { x: frame.x, y: frame.y, w: frame.w, h: frame.h }, rotation: frame.rotation, handles }
 }

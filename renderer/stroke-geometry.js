@@ -37,17 +37,20 @@ export function getStrokeGeometry(shape) {
     for (let i = 1; i < points.length; i++) { travelled += distance(points[i - 1], points[i]); steps++ }
     segments.push({ type: segment.type, points })
   }
-  const points = sampleSegments(segments)
-  if (!points.length) return null
-  const closed = shape.type === 'draw' && props.isClosed && points.length > 2
-  if (closed && distance(points[0], points.at(-1)) > 1e-7) points.push({ ...points[0] })
-  const radii = strokeRadii(shape, points, steps ? travelled / steps : 0)
+  const sampled = sampleSegments(segments)
+  if (!sampled.length) return null
+  const closed = shape.type === 'draw' && props.isClosed && sampled.length > 2
+  if (closed && distance(sampled[0], sampled.at(-1)) > 1e-7) sampled.push({ ...sampled[0] })
+  const radii = strokeRadii(shape, sampled, steps ? travelled / steps : 0)
+  // 2026-11-25 isolated legacy native drags + pixel cross-sections: scaling
+  // the path by 2 keeps draw/highlight thickness, pressure and stored points.
+  // Transform the centerline before outlining; scaling an outline also scales
+  // its radii and makes rendering and hit testing disagree with that behavior.
+  const points = sampled.map(p => ({ ...p, x: p.x * (props.scaleX ?? 1), y: p.y * (props.scaleY ?? 1) }))
   const width = (INK_WIDTHS[props.size] || INK_WIDTHS.m) * Math.abs(props.scale || 1)
   const dashed = shape.type === 'draw' && ['dashed', 'dotted'].includes(props.dash)
-  const raw = dashed ? dashedOutlines(points, width / 2, props.dash) : strokeOutlines(points, radii, closed)
-  const transform = p => ({ x: p.x * (props.scaleX ?? 1), y: p.y * (props.scaleY ?? 1) })
-  const outlines = raw.map(line => line.map(transform))
-  const fill = closed && props.fill !== 'none' ? points.map(transform) : []
+  const outlines = dashed ? dashedOutlines(points, width / 2, props.dash) : strokeOutlines(points, radii, closed)
+  const fill = closed && props.fill !== 'none' ? points.map(({ x, y }) => ({ x, y })) : []
   const outline = [...outlines.flat(), ...fill]
   const bounds = outline.reduce((b, p) => ({ x: Math.min(b.x, p.x), y: Math.min(b.y, p.y), right: Math.max(b.right, p.x), bottom: Math.max(b.bottom, p.y) }), { x: Infinity, y: Infinity, right: -Infinity, bottom: -Infinity })
   return { outline, outlines, decorations: [], ellipse: null, fill, bounds: { x: bounds.x, y: bounds.y, w: bounds.right - bounds.x, h: bounds.bottom - bounds.y } }

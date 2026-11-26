@@ -31,16 +31,16 @@ const closeTo = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} != ${b}`)
 const shape = f => f.session.store.get('shape:a')
 const selection = f => f.interaction.state.get().overlays.find(o => o.kind === 'selection')
 
-test('命令能力只读查询直接反映规则，未登记类型不出现缩放手柄', async () => {
-  const f = await fixture([{ type: 'create_shape', id: 'shape:n', shapeType: 'embed', x: 300, y: 20 }])
+test('命令能力只读查询区分可缩放与单选隐藏手柄，混选仍可缩放', async () => {
+  const f = await fixture([{ type: 'create_shape', id: 'shape:n', shapeType: 'arrow', x: 300, y: 20, props: { end: { x: 200, y: 100 } } }])
   try {
-    assert.deepEqual(getShapeScalingCapabilities(shape(f)), { canScale: true, lockAspectRatio: false })
+    assert.deepEqual(getShapeScalingCapabilities(shape(f)), { canScale: true, lockAspectRatio: false, hideResizeHandles: false })
     assert.ok(Object.isFrozen(getShapeScalingCapabilities(shape(f))))
-    await f.click(340, 60)
+    await f.click(340, 40)
     assert.equal(selection(f).handles.filter(h => h.kind === 'resize').length, 0)
     assert.ok(selection(f).handles.some(h => h.kind === 'rotate'))
     await f.click(50, 50, { shiftKey: true })
-    assert.equal(selection(f).handles.filter(h => h.kind === 'resize').length, 0)
+    assert.equal(selection(f).handles.filter(h => h.kind === 'resize').length, 8)
   } finally { f.close() }
 })
 

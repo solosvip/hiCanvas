@@ -41,7 +41,7 @@ const Shape = memo(function Shape({ scene, id, camera }) {
   ]
   else {
     if (connectionTypes[shape.type]) body = h(connectionTypes[shape.type], { scene, shape, key: 'body' })
-    else if (getShapeBounds(shape)) body = shape.type === 'note' ? h(Note, { scene, shape, key: 'body' }) : shape.type === 'bookmark' ? h(Bookmark, { shape, scene, key: 'body' }) : shape.type === 'embed' ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : drawings[shape.type]?.body ? h(drawings[shape.type].body, { shape, key: 'body' }) : h(Geometry, { shape, key: 'body' })
+    else if (getShapeBounds(shape)) body = shape.type === 'note' ? h(Note, { scene, shape, key: 'body' }) : shape.type === 'bookmark' ? h(Bookmark, { shape, scene, key: 'body' }) : shape.type === 'embed' ? h(Embed, { shape, scene, key: 'body' }) : shape.type === 'image' ? h(Image, { scene, props, key: 'body' }) : shape.type === 'text' ? h(Text, { props, key: 'body' }) : drawings[shape.type]?.body ? h(drawings[shape.type].body, { shape, key: 'body' }) : shape.type === 'geo' ? h(Geometry, { shape, key: 'body' }) : null
     body = [body, h(Children, { scene, parentId: id, camera, key: 'children' })]
   }
   return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: shape.opacity ?? 1 } }, body)

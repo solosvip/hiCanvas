@@ -140,10 +140,11 @@ async function run() {
       const pan = await until(async () => { const value = await state(); return value.camera.x !== initial.camera.x && value })
       window.webContents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: -40, modifiers: ['control'], canScroll: true })
       const zoom = await until(async () => { const value = await state(); return value.camera.z !== pan.camera.z && value })
-      let lifecycle, cameraLayout, text, fonts, textLayout, frameTitles
+      let lifecycle, cameraLayout, text, fonts, textLayout, frameTitles, scalingDispatch
       if (count === 5000) cameraLayout = { empty: await cameraLayoutProbe(), selected: await cameraLayoutProbe(true) }
       if (count === 5000) frameTitles = await measureFrameTitlePerformance(window.webContents, manifest.output)
       if (count === 500) {
+        scalingDispatch = await evaluate("import('/tools/renderer-preview/scale-render-probe.js').then(module => module.runScaleRenderProbe())")
         lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
         text = await evaluate("import('/tools/renderer-preview/text-probe.js').then(module => module.runTextProbe())")
         fonts = await evaluate("import('/tools/renderer-preview/font-probe.js').then(module => module.runFontProbe())")
@@ -152,7 +153,7 @@ async function run() {
       const camera = count === 500 ? await cameraSmoke(window, manifest.output) : undefined
       const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
       const minimap = count === 500 ? await minimapSmoke(window, manifest.output) : undefined
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera, minimap })
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera, minimap, scalingDispatch })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }

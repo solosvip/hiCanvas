@@ -1,6 +1,6 @@
 import { build } from 'esbuild'
 import { parse } from '@babel/parser'
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import { dirname, extname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +27,9 @@ function checkNoDom(source, path) {
 }
 
 export async function checkRendererBoundary({ root = projectRoot, geometry = false } = {}) {
+  // esbuild reports canonical importers; compare them against the same root,
+  // including macOS temporary directories reached through /var symlinks.
+  root = await realpath(root)
   const entry = geometry ? 'renderer/geometry.js' : 'renderer/index.js'
   const result = await build({
     absWorkingDir: root, entryPoints: [entry], bundle: true, write: false, metafile: true, platform: 'browser', format: 'esm', logLevel: 'silent',
@@ -42,8 +45,9 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
         if (specifier.startsWith('.') || specifier.startsWith('/')) {
           const target = relative(root, resolve(dirname(args.importer), specifier))
           const versionMetadata = importer === 'renderer/text-variable-metrics.js' && target === 'node_modules/fontkit/package.json'
-          if (!target.startsWith('renderer/') && target !== 'model/index.js' && !versionMetadata) throw new Error(`渲染层越界引用：${target}`)
-        } else if (!dataPackages.test(specifier) && !reactPackages.test(specifier) && !textPackages.test(specifier)) throw new Error(`渲染层未允许的依赖：${specifier}`)
+          const allowed = importer.startsWith('model/') ? target.startsWith('model/') : target.startsWith('renderer/') || target === 'model/index.js' || versionMetadata
+          if (!allowed) throw new Error(`渲染层越界引用：${target}`)
+        } else if (!dataPackages.test(specifier) && (importer.startsWith('model/') || (!reactPackages.test(specifier) && !textPackages.test(specifier)))) throw new Error(`渲染层未允许的依赖：${specifier}`)
       })
       if (geometry) builder.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async args => {
         const contents = await readFile(args.path, 'utf8')
