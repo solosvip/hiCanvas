@@ -16,6 +16,31 @@ test('真实渲染入口可浏览器打包，几何入口独立且没有 React/D
   assert.ok(pure.some(path => path.includes('node_modules/unicode-segmenter/')))
   assert.deepEqual(pure.filter(path => /node_modules\/(?:react|react-dom)\//.test(path)), [])
 })
+test('共用通道只经公开入口使用，内部不得反向依赖旧界面、渲染、编辑、Node或React',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'channel-boundary-'))
+  try{
+    await mkdir(join(root,'renderer'));await mkdir(join(root,'content-channel'))
+    await writeFile(join(root,'renderer/index.js'),"export * from '../content-channel/index.js'")
+    await writeFile(join(root,'content-channel/index.js'),"export * from './protocol.js'")
+    await writeFile(join(root,'content-channel/protocol.js'),'export const protocol=1')
+    await checkRendererBoundary({root})
+    for(const dependency of ['../src/filmPlayback.js','../renderer/index.js','../engine/index.js','node:fs','react','tldraw']){
+      await writeFile(join(root,'content-channel/protocol.js'),`import ${JSON.stringify(dependency)}`)
+      await assert.rejects(checkRendererBoundary({root}),/内容通道越界/,dependency)
+    }
+    await writeFile(join(root,'content-channel/protocol.js'),'export const protocol=1')
+    await mkdir(join(root,'content-channel/nested'))
+    await writeFile(join(root,'content-channel/nested/hidden.js'),"import 'react'")
+    await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
+    await writeFile(join(root,'content-channel/nested/hidden.js'),"export * from '../protocol.js'")
+    await checkRendererBoundary({root})
+    await writeFile(join(root,'renderer/index.js'),"export * from '../content-channel/protocol.js'")
+    await assert.rejects(checkRendererBoundary({root}),/渲染层越界/)
+    await writeFile(join(root,'renderer/geometry.js'),"export * from '../content-channel/index.js'")
+    await writeFile(join(root,'content-channel/protocol.js'),'export const doc=window.document')
+    await assert.rejects(checkRendererBoundary({root,geometry:true}),/几何/)
+  }finally{await rm(root,{recursive:true,force:true})}
+})
 
 test('渲染经模型公开入口读取内部数据，模型不能反向导入渲染且渲染不能直达模型内部', async () => {
   const base = await mkdtemp(join(tmpdir(), 'renderer-model-boundary-'))

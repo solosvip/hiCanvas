@@ -4,6 +4,7 @@ import { cp, mkdir, readFile, writeFile, chmod } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import {stageContentChannelAssets} from './content-channel-assets.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const stage = join(root, 'build', 'desktop-stage')
@@ -19,6 +20,7 @@ await cp(join(root, 'skills'), join(stage, 'skills'), { recursive: true })
 await cp(join(root, 'dist'), join(stage, 'dist'), { recursive: true })
 await cp(join(root, 'LICENSE'), join(stage, 'LICENSE'))
 await cp(join(root, 'licenses'), join(stage, 'licenses'), { recursive: true })
+await stageContentChannelAssets(stage)
 // Server geometry now shapes text from the same original font bytes. Preserve
 // their stable path for bundled service/MCP/desktop hosts as well as source runs.
 await cp(join(root, 'renderer/fonts/files'), join(stage, 'renderer/fonts/files'), { recursive: true })

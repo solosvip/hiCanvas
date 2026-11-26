@@ -132,23 +132,26 @@ function CowartHtmlDraftEmbed({ shape }) {
   useEffect(() => {
     if (!isCowartFilmShape(shape) || !htmlSource || !frameLoadVersion) return undefined
     const iframe = cowartHtmlDraftIframes.get(shape.id)
-    if (!iframe?.contentDocument?.body) return undefined
+    if (!iframe || !htmlFrame?.bind && !iframe.contentDocument?.body) return undefined
     const options = getFilmOptions(shape)
-    const controller = attachCowartFilmController(iframe, {
+    const playbackOptions = {
       duration: options.duration,
       muted: options.muted,
       onStatus(status) {
         cowartFilmStatuses.set(shape.id, status)
         window.dispatchEvent(new CustomEvent(COWART_FILM_STATUS_EVENT, { detail: { shapeId: shape.id, status } }))
       }
-    })
+    }
+    const controller = htmlFrame?.bind
+      ? htmlFrame.bind(iframe,{...options,film:true}).attachFilmController(playbackOptions)
+      : attachCowartFilmController(iframe,playbackOptions)
     cowartFilmControllers.set(shape.id, controller)
     return () => {
       controller.dispose()
       if (cowartFilmControllers.get(shape.id) === controller) cowartFilmControllers.delete(shape.id)
       cowartFilmStatuses.delete(shape.id)
     }
-  }, [shape.id, shape.meta?.cowartFilm, htmlSource, frameLoadVersion])
+  }, [shape.id, shape.meta?.cowartFilm, htmlSource, htmlFrame, frameLoadVersion])
   useEffect(() => {
     if (!isCowartFilmShape(shape)) return
     const muted = shape.meta?.cowartFilmMuted === true
@@ -217,7 +220,7 @@ function CowartHtmlDraftEmbed({ shape }) {
           draggable={false}
           frameBorder="0"
           height={toDomPrecision(shape.props.h)}
-          onLoad={() => setFrameLoadVersion((version) => version + 1)}
+          onLoad={(event) => { htmlFrame?.bind?.(event.currentTarget,{...getFilmOptions(shape),film:isCowartFilmShape(shape)}); setFrameLoadVersion((version) => version + 1) }}
           referrerPolicy="no-referrer"
           sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
           {...htmlFrame?.attributes}

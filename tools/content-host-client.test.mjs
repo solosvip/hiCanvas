@@ -21,12 +21,35 @@ test('加载开关关闭保留srcdoc和data URL，开启只用内容实例且卸
   const direct=await loadGeneratedFrame(null,{directUrl:'data:text/html,hello',fetcher:off.fetcher})
   assert.equal(direct.attributes.src,'data:text/html,hello')
   assert.equal(off.calls.filter(call=>call.method).length,0)
+  assert.equal(off.calls.filter(call=>call.url==='/api/health').length,1)
   const on=transport(),frame=await loadGeneratedFrame(null,{directUrl:'data:text/html,hello',fetcher:on.fetcher})
   assert.deepEqual(frame.attributes,{src:instance.url})
   const registered=JSON.parse(on.calls.find(call=>call.method==='POST').body)
   assert.equal(registered.html,'<h1>decoded</h1>')
   await Promise.all([frame.dispose(),frame.dispose()])
   assert.equal(on.calls.filter(call=>call.method==='DELETE').length,1)
+})
+test('同页并发挂载共用启动信息，取消一个挂载不取消其余挂载的启动请求',async t=>{
+  const original=transport(),abort=new AbortController()
+  const continuations=[],healthSignals=[]
+  const fetcher=async(url,options={})=>{
+    if(url==='/api/health'){
+      healthSignals.push(options.signal)
+      await new Promise(resolve=>{continuations.push(resolve)})
+    }
+    return original.fetcher(url,options)
+  }
+  const cancelled=loadGeneratedFrame('cancelled',{fetcher,signal:abort.signal})
+  const active=loadGeneratedFrame('active',{fetcher})
+  abort.abort()
+  for(const resume of continuations)resume()
+  await assert.rejects(cancelled,{name:'AbortError'})
+  const frame=await active
+  t.after(()=>frame.dispose())
+  for(const healthSignal of healthSignals)assert.notEqual(healthSignal,abort.signal)
+  assert.equal(original.calls.filter(call=>call.url==='/api/health').length,1)
+  assert.equal(original.calls.filter(call=>call.method==='POST').length,1)
+  await frame.dispose()
 })
 test('异步登记期间卸载仍回收实例；拒绝错误宿主时也撤销已获得的能力',async()=>{
   const abort=new AbortController(),cancelled=transport({afterPost:()=>abort.abort()})

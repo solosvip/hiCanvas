@@ -12,6 +12,7 @@ import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
 import { imageSmoke } from './image-smoke.mjs'
+import {channelSmoke} from '../content-host/channel-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -109,6 +110,14 @@ async function run() {
       samples.push({ handles: await handleSmoke(window, manifest.output), cameraLayout: await cameraLayoutProbe(true) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if(manifest.contentChannelOnly){
+      window=createWindow('content-channel')
+      const result=await channelSmoke(window,manifest,()=>createWindow('channel-preview'))
+      check(blocked.length===0,`实例通道冒烟不应请求公网：${blocked.join('; ')}`)
+      check(errors.length===0,`实例通道冒烟控制台错误：${errors.join('; ')}`)
+      await writeFile(manifest.result,JSON.stringify({...result,errors,blocked,runtime:process.versions},null,2))
+      window.destroy();app.exit(0);return
     }
     if (manifest.contentSecurityOnly) {
       window = createWindow('content-security')

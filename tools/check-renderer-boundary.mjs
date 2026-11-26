@@ -1,6 +1,6 @@
 import { build } from 'esbuild'
 import { parse } from '@babel/parser'
-import { readFile, realpath } from 'node:fs/promises'
+import { readFile, readdir, realpath } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import { dirname, extname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,6 +30,27 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
   // esbuild reports canonical importers; compare them against the same root,
   // including macOS temporary directories reached through /var symlinks.
   root = await realpath(root)
+  // Check every shared file, even if tree shaking removes it from this entry.
+  const channelRoot=resolve(root,'content-channel')
+  async function sharedFiles(directory){
+    const entries=await readdir(directory,{withFileTypes:true})
+    return (await Promise.all(entries.map(entry=>entry.isDirectory()?sharedFiles(resolve(directory,entry.name)):/\.[cm]?[jt]sx?$/.test(entry.name)?[relative(channelRoot,resolve(directory,entry.name))]:[]))).flat()
+  }
+  let shared=[]
+  try{shared=await sharedFiles(channelRoot)}catch(error){if(error.code!=='ENOENT')throw error}
+  for(const file of shared){
+    const ast=parse(await readFile(resolve(channelRoot,file),'utf8'),{sourceType:'module'})
+    const walk=node=>{
+      if(!node||typeof node!=='object')return
+      const imported=/^(?:ImportDeclaration|ExportAllDeclaration|ExportNamedDeclaration|ImportExpression)$/.test(node.type)?node.source:node.type==='CallExpression'&&node.callee?.type==='Import'?node.arguments[0]:null
+      if(imported){
+        const target=typeof imported.value==='string'&&imported.value.startsWith('.')?relative(channelRoot,resolve(channelRoot,dirname(file),imported.value)):null
+        if(!target||target.startsWith('..')||target.startsWith('/'))throw new Error(`内容通道越界引用：${file}`)
+      }
+      for(const value of Object.values(node))if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==='object')walk(value)
+    }
+    walk(ast.program)
+  }
   const entry = geometry ? 'renderer/geometry.js' : 'renderer/index.js'
   const result = await build({
     absWorkingDir: root, entryPoints: [entry], bundle: true, write: false, metafile: true, platform: 'browser', format: 'esm', logLevel: 'silent',
@@ -45,7 +66,7 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
         if (specifier.startsWith('.') || specifier.startsWith('/')) {
           const target = relative(root, resolve(dirname(args.importer), specifier))
           const versionMetadata = importer === 'renderer/text-variable-metrics.js' && target === 'node_modules/fontkit/package.json'
-          const allowed = importer.startsWith('model/') ? target.startsWith('model/') : target.startsWith('renderer/') || target === 'model/index.js' || versionMetadata
+          const allowed = importer.startsWith('model/') ? target.startsWith('model/') : target.startsWith('renderer/') || target === 'model/index.js' || target === 'content-channel/index.js' || versionMetadata
           if (!allowed) throw new Error(`渲染层越界引用：${target}`)
         } else if (!dataPackages.test(specifier) && (importer.startsWith('model/') || (!reactPackages.test(specifier) && !textPackages.test(specifier)))) throw new Error(`渲染层未允许的依赖：${specifier}`)
       })
@@ -58,7 +79,7 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
     } }]
   })
   for (const path of Object.keys(result.metafile.inputs)) {
-    if (!/^(?:renderer|model|node_modules)\//.test(path)) throw new Error(`渲染依赖图越界：${path}`)
+    if (!/^(?:renderer|model|content-channel|node_modules)\//.test(path)) throw new Error(`渲染依赖图越界：${path}`)
     if (geometry && /(?:^|\/)node_modules\/(?:react|react-dom)\//.test(path)) throw new Error(`几何依赖图带入 React：${path}`)
   }
   if (Object.values(result.metafile.outputs).some(output => output.imports.some(item => item.external))) throw new Error('渲染依赖必须完整打包，不能用 external 绕过检查。')

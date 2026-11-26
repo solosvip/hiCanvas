@@ -18,12 +18,28 @@ test('内容宿主按实例登记不同来源，仅发布文档并可立即撤�
   assert.notEqual(new URL(one.url).hostname,new URL(two.url).hostname)
   assert.match(new URL(one.url).hostname,/^[a-f0-9]{48}\.localhost$/)
   assert.ok(new URL(one.url).port)
-  assert.equal((await request(one.url)).text,'<h1>one</h1>')
+  assert.ok((await request(one.url)).text.endsWith('<h1>one</h1>'))
   assert.equal((await request(one.url,'not-registered.localhost:'+new URL(one.url).port)).status,403)
   assert.equal((await request(new URL('/api/canvas',one.url))).status,404)
   host.revoke(one.id,one.revokeToken)
   assert.equal((await request(one.url)).status,403)
   assert.equal((await request(two.url)).status,200)
+})
+test('实例脚本只发布固定白名单，别的实例路径、穿越和白名单外均不可读',async t=>{
+  const host=createContentHost();t.after(()=>host.close())
+  const one=await host.register({html:'<!doctype html><h1>channel</h1>',parentOrigin:'http://127.0.0.1:43218'})
+  const two=await host.register({html:'two',parentOrigin:'http://127.0.0.1:43218'})
+  const page=await request(one.url)
+  assert.ok(page.text.startsWith('<!doctype html><script type="module"'))
+  const script=page.text.match(/src="([^"]+)"/)[1]
+  const bootstrap=await request(new URL(script,one.url))
+  assert.equal(bootstrap.status,200)
+  assert.match(bootstrap.headers['content-type'],/^text\/javascript/)
+  assert.match(bootstrap.text,/installContentChild/)
+  assert.equal((await request(new URL(script,two.url))).status,404)
+  for(const path of ['index.js','parent.js','../../server/content-host.mjs','%2e%2e%2f%2e%2e%2fserver/content-host.mjs']){
+    assert.equal((await request(new URL('/.hicanvas-channel/'+one.id+'/'+path,one.url))).status,404,path)
+  }
 })
 test('实例到期不可读取或复活，资源和总量受限，管理能力不能伪造', async t => {
   let clock=100
