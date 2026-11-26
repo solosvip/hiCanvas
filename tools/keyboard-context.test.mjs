@@ -138,6 +138,33 @@ test('宿主只报告焦点和组字；表单、菜单保留原生按键，画�
 })
 
 
+test('焦点在自带方向键的画布控件（小地图）上时，方向键只交给控件，不微移选中形状；其他画布快捷键照常', async () => {
+  const f = await fixture(), keys = new EventTarget(), host = new EventTarget()
+  const doc = { defaultView: keys, activeElement: host }
+  host.ownerDocument = doc; host.clientWidth = 1280; host.clientHeight = 800
+  host.contains = target => target === host; host.closest = () => null
+  // The minimap is a canvas-owned control outside the host that dispatches its
+  // own arrow keys (#98); the host's window-level capture listener sees them first.
+  const minimap = { closest: selector => selector === '[data-canvas-input-owner="canvas"]' || selector === '[data-canvas-own-arrows]' ? {} : null }
+  const event = (type, element, properties = {}) => {
+    const value = new Event(type, { cancelable: true })
+    for (const [key, data] of Object.entries({ target: element, ...properties })) Object.defineProperty(value, key, { value: data })
+    keys.dispatchEvent(value); return value
+  }
+  const controls = attachPreviewInput(host, f.interaction)
+  try {
+    f.pointer('down', 150, 150); f.pointer('up', 150, 150)
+    assert.deepEqual(f.interaction.state.get().selectedIds, ['shape:a'])
+    doc.activeElement = minimap; event('focusin', minimap)
+    assert.equal(event('keydown', minimap, { key: 'ArrowRight', code: 'ArrowRight' }).defaultPrevented, false)
+    assert.equal(f.session.state.get().isGestureActive, false)
+    event('keyup', minimap, { key: 'ArrowRight', code: 'ArrowRight' }); await new Promise(resolve => setTimeout(resolve, 0))
+    assert.equal(f.session.store.get('shape:a').x, 100); assert.equal(f.commits.length, 0)
+    assert.equal(event('keydown', minimap, { key: 'h' }).defaultPrevented, true)
+    assert.equal(f.interaction.state.get().toolId, 'hand')
+  } finally { controls.dispose(); f.close() }
+})
+
 test('I09：逗号在最近指针处按下、移动预览、松键整次保存；重复按下和放大视角不多记事务', async () => {
   for (const z of [1, 2]) {
     const f = await fixture({ camera: { x: 0, y: 0, z } })

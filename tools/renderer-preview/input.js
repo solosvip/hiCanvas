@@ -58,6 +58,11 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   }
   const key = type => event => {
     reportContext(event.target)
+    // A canvas-owned control that dispatches its own arrows (the minimap, #98)
+    // gets them alone: this window-level capture listener runs first, and the
+    // canvas would otherwise nudge the selection and block the minimap's pan
+    // (#124). Key-ups still reach the canvas so a nudge begun there can end.
+    if (type === 'key_down' && event.key?.startsWith('Arrow') && event.target?.closest?.('[data-canvas-own-arrows]')) return
     const name = event.code?.startsWith('Digit') && event.shiftKey ? event.code.slice(5) : event.key
     const result = send({ type, time: event.timeStamp, key: name, code: event.code, repeat: event.repeat, isComposing: event.isComposing, keyCode: event.keyCode, ...modifiers(event) })
     if (result) event.preventDefault()

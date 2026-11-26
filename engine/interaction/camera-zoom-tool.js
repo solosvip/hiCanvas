@@ -1,3 +1,4 @@
+import { matchesCanvasShortcut } from './shortcuts.js'
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { boxBetween, fitCamera, stepZoom } from './camera-math.js'
 
@@ -11,12 +12,12 @@ export function createZoomTool({ read, change, motion, navigate, viewport }) {
     active = false; rectangle = null; change({ temporaryTool: null, marquee: null, mode: 'idle' }); return true
   }
   function handle(input) {
-    if (input.type === 'key_down' && input.key.toLowerCase() === 'z' && !input.ctrlKey && !input.metaKey && !input.altKey) {
+    if (matchesCanvasShortcut('zoom-hold', input)) {
       enter(input.time); return true
     }
     if (!active) return false
-    if (input.type === 'key_down' && input.key === 'Escape') return leave()
-    if (input.type === 'key_up' && input.key.toLowerCase() === 'z') return leave()
+    if (input.type === 'key_down' && matchesCanvasShortcut('escape', input)) return leave()
+    if (matchesCanvasShortcut('zoom-release', input)) return leave()
     if (input.type === 'pointer_down' && input.button === 0) {
       motion.stop(); rectangle = { id: input.pointerId, start: input.point, camera: read().camera }; change({ mode: 'zooming' }); return true
     }

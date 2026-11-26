@@ -1,3 +1,5 @@
+import { matchesCanvasShortcut } from './shortcuts.js'
+
 const owners = new Set(['canvas', 'text-editing', 'form', 'menu'])
 export function checkedInputContext(value = { owner: 'canvas' }) {
   if (!value || !owners.has(value.owner)) throw new Error('输入上下文须为 canvas、text-editing、form 或 menu。')
@@ -38,9 +40,9 @@ export function createKeyboardInput({ read, change, releaseKeys, releaseKey, can
     if (!onCanvas() || input.isComposing || input.keyCode === 229) { cancel(); return { handled: false } }
     // Legacy #122 (native focused canvas, 2026-11-26): disabling ordinary
     // shortcuts retains Space+Arrow panning and Escape cancellation (H24).
-    const essential = input.key === 'Escape' || input.key === ' ' || input.code === 'Space' || input.key.startsWith('Arrow') && read().temporaryTool === 'hand'
+    const essential = matchesCanvasShortcut('escape', input) || matchesCanvasShortcut('space', input) || matchesCanvasShortcut('pan-key-gate', input) && read().temporaryTool === 'hand'
     if (!read().shortcutsEnabled && !essential) return { handled: false }
-    if (input.key === ',' || input.code === 'Comma') {
+    if (matchesCanvasShortcut('comma', input) || virtualPointer && matchesCanvasShortcut('comma-release', input)) {
       // Legacy: comma down/move/up is one pointer gesture at the last screen
       // point. Repeated downs do not begin extra gestures. Release commits once.
       if (input.type === 'key_down') {
@@ -55,7 +57,7 @@ export function createKeyboardInput({ read, change, releaseKeys, releaseKey, can
     }
     // This Escape belongs to the active virtual gesture. Consuming it avoids
     // treating the newly idle state as a second, idle "clear selection" action.
-    if (input.type === 'key_down' && input.key === 'Escape' && virtualPointer) { cancel(); return { handled: true } }
+    if (input.type === 'key_down' && matchesCanvasShortcut('escape', input) && virtualPointer) { cancel(); return { handled: true } }
     return { input }
   }
   return { route, context, shortcuts, cancel }

@@ -241,6 +241,10 @@ npm run renderer:smoke
 
 登记文字验证端口并设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_TEXT_PORT=43386 node tools/renderer-preview/text-check.mjs`，结果在 `.scratch/text-smoke/`。完整 MIT TipTap schema 保留已有节点、标记和属性，依赖许可证见 [文字编辑依赖声明](licenses/text-editor-dependencies.txt)；格式工具栏、格式快捷键、富文本精确排版、链接、列表和编辑中粘贴归 #150，画布文本粘贴归 #136。实际 macOS 输入法候选窗及系统剪贴板需集中人工验证。
 
+选择动作验证使用 `/?gallery=selection-actions`，只修改内存中的合成小板，刷新还原。方向键每次1画布单位、Shift为10；按住重复在松键时保存一次。Alt+A/H/D/W/V/S 对齐，Alt+Shift+H/V 分布，Shift+H/V 镜像，`[`/`]` 置底／置顶，加Alt只跨过下一处重叠；Shift+,/. 旋转15°，再加Alt细转；Mod+Alt+Shift+=/- 缩放对象。Mod+G 组合／单组解组，Mod+Shift+G 解组，Shift+L 锁定，Delete删除，Mod+Shift+F 移除框。无快捷键的拉伸、堆排、紧凑排布、全部解锁及适配框使用预览按钮。紧凑排布次序仍待 #154；普通网格微移不在本单范围。原生回归在白板排队并登记专用端口后运行 `HICANVAS_ACTION_PORT=43395 node tools/renderer-preview/actions-check.mjs`，沿用上述已有 Electron 环境；证据位于 `.scratch/actions-smoke/`。
+
+编辑层公开 `canvasActions` 与 `planCanvasAction(id, { records:{getRecord,childIds}, pageId, selectedIds, frame?, canRotate?, canScale? }, {largeStep?})`：规划只读记录，返回可用条件、已有命令和结果选择策略。宿主经 `interaction.getActions()` 读取标签及可用状态，经 `interaction.runAction(id, options?)` 执行同一事务；返回 `applied`、`unchanged` 或带明确原因的 `unavailable`，执行失败抛错。菜单焦点可调用；提交中、活动手势、裁剪或文字编辑期间立即拒绝，不排队。键盘仍先过表单／IME／快捷键开关门禁；实际手形和画笔中的方向键不移动对象，Space+方向键只平移。MCP参数表和正式界面本轮未接入。
+
 预览入口是 `tools/renderer-preview/index.html`，独立 Vite 配置只扫描这个入口；正式构建仍从根 `index.html` 进入，桌面只复制正式 `dist/`，因此预览页不进入应用产物。合成规则复用性能基线的坐标、相机、尺寸、60% 几何／20% 文本／20% 图片构成及 16 张本地 PNG；保留三角形、菱形和 semi 填充，不再转换为矩形和实心。滚轮平移、Ctrl+滚轮或触控板捏合缩放只实现在预览页。只读观察接口 `window.__HICANVAS_RENDERER_PREVIEW__.getState()` 返回 `ready`、`error`、`camera`、`count`、`counts`、`renderedShapes`、`imageCount`、`decodedImages` 的副本，不暴露存储或修改接口；`ready` 等到全部形状、字体和图片解码完成后置为真，供后续测量工具读取。
 
 本地字体由 `renderer/index.js` 的 `prepareCanvasFonts(document, { onWarning })` 准备：宿主先等待成功，再挂载。它从 `renderer/fonts/files/` 加载13份作者原始字体，为16种粗细／斜体注册样式；任一失败会拒绝，宿主应显示错误并允许重试。手写字体使用作者 Shantell 1.011 可变字体的 C 拟合实例，CSS 和 fontkit 共用 `renderer/font-families.js` 的轴值，字形接近旧版但不完全一致。来源、固定提交、SHA-256、轴值及许可见 `licenses/fonts-sources.txt`。启动时用少量合成字复核系统字体类常量，偏差超过0.5px会在控制台警告；宿主通过 `onWarning` 保存本机日志，预览会写入 `.scratch/renderer-font-calibration.log`，日志失败不阻止使用。
