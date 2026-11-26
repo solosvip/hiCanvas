@@ -70,7 +70,7 @@ export function createCameraNavigation({ session, read, change, content, cancelT
       const down = input.type === 'key_down', key = input.key.toLowerCase()
       if (matchesCanvasShortcut('escape-folded', input)) { if (down) cancel(); return { handled: false } }
       if (matchesCanvasShortcut('space', input)) { if (!session.state.get().isGestureActive) space = down; change({ temporaryTool: space ? 'hand' : null }); return { handled: true } }
-      if (space && matchesCanvasShortcut('pan-direction', input)) {
+      if (space && matchesCanvasShortcut('pan-direction', input, read())) {
         if (down) {
           // Native #122: Right/Left move ±1280 CSS px, Down/Up ±900 at
           // 1280×900; z=2 halves page travel, z=.5 doubles it. The 320ms

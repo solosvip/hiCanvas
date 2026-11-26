@@ -42,7 +42,7 @@ export function createKeyboardInput({ read, change, releaseKeys, releaseKey, can
     // shortcuts retains Space+Arrow panning and Escape cancellation (H24).
     const essential = matchesCanvasShortcut('escape', input) || matchesCanvasShortcut('space', input) || matchesCanvasShortcut('pan-key-gate', input) && read().temporaryTool === 'hand'
     if (!read().shortcutsEnabled && !essential) return { handled: false }
-    if (matchesCanvasShortcut('comma', input)) {
+    if (matchesCanvasShortcut('comma', input) || virtualPointer && matchesCanvasShortcut('comma-release', input)) {
       // Legacy: comma down/move/up is one pointer gesture at the last screen
       // point. Repeated downs do not begin extra gestures. Release commits once.
       if (input.type === 'key_down') {

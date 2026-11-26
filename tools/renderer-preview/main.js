@@ -20,6 +20,8 @@ import { attachMinimapUi } from './minimap-ui.js'
 import { createImageGallery } from './image-fixtures.js'
 import { attachImageUi } from './image-ui.js'
 import { createDrawGallery } from './draw-fixture.js'
+import { createActionsGallery } from './actions-fixture.js'
+import { attachActionsUi } from './actions-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
 
@@ -39,6 +41,7 @@ const getState = () => {
     ...(textShapes && { textShapes: structuredClone(textShapes), textLayouts: Object.fromEntries(textShapes.filter(shape => shape.type !== 'frame').map(shape => [shape.id, getShapeTextLayout(shape, textContext)])) }),
     croppingId: state?.croppingId || null, cropZoom: state?.cropZoom || 0, isPenMode: state?.isPenMode || false,
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
+    ...(metadata?.selectionActions && { actionShapes: session.store.allRecords().filter(r => r.typeName === 'shape').map(r => structuredClone(r)), actions: interaction.getActions() }),
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, parentId: r.parentId, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, props: structuredClone(r.props), meta: structuredClone(r.meta), ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
     revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
@@ -56,6 +59,7 @@ try {
   } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (gallery === 'draw-input') metadata = createDrawGallery()
+  else if (gallery === 'selection-actions') metadata = createActionsGallery()
   else if (gallery === 'creation') metadata = createCreationFixture()
   else if (gallery === 'connection-editing') metadata = createConnectionEditingFixture()
   else if (['text-editing', 'text-formatted'].includes(gallery)) metadata = createTextEditingFixture(gallery === 'text-formatted')
@@ -106,12 +110,14 @@ try {
   if (images) disposers.push(() => images.dispose())
   const creationUi = gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture ? attachCreationUi(host, interaction, () => controls, showError) : null
   if (creationUi) disposers.push(() => creationUi.dispose())
+  const actionsUi = gallery === 'selection-actions' ? attachActionsUi(navigation.element, host, interaction, showError) : null
+  if (actionsUi) disposers.push(() => actionsUi.dispose())
   const textUi = metadata.textEditingFixture ? attachTextUi(creationUi.element, interaction, session.store, showError) : null
   if (textUi) disposers.push(() => textUi.dispose())
   const stop = react('preview interaction view', () => {
     const state = interaction.state.get()
     renderer.setCamera(state.camera); renderer.setOverlays(state.overlays); renderer.setTextEditing(state.textEditing)
-    navigation.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); controls?.wake()
+    navigation.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); actionsUi?.update(); controls?.wake()
     minimap.update(state)
     const error = state.lastError || session.state.get().lastError
     const message = error ? `操作失败：${error.message}` : ready ? instructions : status.textContent

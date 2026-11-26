@@ -8,6 +8,7 @@ export function createSelectionShortcuts({ session, index, read, select }) {
   function handle(input) {
     if (!['key_down', 'key_up'].includes(input.type)) return false
     const key = input.key.toLowerCase(), down = input.type === 'key_down'
+    const shortcutState = { ...read(), selectionType: read().selectedIds.length === 1 ? index.getRecord(read().selectedIds[0])?.type : null }
     if (matchesCanvasShortcut('escape-folded', input)) {
       cancel()
       // H24 keeps active-gesture Escape cancellation when shortcuts are off;
@@ -26,13 +27,13 @@ export function createSelectionShortcuts({ session, index, read, select }) {
       else return false
       return true
     }
-    if (matchesCanvasShortcut('selection-enter', input)) {
+    if (matchesCanvasShortcut('selection-enter', input, shortcutState)) {
       if (down) { if (read().selectedIds.length !== 1 || index.getRecord(read().selectedIds[0])?.type !== 'group') return false; pending.add(key); return true }
       return pending.delete(key) ? select('enter') : false
     }
     if (matchesCanvasShortcut('selection-all', input)) { select('all'); return true }
     const direction = { arrowleft: 'left', arrowright: 'right', arrowup: 'up', arrowdown: 'down' }[key]
-    if (!['selection-neighbor', 'selection-parent', 'selection-child'].some(id => matchesCanvasShortcut(id, input))) return false
+    if (!['selection-neighbor', 'selection-parent', 'selection-child'].some(id => matchesCanvasShortcut(id, input, shortcutState))) return false
     select(input.shiftKey ? direction === 'up' ? 'parent' : 'child' : direction)
     return true
   }

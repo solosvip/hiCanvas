@@ -130,7 +130,8 @@ export function createImageCrop(context) {
           } }
         }
       }
-      if (matchesCanvasShortcut('crop-enter', input) && read().toolId === 'select') {
+      const shortcutState = { ...read(), selectionType: read().selectedIds.length === 1 ? session.store.get(read().selectedIds[0])?.type : null }
+      if (matchesCanvasShortcut('crop-enter', input, shortcutState) && read().toolId === 'select') {
         if (read().croppingId) { if (gesture) return { handled: true }; finish() }
         else if (read().selectedIds.length === 1 && session.store.get(read().selectedIds[0])?.type === 'image') begin()
         else return { handled: false }
