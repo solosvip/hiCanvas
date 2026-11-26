@@ -1,4 +1,4 @@
-import { getShapePageBounds, pageToShapePoint, pointInShape, getShapeBounds, shapeToPagePoint } from './geometry.js'
+import { getShapePageBounds, pageToShapePoint, pointInShape, getShapeBounds, shapeToPagePoint, createConnectionContext, getBoundArrowIds } from './geometry.js'
 
 import { strokeWidth } from './geo-metrics.js'
 import { clipPolygon, boxPolygon } from './polygon-clip.js'
@@ -23,7 +23,9 @@ function cellsFor(box) {
 // Store or snapshot provider is retained. Each query visits only nearby cells.
 export function createSpatialIndex(initial, pageId) {
   const records = Object.create(null), snapshot = { store: records }
+  const connections = createConnectionContext(initial)
   const children = new Map(), entries = new Map(), cells = new Map(), oversized = new Set(), boundsCache = new Map()
+  let lastUpdatedIds = [], lastRemovedIds = [], totalUpdates = 0
   let page = pageId || initial.find(r => r.typeName === 'page')?.id
   function link(record, add) {
     if (record.typeName !== 'shape') return
@@ -44,14 +46,14 @@ export function createSpatialIndex(initial, pageId) {
     return Boolean(root && root.parentId === page && lineage.every(r => r.opacity !== 0))
   }
   function pagePolygon(id, padding = 0) {
-    const bounds = getShapeBounds(records[id])
-    return boxPolygon({ x: -padding, y: -padding, w: bounds.w + padding * 2, h: bounds.h + padding * 2 }).map(p => shapeToPagePoint(snapshot, id, p))
+    const bounds = getShapeBounds(records[id], connections)
+    return boxPolygon({ x: bounds.x - padding, y: bounds.y - padding, w: bounds.w + padding * 2, h: bounds.h + padding * 2 }).map(p => shapeToPagePoint(snapshot, id, p))
   }
   function getBounds(id) {
     if (boundsCache.has(id)) return boundsCache.get(id)
     const record = records[id]
     const box = record?.type === 'group' ? union([...(children.get(id) || [])].map(getBounds).filter(Boolean))
-      : record?.typeName === 'shape' ? getShapePageBounds(snapshot, id) : null
+      : record?.typeName === 'shape' ? getShapePageBounds(snapshot, id, connections) : null
     boundsCache.set(id, box)
     return box
   }
@@ -104,7 +106,7 @@ export function createSpatialIndex(initial, pageId) {
   }
   function hitsAtPoint(point, tolerance = 0) {
     const ids = candidates({ x: point.x - tolerance, y: point.y - tolerance, w: tolerance * 2, h: tolerance * 2 }).sort(paintOrder).reverse()
-    return ids.filter(id => visible(id) && visiblePoint(id, point) && pointInShape(records[id], pageToShapePoint(snapshot, id, point), tolerance))
+    return ids.filter(id => visible(id) && visiblePoint(id, point) && pointInShape(records[id], pageToShapePoint(snapshot, id, point), tolerance, connections))
   }
   function hitTest(point, tolerance = 0) { return hitsAtPoint(point, tolerance)[0] || null }
   function query(box) {
@@ -115,18 +117,39 @@ export function createSpatialIndex(initial, pageId) {
     const dirty = new Set(), ancestors = new Set()
     const next = [...Object.values(changes.added || {}), ...Object.values(changes.updated || {}).map(pair => pair[1])]
     const previous = [...Object.values(changes.removed || {}), ...Object.values(changes.updated || {}).map(pair => pair[0])]
+    const dependants = record => {
+      if (record.typeName === 'binding' && record.type === 'arrow') dirty.add(record.fromId)
+      for (const id of getBoundArrowIds(connections, record)) dirty.add(id)
+    }
+    // Read both relationship versions: removing / retargeting a binding must
+    // also invalidate the arrow that depended on its previous endpoint.
+    previous.forEach(dependants)
     for (const record of previous) { chain(record.id).forEach(r => ancestors.add(r.id)); link(record, false); dirty.add(record.id) }
     for (const record of Object.values(changes.removed || {})) delete records[record.id]
     for (const record of next) { records[record.id] = record; link(record, true); dirty.add(record.id) }
+    connections.applyChanges(changes)
+    next.forEach(dependants)
     // Parent transforms and inherited visibility affect every descendant.
-    for (const id of dirty) for (const child of children.get(id) || []) dirty.add(child)
+    for (const id of dirty) {
+      for (const child of children.get(id) || []) dirty.add(child)
+      for (const arrow of getBoundArrowIds(connections, id)) dirty.add(arrow)
+    }
     for (const id of dirty) chain(id).forEach(r => ancestors.add(r.id))
     for (const id of new Set([...dirty, ...ancestors])) boundsCache.delete(id)
-    for (const id of dirty) reindex(id)
+    lastUpdatedIds = []; lastRemovedIds = []
+    for (const id of dirty) {
+      const existed = entries.has(id)
+      reindex(id)
+      if (entries.has(id)) lastUpdatedIds.push(id)
+      else if (existed) lastRemovedIds.push(id)
+    }
+    totalUpdates += lastUpdatedIds.length
   }
   for (const record of initial) { records[record.id] = record; link(record, true) }
   for (const record of initial) if (record.typeName === 'shape') reindex(record.id)
   return Object.freeze({ applyChanges, hitTest, hitsAtPoint, query, getBounds: id => { const box = getBounds(id); return box && { ...box } }, getRecord: id => records[id],
+    // Read-only diagnostics count refreshed entries, excluding initial build.
+    getUpdateStats: () => Object.freeze({ updatedIds: Object.freeze([...lastUpdatedIds]), removedIds: Object.freeze([...lastRemovedIds]), totalUpdates }),
     // Convert a page displacement to the selected record's parent coordinates.
     parentDelta(id, delta) {
       const parentId = records[id]?.parentId

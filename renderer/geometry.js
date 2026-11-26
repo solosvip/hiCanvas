@@ -92,21 +92,21 @@ export function pageToShapePoint(snapshot, shapeId, point) {
   return ancestors(snapshot, shapeId).reverse().reduce(toLocal, point)
 }
 
-export function getShapePageBounds(snapshot, shapeId) {
+export function getShapePageBounds(snapshot, shapeId, context = snapshot) {
   if (snapshot.store[shapeId]?.type === 'group') {
     const children = orderedChildren(Object.values(snapshot.store)), pending = [shapeId], seen = new Set(pending), bounds = []
     for (const parentId of pending) for (const child of children.get(parentId) || []) {
       if (seen.has(child.id)) throw new Error('形状父子关系存在环。')
       seen.add(child.id); pending.push(child.id)
-      if (child.type !== 'group') { const box = getShapePageBounds(snapshot, child.id); if (box) bounds.push(box) }
+      if (child.type !== 'group') { const box = getShapePageBounds(snapshot, child.id, context); if (box) bounds.push(box) }
     }
     if (!bounds.length) return null
     const x = Math.min(...bounds.map(box => box.x)), y = Math.min(...bounds.map(box => box.y))
     return { x, y, w: Math.max(...bounds.map(box => box.x + box.w)) - x, h: Math.max(...bounds.map(box => box.y + box.h)) - y }
   }
-  const shape = snapshot.store[shapeId], bounds = shape && getShapeBounds(shape, snapshot)
+  const shape = snapshot.store[shapeId], bounds = shape && getShapeBounds(shape, context)
   if (!bounds) return null
-  const contour = getShapeContour(shape, snapshot)
+  const contour = getShapeContour(shape, context)
   if (!contour) return null
   if (contour.ellipse) {
     const center = shapeToPagePoint(snapshot, shapeId, { x: bounds.w / 2, y: bounds.h / 2 })
