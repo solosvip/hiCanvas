@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { measureFrameTitlePerformance } from './frame-title-performance.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
@@ -93,7 +94,7 @@ async function run() {
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2))
       window.destroy(); app.exit(0); return
     }
-    for (const count of manifest.galleries ? [] : [500, 2000, 5000]) {
+    for (const count of manifest.counts || (manifest.galleries ? [] : [500, 2000, 5000])) {
       window = createWindow(count)
       await window.loadURL(`${manifest.url}/?count=${count}`)
       const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
@@ -104,29 +105,34 @@ async function run() {
       const pan = await until(async () => { const value = await state(); return value.camera.x !== initial.camera.x && value })
       window.webContents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: -40, modifiers: ['control'], canScroll: true })
       const zoom = await until(async () => { const value = await state(); return value.camera.z !== pan.camera.z && value })
-      let lifecycle, cameraLayout, text
+      let lifecycle, cameraLayout, text, frameTitles
       if (count === 5000) cameraLayout = { empty: await cameraLayoutProbe(), selected: await cameraLayoutProbe(true) }
+      if (count === 5000) frameTitles = await measureFrameTitlePerformance(window.webContents, manifest.output)
       if (count === 500) {
         lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
         text = await evaluate("import('/tools/renderer-preview/text-probe.js').then(module => module.runTextProbe())")
       }
       const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, selection })
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, selection, frameTitles })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }
-    const galleryCounts = { shapes: 20, styles: 82, metrics: 22, 'metrics-long': 22, 'metrics-curves': 10, embeds: null, bookmarks: null, external: null, arrows: null, routes: null, lines: null, bindings: null, 'bound-elbows': null, draw: 16, 'draw-filled': 16 }
+    const galleryCounts = { shapes: 20, styles: 82, metrics: 22, 'metrics-long': 22, 'metrics-curves': 10, embeds: null, bookmarks: null, external: null, arrows: null, routes: null, lines: null, bindings: null, 'bound-elbows': null, draw: 16, 'draw-filled': 16, 'note-colors': 13, 'note-text': 12, 'note-layout': 15, 'note-fonts': 4, 'note-whitespace': 4, 'frame-titles': 7 }
     for (const [gallery, count] of Object.entries(galleryCounts)) {
       if (manifest.galleries && !manifest.galleries.includes(gallery)) continue
       window = createWindow(gallery)
       await window.loadURL(`${manifest.url}/?gallery=${gallery}`)
       const initial = await until(async () => { const value = await state(); if (value?.error) throw new Error(value.error); return value?.ready && value })
-      check(initial.renderedShapes === initial.count && (gallery === 'embeds' ? initial.counts.embed === 6 && initial.counts.bookmark === 1 : gallery === 'bookmarks' ? initial.counts.bookmark === 9 : gallery === 'external' ? initial.counts.embed === 18 : count === null || initial.counts.geo === count), '图鉴元素未完整绘制')
+      const type = gallery.startsWith('note-') ? 'note' : gallery === 'frame-titles' ? 'frame' : 'geo'
+      check(initial.renderedShapes === initial.count && (gallery === 'embeds' ? initial.counts.embed === 6 && initial.counts.bookmark === 1 : gallery === 'bookmarks' ? initial.counts.bookmark === 9 : gallery === 'external' ? initial.counts.embed === 18 : count === null || initial.counts[type] === count), '图鉴元素未完整绘制')
       if (gallery === 'embeds') await until(() => evaluate("document.querySelector('[data-embed-content=\"shape:embed-web\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-film\"]')?.contentDocument?.documentElement?.dataset.instance && document.querySelector('[data-embed-content=\"shape:embed-slide\"]')?.contentDocument?.documentElement?.dataset.instance"))
       await writeFile(join(manifest.output, `${gallery}-gallery.png`), (await window.webContents.capturePage()).toPNG())
       const geometry = gallery === 'shapes' ? await evaluate("import('/tools/renderer-preview/geo-probe.js').then(module => module.runGeoProbe())") : undefined
       const handDrawn = gallery === 'draw' ? await evaluate("import('/tools/renderer-preview/hand-drawn-probe.js').then(module => module.runHandDrawnProbe())") : undefined
       const embeds = gallery === 'embeds' ? await evaluate("import('/tools/renderer-preview/embed-probe.js').then(module => module.runEmbedProbe())") : undefined
+      const notes = gallery === 'note-layout' ? await evaluate("import('/tools/renderer-preview/note-probe.js').then(module => module.runNoteProbe())") : undefined
+      const titles = gallery === 'frame-titles' ? await evaluate("import('/tools/renderer-preview/note-probe.js').then(module => module.runFrameTitleProbe())") : undefined
+      const notePaint = ['note-colors', 'note-text', 'note-whitespace'].includes(gallery) ? await evaluate(`import('/tools/renderer-preview/note-probe.js').then(module => module.checkNoteGallery('${gallery}'))`) : undefined
       const bookmarks = gallery === 'bookmarks' ? await evaluate("import('/tools/renderer-preview/bookmark-probe.js').then(module => module.runBookmarkProbe())") : undefined
       const external = gallery === 'external' ? await evaluate("import('/tools/renderer-preview/external-probe.js').then(module => module.runExternalProbe())") : undefined
       if (['embeds', 'bookmarks', 'external'].includes(gallery)) {
@@ -136,7 +142,7 @@ async function run() {
         await writeFile(join(manifest.output, `${gallery}-narrow.png`), (await window.webContents.capturePage()).toPNG())
       }
       const connections = gallery === 'bindings' ? await evaluate("import('/tools/renderer-preview/arrow-probe.js').then(module => module.runConnectionProbe())") : undefined
-      samples.push({ gallery, initial, geometry, embeds, bookmarks, external, connections, handDrawn })
+      samples.push({ gallery, initial, geometry, embeds, bookmarks, external, connections, handDrawn, notes, titles, notePaint })
 
       window.destroy(); window = undefined
     }

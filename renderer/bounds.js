@@ -1,4 +1,5 @@
 import { strokeWidth } from './geo-metrics.js'
+import { noteLayout } from './note-layout.js'
 import { textLayout } from './text.js'
 import { getGeoContour, getGeoSize } from './geo-contours.js'
 import { getConnectionGeometry } from './connection-geometry.js'
@@ -9,6 +10,7 @@ const stored = shape => ({ w: shape.props.w || 0, h: shape.props.h || 0 })
 // separate typography work; no browser measurement enters this module.
 const box = ({ w, h }) => ({ outline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }], decorations: [], ellipse: null })
 const textSize = shape => { const { w, h } = textLayout(shape.props); return { w, h } }
+const noteSize = shape => { const { w, h } = noteLayout(shape.props); return { w, h } }
 const connection = {
   bounds: (shape, context) => getConnectionGeometry(shape, context).bounds,
   contour: (shape, context) => getConnectionGeometry(shape, context).contour,
@@ -16,6 +18,7 @@ const connection = {
 }
 const geometryByType = Object.freeze({
   geo: { hit: legacyHit, bounds: shape => getGeoSize(shape.props), contour: shape => getGeoContour(shape.props) },
+  note: { hit: legacyHit, bounds: noteSize, contour: shape => box(noteSize(shape)) },
   text: { hit: legacyHit, bounds: textSize, contour: shape => box(textSize(shape)) },
   image: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },
   frame: { hit: legacyHit, bounds: stored, contour: shape => box(stored(shape)) },

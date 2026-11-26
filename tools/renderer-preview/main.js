@@ -5,6 +5,8 @@ import { mountCanvasRenderer } from '../../renderer/index.js'
 import { createGallery } from './gallery.js'
 import { createConnectionGallery } from './arrow-gallery.js'
 import { createStrokeGallery, addStrokeLoad } from './stroke-fixtures.js'
+import { createNoteGallery } from './note-fixtures.js'
+import { createFrameTitleFixture } from './frame-title-fixture.js'
 import { attachPreviewInput } from './input.js'
 import { memoryTransport, previewTransport } from './transport.js'
 
@@ -27,7 +29,9 @@ Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.f
 
 try {
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
-  if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
+  if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
+  else if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
+  else if (gallery?.startsWith('note-') || gallery === 'frame-titles') metadata = createNoteGallery(gallery)
   else if (gallery) metadata = gallery.startsWith('stroke-') ? createStrokeGallery(gallery) : createGallery(gallery)
   else {
     const response = await fetch(`/__renderer_fixture?count=${encodeURIComponent(params.get('count') || '500')}&dash=${encodeURIComponent(params.get('dash') || 'solid')}`)
