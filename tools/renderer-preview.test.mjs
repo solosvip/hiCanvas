@@ -2,6 +2,9 @@ import './test-sandbox.mjs'
 import './renderer-test-fonts.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createFixture } from './perf/fixture.mjs'
 import { createRendererFixture, startRendererPreview } from './renderer-preview.mjs'
 import { createGallery } from './renderer-preview/gallery.js'
@@ -83,4 +86,36 @@ test('独立预览只提供合成数据，拒绝写入与未知规模，不启�
     assert.equal((await fetch(`${preview.url}/__renderer_fixture?count=123`)).status, 400)
   } finally { await preview.close() }
   await assert.rejects(startRendererPreview({ port: 43218 }), /端口/)
+})
+
+// Automated runs must not reload the page under test when files change right
+// before the run (#123 smoke): watch:false starts the preview without an HMR channel.
+test('自动检查用的预览不监听文件：改动文件不重载页面，热更新通道照常连得上', async () => {
+  const scratch = fileURLToPath(new URL('../.scratch/', import.meta.url))
+  await mkdir(scratch, { recursive: true })
+  const dir = await mkdtemp(join(scratch, 'preview-watch-'))
+  const page = join(dir, 'probe.html'), sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+  // Rewrite an html file under the preview root until a full-reload arrives or
+  // the time runs out. A watching server reloads html changes it sees.
+  const reloadsWithin = async (url, ms) => {
+    const socket = new WebSocket(url.replace(/^http/, 'ws'), 'vite-hmr'), messages = []
+    socket.addEventListener('message', event => messages.push(JSON.parse(event.data)))
+    await new Promise((open, fail) => { socket.addEventListener('open', open); socket.addEventListener('error', () => fail(new Error('热更新通道连不上，页面会反复重连报错'))) })
+    try {
+      for (const end = Date.now() + ms; Date.now() < end;) {
+        await writeFile(page, `<!doctype html><p>${Date.now()}</p>`); await sleep(400)
+        if (messages.some(message => message.type === 'full-reload')) return true
+      }
+      return false
+    } finally { socket.close() }
+  }
+  try {
+    await writeFile(page, '<!doctype html><p>0</p>')
+    const watching = await startRendererPreview(), started = Date.now()
+    try { assert.equal(await reloadsWithin(watching.url, 15000), true, '对照组：默认预览没有因文件改动重载，本测试失去意义') } finally { await watching.close() }
+    const quiet = await startRendererPreview({ watch: false })
+    // Watch at least as long as the control needed to see a reload, so a slow
+    // watcher start cannot make the quiet case pass by accident.
+    try { assert.equal(await reloadsWithin(quiet.url, Math.max(3000, 2 * (Date.now() - started))), false, '自动检查用的预览仍在监听文件') } finally { await quiet.close() }
+  } finally { await rm(dir, { recursive: true, force: true }) }
 })

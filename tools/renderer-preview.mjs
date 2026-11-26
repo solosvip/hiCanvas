@@ -13,13 +13,18 @@ export function createRendererFixture(count, { dash = 'solid' } = {}) {
   return createFixture(count, undefined, undefined, { dash })
 }
 
-export async function startRendererPreview({ port = 0, geometryFixtures = false } = {}) {
+// watch: false is for automated runs. A merge pipeline rebases files seconds
+// before the run, and macOS can report those writes late; a watching server
+// then reloads the page under test mid-assertion (#123 smoke). Only the file
+// watcher goes: the page's HMR client still connects on this port, so it never
+// retries a closed socket and logs errors the smoke counts (#118 found that).
+export async function startRendererPreview({ port = 0, geometryFixtures = false, watch = true } = {}) {
   if (port !== 0 && (!Number.isInteger(port) || port < 43300 || port > 65535)) throw new Error('预览端口须在 43300–65535，测试可使用系统分配端口。')
   const fixtures = new Map()
   let server
   const http = createHttpServer((request, response) => server ? server.middlewares(request, response) : response.end())
   await new Promise((accept, reject) => { http.once('error', reject); http.listen(port, '127.0.0.1', accept) })
-  try { server = await createServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: ['react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port } }, plugins: [{ name: 'readonly-renderer-preview', configureServer(vite) {
+  try { server = await createServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: ['react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port }, ...(!watch && { watch: null }) }, plugins: [{ name: 'readonly-renderer-preview', configureServer(vite) {
     vite.middlewares.use(async (request, response, next) => {
       const url = new URL(request.url, 'http://127.0.0.1')
       if (url.pathname === '/__renderer_font_warning') {
