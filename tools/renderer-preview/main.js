@@ -1,7 +1,7 @@
 import './style.css'
 import { handleCornerHitSize, handleEdgeHitSize, handleRotationOffset, handleRotationRadius } from '../../src/styles/tokens.js'
 import { react } from '@tldraw/state'
-import { createEditorSession, createCanvasInteraction } from '../../engine/index.js'
+import { createEditorSession, createCanvasInteraction, canvasToolRegistry } from '../../engine/index.js'
 import { mountCanvasRenderer, prepareCanvasFonts, loadGeneratedFrame } from '../../renderer/index.js'
 import { createGallery } from './gallery.js'
 import { createConnectionGallery } from './arrow-gallery.js'
@@ -9,6 +9,8 @@ import { createStrokeGallery, addStrokeLoad } from './stroke-fixtures.js'
 import { createNoteGallery } from './note-fixtures.js'
 import { createSelectionGallery } from './selection-fixture.js'
 import { createFrameTitleFixture } from './frame-title-fixture.js'
+import { createCreationFixture } from './creation-fixture.js'
+import { attachCreationUi } from './creation-ui.js'
 import { attachPreviewInput } from './input.js'
 import { attachNavigationUi } from './navigation-ui.js'
 import { attachMinimapUi } from './minimap-ui.js'
@@ -25,9 +27,10 @@ const getState = () => {
   const state = interaction?.state.get()
   return Object.freeze({ ready, error: failure, count: metadata?.count || 0, counts: metadata ? Object.freeze({ ...metadata.counts }) : null, camera: state ? { ...state.camera } : null,
     focusedGroupId: state?.focusedGroupId, isWrapMode: state?.isWrapMode, selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling, shortcutsEnabled: state?.shortcutsEnabled, inputContext: state ? { ...state.inputContext } : null,
+    creation: state?.creation && structuredClone(state.creation),
     croppingId: state?.croppingId || null, cropZoom: state?.cropZoom || 0, isPenMode: state?.isPenMode || false,
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
-    selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
+    selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, parentId: r.parentId, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, props: structuredClone(r.props), meta: structuredClone(r.meta), ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
     revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
     overlays: state ? structuredClone(state.overlays) : [], snapshotReads, renderedShapes: host.querySelectorAll('[data-shape-id]').length, imageCount: host.querySelectorAll('img').length, decodedImages })
@@ -44,6 +47,7 @@ try {
   } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (gallery === 'draw-input') metadata = createDrawGallery()
+  else if (gallery === 'creation') metadata = createCreationFixture()
   else if (gallery === 'selection-semantics') metadata = createSelectionGallery()
   else if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
   else if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
@@ -56,7 +60,7 @@ try {
     metadata = await response.json()
     if (params.get('strokes') === '500') metadata = addStrokeLoad(metadata)
   }
-  const transport = metadata.persistent ? previewTransport(metadata.conversationId) : memoryTransport(metadata.snapshot, { history: metadata.drawInput })
+  const transport = metadata.persistent ? previewTransport(metadata.conversationId) : memoryTransport(metadata.snapshot)
   const actorKey = `preview-actor:${metadata.conversationId || gallery || metadata.count}`
   const actor = sessionStorage.getItem(actorKey) || `preview:${crypto.randomUUID()}`
   sessionStorage.setItem(actorKey, actor)
@@ -66,7 +70,7 @@ try {
   // Observation counter proves pointer hit queries do not serialize the board.
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
-  interaction = createCanvasInteraction({ session, toolIds: ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  interaction = createCanvasInteraction({ session, toolIds: gallery === 'creation' ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1' })
   disposers.push(() => renderer.unmount())
@@ -80,10 +84,12 @@ try {
   disposers.push(() => minimap.dispose())
   const images = gallery === 'images' ? attachImageUi(host, interaction, session, renderer, showError, params.get('reduceMotion') === '1') : null
   if (images) disposers.push(() => images.dispose())
+  const creationUi = gallery === 'creation' ? attachCreationUi(host, interaction, () => controls, showError) : null
+  if (creationUi) disposers.push(() => creationUi.dispose())
   const stop = react('preview interaction view', () => {
     const state = interaction.state.get()
     renderer.setCamera(state.camera); renderer.setOverlays(state.overlays)
-    navigation.update(state); images?.update(state); controls?.wake()
+    navigation.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); controls?.wake()
     minimap.update(state)
     const error = state.lastError || session.state.get().lastError
     const message = error ? `操作失败：${error.message}` : ready ? instructions : status.textContent

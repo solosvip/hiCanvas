@@ -9,6 +9,7 @@ import { minimapSmoke } from './minimap-smoke.mjs'
 import { keyboardSmoke } from './keyboard-smoke.mjs'
 import { selectionSemanticsSmoke } from './selection-semantics-smoke.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
+import { creationSmoke } from './creation-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
 import { imageSmoke } from './image-smoke.mjs'
@@ -100,6 +101,14 @@ async function run() {
       await window.loadURL(`${manifest.url}/?gallery=draw-input`)
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
       samples.push({ draw: await drawSmoke(window, manifest.output) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if (manifest.creationOnly) {
+      window = createWindow('creation')
+      await window.loadURL(`${manifest.url}/?gallery=creation&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ creation: await creationSmoke(window, manifest.output) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }
@@ -216,6 +225,13 @@ async function run() {
       const connections = gallery === 'bindings' ? await evaluate("import('/tools/renderer-preview/arrow-probe.js').then(module => module.runConnectionProbe())") : undefined
       samples.push({ gallery, initial, images, geometry, embeds, bookmarks, external, connections, handDrawn, notes, titles, notePaint })
 
+      window.destroy(); window = undefined
+    }
+    if (!manifest.galleries || manifest.galleries.includes('creation')) {
+      window = createWindow('creation')
+      await window.loadURL(`${manifest.url}/?gallery=creation&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ creation: await creationSmoke(window, manifest.output) })
       window.destroy(); window = undefined
     }
     for (const gallery of ['stroke-styles', 'stroke-details', 'stroke-highlights', 'stroke-transforms']) {

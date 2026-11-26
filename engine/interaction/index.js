@@ -17,6 +17,14 @@ import { createImageCrop } from './image-crop.js'
 import { createClickCounter } from './click-count.js'
 import { createDrawTool, createHighlightTool } from './draw.js'
 import { createDrawShortcuts } from './draw-shortcuts.js'
+import { createGeoTool } from './create-geo.js'
+import { createFrameTool } from './create-frame.js'
+import { createCreationControls } from './creation-controls.js'
+import { createAiImageTool } from './create-ai-image.js'
+import { createAiDraftTool } from './create-ai-draft.js'
+import { createAiFilmTool } from './create-ai-film.js'
+import { createAiSlidesTool } from './create-ai-slides.js'
+import { creationToolIds } from './creation-presets.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -25,7 +33,7 @@ import { createDrawShortcuts } from './draw-shortcuts.js'
 // setter on focus/composition changes. Only canvas-owned keys reach tools.
 // Products choose allowed tools from this registry; tool state never enters the
 // document Store. Future tools get the same normalized input and context.
-export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, draw: createDrawTool, highlight: createHighlightTool })
+export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, draw: createDrawTool, highlight: createHighlightTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
 
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
@@ -70,8 +78,12 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
     keyboard?.cancel(); minimap?.cancel(); navigation?.cancel(); cropTool?.finish(); cancelTool(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
+    creation.toolChanged(id)
+    return tool
   }
-  const context = { session, index, targets, selection, handleMetrics: metrics, read, change, report }
+  const context = { session, index, targets, selection, handleMetrics: metrics, read, change, report, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
+  const creation = createCreationControls({ read, change, switchTool: setTool, canUseTool: id => toolIds.includes(id) })
+  context.creation = creation
   cropTool = createImageCrop(context)
   navigation = createCameraNavigation({ session, read, change, content, cancelTool: () => { cancelTool(); cropTool.cancel() }, setTool: id => { if (!toolIds.includes(id)) return false; setTool(id); return true }, inputDevice, invertZoom, reduceMotion })
   minimap = createMinimapInteraction({ session, read, change, content, navigation })
@@ -81,6 +93,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   selectionKeys = createSelectionShortcuts(context)
   const drawKeys = createDrawShortcuts({ toolIds, setTool })
   tool = canvasToolRegistry[read().toolId](context)
+  creation.toolChanged(read().toolId)
   keyboard = createKeyboardInput({ read, change, releaseKeys: () => { cancelTool(); navigation.releaseKeys() },
     releaseKey: key => tool.releaseKey?.(key),
     cancelPointer: () => { cancelTool(); cropTool.cancel(); minimap.cancel(); navigation.cancelPan() }, dispatchPointer: dispatchCore,
@@ -109,8 +122,15 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     // click sequence too, before a later ordinary click can become click #2.
     if (input.type === 'key_down' && input.key === 'Escape') countClicks = createClickCounter()
     if (minimap.handle(input)) { navigation.finishFrame(); return input.type.startsWith('key_') ? true : undefined }
-    if (selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
+    // Idle Escape still belongs to the active creation tool (leave it), while
+    // select's idle Escape clears selection. Active Escape cancels the gesture.
+    const creationEscape = input.type === 'key_down' && input.key === 'Escape' && creationToolIds.includes(read().toolId)
+    if (!creationEscape && selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
     if (drawKeys.handle(input)) { navigation.finishFrame(); return true }
+    // Keyboard ownership, history/busy rejection and click counting have all
+    // run before tool shortcuts. Mod+A belongs to selection; bare A to creation.
+    const created = creation.handle(input)
+    if (created.handled) { navigation.finishFrame(); return created.result ?? true }
     if (input.type === 'frame') tool.frame?.(input.time)
     const routed = navigation.handle(input)
     const event = routed.replay || input
@@ -126,6 +146,9 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     state: Object.freeze({ get: read }),
     setTool(id) { assertActive(); setTool(id) },
     setPenMode(enabled) { assertActive(); cancelTool(); change({ isPenMode: Boolean(enabled) }) },
+    setCreationOptions(patch) { assertActive(); creation.setOptions(patch) },
+    useRecentTool() { assertActive(); creation.useRecentTool() },
+    beginToolDrag(options) { assertActive(); creation.beginToolDrag(options) },
     setWrapMode(enabled) { assertActive(); change({ isWrapMode: Boolean(enabled) }) },
     select(action) { assertActive(); if (session.state.get().isSubmitting) return false; navigation.cancel(); cancelTool(); return selectionNavigation.run(action) },
     setInputContext(value) { assertActive(); keyboard.context(value) },
