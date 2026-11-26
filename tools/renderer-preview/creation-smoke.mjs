@@ -99,8 +99,11 @@ export async function creationSmoke(target, output) {
   equal(box(s.selectedShapes[0]), [200, 125, 100, 100], '动态尺寸没有按视角缩放')
   check(s.selectedShapes[0].props.scale === .5 && !s.lastError, '动态笔触或创建错误')
   await undo(); revision = (await state()).revision
-  await key('Z', [historyModifier, 'shift']); s = await saved(revision)
-  check(s.renderedShapes === 1, '重做没有恢复绘制对象')
+  await key('Z', [historyModifier, 'shift']); await saved(revision)
+  // The saved revision lands before the renderer commits the restored shape;
+  // wait for the drawing itself. A redo that never renders still times out
+  // here, with the full preview state in the message.
+  s = await until(async () => { const s = await state(); return s.renderedShapes === 1 && s }, '重做没有恢复绘制对象')
   // History restores the record, while selection remains session state.
   await click(400, 350)
   s = await until(async () => { const s = await state(); return s.selectedShapes.length === 1 && s }, '重做后点选')
