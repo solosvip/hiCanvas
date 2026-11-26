@@ -1,3 +1,4 @@
+import { matchesCanvasShortcut } from './shortcuts.js'
 import { atom } from '@tldraw/state'
 import { checkedCamera, createSpatialIndex } from '../../renderer/geometry.js'
 import { normalizeInput } from './input.js'
@@ -126,7 +127,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function dispatchCore(input) {
     // History rejection must preserve the active editing gesture. Runtime
     // owns busy/conflict checks; never route its rejection through tool.cancel.
-    if (input.type === 'key_down' && input.key.toLowerCase() === 'z' && (input.metaKey || input.ctrlKey)) {
+    if (matchesCanvasShortcut('history', input)) {
       return session[input.shiftKey ? 'redo' : 'undo']().then(result => { change({ lastError: null }); return result }).catch(error => { report(error); throw error })
     }
     if (session.state.get().isSubmitting) return
@@ -135,7 +136,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     input = countClicks(input)
     // Physical-pointer Escape cancels through tool.dispatch below; clear its
     // click sequence too, before a later ordinary click can become click #2.
-    if (input.type === 'key_down' && input.key === 'Escape') countClicks = createClickCounter()
+    if (input.type === 'key_down' && matchesCanvasShortcut('escape', input)) countClicks = createClickCounter()
     if (minimap.handle(input)) { navigation.finishFrame(); return input.type.startsWith('key_') ? true : undefined }
     const connectionTarget = connectionEditing.candidate(input)
     if (connectionTarget) {
@@ -149,7 +150,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (edited.handled) { navigation.finishFrame(); return edited.result ?? true }
     // Idle Escape still belongs to the active creation tool (leave it), while
     // select's idle Escape clears selection. Active Escape cancels the gesture.
-    const creationEscape = input.type === 'key_down' && input.key === 'Escape' && creationToolIds.includes(read().toolId)
+    const creationEscape = input.type === 'key_down' && matchesCanvasShortcut('escape', input) && creationToolIds.includes(read().toolId)
     if (!creationEscape && selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
     if (drawKeys.handle(input)) { navigation.finishFrame(); return true }
     // Keyboard ownership, history/busy rejection and click counting have all

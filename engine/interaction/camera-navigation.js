@@ -1,3 +1,4 @@
+import { matchesCanvasShortcut, findCanvasShortcut } from './shortcuts.js'
 import { anchoredZoom, centerOf, checkedViewport, fitCamera, stepZoom } from './camera-math.js'
 import { createCameraMotion } from './camera-motion.js'
 import { createCameraPan } from './camera-pan.js'
@@ -66,10 +67,10 @@ export function createCameraNavigation({ session, read, change, content, cancelT
     if (input.type === 'pointer_down') motion.stop()
     if (zoom.handle(input)) return { handled: true }
     if (input.type.startsWith('key_')) {
-      const down = input.type === 'key_down', key = input.key.toLowerCase(), mod = input.ctrlKey || input.metaKey
-      if (key === 'escape') { if (down) cancel(); return { handled: false } }
-      if (key === ' ' || input.code === 'Space') { if (!session.state.get().isGestureActive) space = down; change({ temporaryTool: space ? 'hand' : null }); return { handled: true } }
-      if (space && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) {
+      const down = input.type === 'key_down', key = input.key.toLowerCase()
+      if (matchesCanvasShortcut('escape-folded', input)) { if (down) cancel(); return { handled: false } }
+      if (matchesCanvasShortcut('space', input)) { if (!session.state.get().isGestureActive) space = down; change({ temporaryTool: space ? 'hand' : null }); return { handled: true } }
+      if (space && matchesCanvasShortcut('pan-direction', input)) {
         if (down) {
           // Native #122: Right/Left move ±1280 CSS px, Down/Up ±900 at
           // 1280×900; z=2 halves page travel, z=.5 doubles it. The 320ms
@@ -82,9 +83,10 @@ export function createCameraNavigation({ session, read, change, content, cancelT
         return { handled: true }
       }
       if (!down || input.repeat) return { handled: false }
-      if (!mod && !input.altKey && (key === 'h' || key === 'v')) { return { handled: setTool(key === 'h' ? 'hand' : 'select') } }
-      if (['=', '+', '-'].includes(key)) { navigate(key === '-' ? 'zoom-out' : 'zoom-in', input.shiftKey ? point : null, input.time); return { handled: true } }
-      if (input.shiftKey && ['0', '1', '2'].includes(key)) { navigate({ 0: 'reset-zoom', 1: 'fit-all', 2: 'fit-selection' }[key], null, input.time); return { handled: true } }
+      const toolBinding = findCanvasShortcut('camera-tool', input)
+      if (toolBinding) return { handled: setTool(toolBinding.tool) }
+      if (matchesCanvasShortcut('camera-zoom', input)) { navigate(key === '-' ? 'zoom-out' : 'zoom-in', input.shiftKey ? point : null, input.time); return { handled: true } }
+      if (matchesCanvasShortcut('camera-view', input)) { navigate({ 0: 'reset-zoom', 1: 'fit-all', 2: 'fit-selection' }[key], null, input.time); return { handled: true } }
       return { handled: false }
     }
     if (pan.touch(input)) return { handled: true }

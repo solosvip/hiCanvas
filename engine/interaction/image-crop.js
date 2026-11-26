@@ -1,3 +1,4 @@
+import { matchesCanvasShortcut } from './shortcuts.js'
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { CanvasEditError } from '../errors.js'
 import { editableImage, imageCrop, imageSourceSize, imageCropZoom } from '../commands/crop-image.js'
@@ -129,14 +130,14 @@ export function createImageCrop(context) {
           } }
         }
       }
-      if (input.type === 'key_down' && input.key === 'Enter' && read().toolId === 'select') {
+      if (matchesCanvasShortcut('crop-enter', input) && read().toolId === 'select') {
         if (read().croppingId) { if (gesture) return { handled: true }; finish() }
         else if (read().selectedIds.length === 1 && session.store.get(read().selectedIds[0])?.type === 'image') begin()
         else return { handled: false }
         return { handled: true }
       }
       if (!read().croppingId) return { handled: false }
-      if (input.type === 'key_down' && input.key === 'Escape') { if (gesture) cancel(); else finish(); return { handled: true } }
+      if (input.type === 'key_down' && matchesCanvasShortcut('escape', input)) { if (gesture) cancel(); else finish(); return { handled: true } }
       if (input.type === 'pointer_down') return { handled: true, result: down(input) }
       if (input.type === 'pointer_move') return { handled: true, result: move(input) }
       if (input.type === 'pointer_up') return { handled: true, result: up(input) }

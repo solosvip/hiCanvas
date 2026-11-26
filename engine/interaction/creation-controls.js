@@ -1,3 +1,4 @@
+import { findCanvasShortcut } from './shortcuts.js'
 import { geometryVariants, creationToolIds } from './creation-presets.js'
 
 // Product choices stay in the interaction atom. They never become commands,
@@ -43,13 +44,13 @@ export function createCreationControls({ read, change, switchTool, canUseTool })
     switchTool(recent.toolId)
   }
   function handle(input) {
-    if (input.type !== 'key_down' || input.repeat || input.metaKey || input.ctrlKey || input.altKey || input.shiftKey) return { handled: false }
-    const key = input.key.toLowerCase(), tool = { r: 'geo', o: 'geo', g: 'geo', f: 'frame', t: 'text', l: 'line' }[key]
-    if (key === 'q' && creationToolIds.some(canUseTool)) { setOptions({ toolLocked: !read().creation.toolLocked }); return { handled: true } }
-    if (key === 'a' && canUseTool('ai-image')) return { handled: true, result: switchTool('ai-image').activateAtCenter() }
-    if (!tool || !canUseTool(tool)) return { handled: false }
-    if (key === 'r' || key === 'o') setOptions({ geo: key === 'r' ? 'rectangle' : 'ellipse' })
-    switchTool(tool)
+    const binding = findCanvasShortcut('creation', input)
+    if (!binding) return { handled: false }
+    if (binding.id === 'creation-lock' && creationToolIds.some(canUseTool)) { setOptions({ toolLocked: !read().creation.toolLocked }); return { handled: true } }
+    if (!binding.tool || !canUseTool(binding.tool)) return { handled: false }
+    if (binding.tool === 'ai-image') return { handled: true, result: switchTool(binding.tool).activateAtCenter() }
+    if (binding.geo) setOptions({ geo: binding.geo })
+    switchTool(binding.tool)
     return { handled: true }
   }
   return { setOptions, useRecentTool, beginToolDrag, takeSource, endToolbar, toolChanged, handle, generation: () => generation }
