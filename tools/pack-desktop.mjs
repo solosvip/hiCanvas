@@ -19,6 +19,13 @@ await cp(join(root, 'skills'), join(stage, 'skills'), { recursive: true })
 await cp(join(root, 'dist'), join(stage, 'dist'), { recursive: true })
 await cp(join(root, 'LICENSE'), join(stage, 'LICENSE'))
 await cp(join(root, 'licenses'), join(stage, 'licenses'), { recursive: true })
+// Server geometry now shapes text from the same original font bytes. Preserve
+// their stable path for bundled service/MCP/desktop hosts as well as source runs.
+await cp(join(root, 'renderer/fonts/files'), join(stage, 'renderer/fonts/files'), { recursive: true })
+// fontkit's Node branch reads unicode-properties' public trie asset relative to
+// the bundled module. Both service/MCP and the desktop main bundle need it.
+const unicodeTrie = fileURLToPath(import.meta.resolve('unicode-properties/data.trie'))
+for (const directory of ['runtime', 'desktop']) await cp(unicodeTrie, join(stage, directory, 'data.trie'))
 await writeFile(join(stage, 'package.json'), JSON.stringify({ name: 'hicanvas', productName: 'hiCanvas', version: pkg.version, private: true, type: 'module', main: 'desktop/main.mjs', description: pkg.description }))
 if (process.argv.includes('--bundle-only')) { console.log(stage); process.exit(0) }
 if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('当前安装包仅支持 Apple 芯片 Mac。')

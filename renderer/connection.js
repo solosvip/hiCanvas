@@ -1,4 +1,5 @@
 import { createElement as h, useCallback, useId, useSyncExternalStore } from 'react'
+import { canvasFontStyle } from './font-families.js'
 import { connectionView } from './connection-view.js'
 import { colorPaint } from './palette.js'
 import { PATTERN_METRICS, dashLayout } from './geo-metrics.js'
@@ -42,6 +43,6 @@ export function Connection({ scene, shape }) {
         label ? h('rect', { x: label.bounds.x - gap, y: label.bounds.y - gap, width: label.bounds.w + gap * 2, height: label.bounds.h + gap * 2, rx: width, fill: 'black' }) : null)),
     h('path', { 'data-connection-body': '', d: path.d, fill: 'none', ...stroke, strokeDasharray: dash?.array.join(' '), strokeDashoffset: dash?.offset, mask: `url(#${maskId})` }),
     heads.map((head, i) => h('path', { key: i, 'data-connection-head': head.kind, d: head.d, fill: head.closed ? fill : 'none', ...stroke })),
-    label ? h('g', { 'data-connection-label': '', fill: colorPaint({ color: props.labelColor }).text, fontFamily: label.font, fontSize: label.size, textAnchor: 'middle' },
-      label.lines.map((text, i) => h('text', { key: i, x: label.center.x, y: label.bounds.y + (i + .5) * label.lineHeight, dominantBaseline: 'central', textLength: label.widths[i] || undefined, lengthAdjust: 'spacingAndGlyphs' }, text))) : null)
+    label ? h('g', { 'data-connection-label': '', 'aria-label': label.text, fill: colorPaint({ color: props.labelColor }).text, fontFamily: label.font, fontSize: label.size, textAnchor: 'start' },
+      label.textLines.map((line, i) => h('text', { key: i, y: label.bounds.y + (i + .5) * label.lineHeight, dominantBaseline: 'central', style: { whiteSpace: 'pre', textSpacingTrim: 'space-all', textAutospace: 'no-autospace' } }, line.positionedRuns.map((run, j) => h('tspan', { key: j, x: label.center.x - line.width / 2 + run.left, style: canvasFontStyle(props.font || 'sans', run.weight, run.style) }, run.text))))) : null)
 }

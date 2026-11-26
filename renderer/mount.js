@@ -13,7 +13,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId } = {}) {
   if (!element?.ownerDocument || !store?.getStoreSnapshot) throw new Error('渲染器需要页面元素和模型 Store。')
   const view = atom('renderer camera', checkedCamera(camera)), overlays = atom('renderer overlays', checkedOverlays([]))
   const host = element.ownerDocument.createElement('div')
-  Object.assign(host.style, { position: 'relative', width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' })
+  Object.assign(host.style, { position: 'relative', width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none', textSpacingTrim: 'space-all', textAutospace: 'no-autospace' })
   host.dataset.canvasRenderer = ''
   element.append(host)
   const scene = createScene(store, pageId), root = createRoot(host)
@@ -23,7 +23,9 @@ export function mountCanvasRenderer(element, { store, camera, pageId } = {}) {
     active = false
     try { flushSync(() => root.unmount()) } finally { scene.dispose(); host.remove() }
   }
-  try { flushSync(() => root.render(createElement(Fragment, null, createElement(CanvasWorld, { scene, camera: view }), createElement(CanvasOverlays, { camera: view, overlays })))) }
+  try { flushSync(() => root.render(createElement(Fragment, null,
+    createElement('style', null, '[data-canvas-renderer] [contenteditable] { text-spacing-trim: space-all; text-autospace: no-autospace; word-break: normal; overflow-wrap: break-word; white-space: pre-wrap; tab-size: 2; }'),
+    createElement(CanvasWorld, { scene, camera: view }), createElement(CanvasOverlays, { camera: view, overlays })))) }
   catch (error) { unmount(); throw error }
   const assertActive = () => { if (!active) throw new Error('渲染器已卸载。') }
   return Object.freeze({

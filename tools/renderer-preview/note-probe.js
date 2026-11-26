@@ -1,6 +1,6 @@
 import { createCanvasStore } from '../../model/index.js'
 import { mountCanvasRenderer } from '../../renderer/index.js'
-import { getShapeBounds } from '../../renderer/geometry.js'
+import { getShapeBounds, getTextLayoutStats, measureText } from '../../renderer/geometry.js'
 import { createNoteGallery, noteProps } from './note-fixtures.js'
 import { toRichText } from '@tldraw/tlschema'
 
@@ -22,7 +22,7 @@ export function checkNoteGallery(mode) {
   if (mode === 'note-whitespace') {
     check(near(shapes[0].querySelector('[data-note-body]').getBoundingClientRect().height, 507), '连续空白换行未保留实测507高度')
     check(shapes[0].querySelector('[data-note-line]').textContent === `A${' '.repeat(50)}`, '行尾悬挂空白被删除')
-    check(shapes[1].textContent === 'A  B' && shapes[2].textContent === 'A B' && shapes[3].textContent === '   A   ', '连续空格、首尾空格或制表符显示改变')
+    check(shapes[1].textContent === 'A  B' && shapes[2].textContent === 'A\tB' && shapes[3].textContent === '   A   ', '连续空格、首尾空格或制表符原文丢失')
   }
   return { count: shapes.length, measuredColorsAndShadow: mode === 'note-colors', measuredFontSizes: mode === 'note-text', preservedWhitespace: mode === 'note-whitespace' }
 }
@@ -80,8 +80,10 @@ export async function runNoteProbe() {
       check(view.hitTest({ x: 100, y: 220 }) === first.id, '增长的便签下半部无法点中')
       check(getComputedStyle(node(first.id).querySelector('[data-note-line]')).color === 'rgb(224, 49, 49)', '标签颜色没有更新')
       reads.clear(); changes.clear()
+      const beforeCamera = getTextLayoutStats()
       for (const z of [.5, 2, 4]) { view.setCamera({ x: 8, y: 9, z }); await settle() }
       check(reads.size === 0 && changes.size === 0, '相机更新读取或重画了便签')
+      check(JSON.stringify(getTextLayoutStats()) === JSON.stringify(beforeCamera), '相机更新重新测量了便签文字')
     } finally { observer.disconnect() }
     raw.put([{ ...raw.get('user:note-author'), name: 'Updated Family' }]); await settle()
     check(node('shape:note-layout-10').querySelector('[data-note-author]').textContent === 'Updated', '文档用户改名没有更新署名')
@@ -89,11 +91,19 @@ export async function runNoteProbe() {
     raw.put([{ ...first, props: noteProps({ richText: toRichText('<script>😀é\n\n中\nA\u00a0B') }) }]); await settle()
     check(!node(first.id).querySelector('script') && node(first.id).textContent.includes('<script>'), '便签把文字解释成HTML')
     check(node(first.id).querySelectorAll('[data-note-line]').length === 4 && node(first.id).textContent.includes('A\u00a0B'), '空段落或不换行空格丢失')
+    raw.put([{ ...first, props: noteProps({ font: 'sans', richText: { type: 'doc', content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'AV', marks: [{ type: 'bold' }] }, { type: 'text', text: ' ffi', marks: [{ type: 'italic' }] },
+    ] }] } }) }]); await settle()
+    const richLine = node(first.id).querySelector('[data-note-line]'), spans = [...richLine.children]
+    check(getComputedStyle(spans[0]).fontWeight === '700' && getComputedStyle(spans[1]).fontStyle === 'italic', '便签丢失粗体或斜体文字段')
+    const richRange = document.createRange(); richRange.selectNodeContents(richLine)
+    const expected = measureText('AV', { font: 'sans', size: 22, weight: 700 }).width + measureText(' ffi', { font: 'sans', size: 22, style: 'italic' }).width
+    check(near(richRange.getBoundingClientRect().width, expected), '便签粗体／斜体自然宽度与共享测量不符')
     view.unmount(); view.unmount()
     check(listeners.size === 0 && host.children.length === 0, '便签卸载残留订阅或DOM')
     reads.clear(); raw.put([{ ...first, x: 5 }]); await settle()
     check(reads.size === 0, '卸载后便签仍在读取记录')
-    return { measuredGrowthAndHitTest: true, nineAlignments: true, singleRecordAndDOMUpdate: true, cameraNoRecordReads: true, attributionUpdates: true, plainTextAndEmptyLines: true, subscriptionsReleased: true }
+    return { measuredGrowthAndHitTest: true, nineAlignments: true, singleRecordAndDOMUpdate: true, cameraNoRecordReads: true, cameraDoesNotMeasure: true, richRunsNaturalWidth: true, attributionUpdates: true, plainTextAndEmptyLines: true, subscriptionsReleased: true }
   } finally { view.unmount(); host.remove() }
 }
 
@@ -116,6 +126,7 @@ export async function runFrameTitleProbe() {
         if (observedWidths[index] !== undefined) check(near(rect.width, Math.min(observedWidths[index], frame.props.w * z + 16)), `标题自然字宽与旧版实测不符：${index} / ${rect.width}`)
         const label = title.querySelector('span'), style = getComputedStyle(label)
         check(style.fontSize === '12px' && style.color === 'rgb(0, 0, 0)' && style.textOverflow === 'ellipsis' && style.whiteSpace === 'pre', '标题字号、颜色、省略或换行改变')
+        check(style.textSpacingTrim === 'space-all' && style.textAutospace === 'no-autospace', '画框标题未关闭标点挤压和自动加距')
         check(label.textContent === (frame.props.name || 'Frame'), '空标题后备文案或原文丢失')
       }
     }
@@ -139,6 +150,10 @@ export async function runFrameTitleProbe() {
     store.put([{ ...frame, props: { ...frame.props, name: '更新标题', w: 90 } }]); await settle()
     check(host.querySelector('[data-shape-id="shape:frame-titles-0"] [data-frame-title]').textContent === '更新标题', '标题记录更新没有画出')
     check(before !== JSON.stringify(store.getStoreSnapshot()), '探针没有完成记录更新')
-    return { fixedScreenTitleAtFourZooms: true, measuredPositionAndSize: true, truncationAndFallback: true, widthUpdateThreshold: true, recordUpdates: true }
+    store.put([{ ...frame, props: { ...frame.props, name: '「。」』）。', w: 400 } }]); await settle()
+    const root = host.querySelector('[data-shape-id="shape:frame-titles-0"] [data-frame-title-root]')
+    const range = document.createRange(); range.selectNodeContents(root.querySelector('span'))
+    check(near(root.getBoundingClientRect().width, range.getBoundingClientRect().width + 12), '画框标题的标点自然宽度与显示侧测量不符')
+    return { fixedScreenTitleAtFourZooms: true, measuredPositionAndSize: true, truncationAndFallback: true, widthUpdateThreshold: true, recordUpdates: true, punctuationNaturalWidth: true }
   } finally { view.unmount(); host.remove() }
 }

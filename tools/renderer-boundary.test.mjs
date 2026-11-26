@@ -11,7 +11,10 @@ test('真实渲染入口可浏览器打包，几何入口独立且没有 React/D
   assert.ok(inputs.some(path => path.includes('@tldraw/state-react/')))
   assert.ok(inputs.some(path => path.includes('react-dom/')))
   const pure = await checkRendererBoundary({ geometry: true })
-  assert.deepEqual(pure.filter(path => path.includes('node_modules/')), [])
+  assert.ok(pure.some(path => path.includes('node_modules/fontkit/')))
+  assert.ok(pure.some(path => path.includes('node_modules/linebreak/')))
+  assert.ok(pure.some(path => path.includes('node_modules/unicode-segmenter/')))
+  assert.deepEqual(pure.filter(path => /node_modules\/(?:react|react-dom)\//.test(path)), [])
 })
 
 test('临时插入直接与间接违规引用都报红，删除探针后恢复；拦截发生在读取受限包之前', async () => {

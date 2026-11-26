@@ -1,18 +1,12 @@
 import { createElement as h } from 'react'
 import { useValue } from '@tldraw/state-react'
 import { noteLayout } from './note-layout.js'
-import { NOTE_FONT_FAMILIES, splitNoteCharacters } from './note-text-metrics.js'
+import { canvasFontStyle } from './font-families.js'
 import { colorPaint, NOTE_PAINT, noteLabelPaint } from './palette.js'
 
-let context
 function NoteLine({ line, layout, props, index }) {
-  const { size, lineHeight } = layout
-  const family = NOTE_FONT_FAMILIES[props.font] || NOTE_FONT_FAMILIES.draw
-  context ||= document.createElement('canvas').getContext('2d')
-  context.font = `${size}px ${family}`
-  const count = splitNoteCharacters(line.text).length
-  const letterSpacing = count ? (line.width - context.measureText(line.text).width) / count : 0
-  return h('div', { 'data-note-line': index, style: { position: 'absolute', left: line.left, top: line.top, fontSize: size, fontFamily: family, lineHeight: `${lineHeight}px`, whiteSpace: 'pre', letterSpacing } }, line.text)
+  return h('div', { 'data-note-line': index, style: { ...canvasFontStyle(props.font || 'draw'), position: 'absolute', left: line.left, top: line.top, fontSize: layout.size, lineHeight: `${layout.lineHeight}px`, whiteSpace: 'pre', tabSize: 2 } },
+    line.runs.map((run, i) => h('span', { key: i, style: canvasFontStyle(props.font || 'draw', run.weight, run.style) }, run.text)))
 }
 
 export function Note({ shape, scene }) {

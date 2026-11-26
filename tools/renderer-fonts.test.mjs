@@ -1,17 +1,22 @@
 import './test-sandbox.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile, mkdtemp, readdir, rm } from 'node:fs/promises'
+import { readFile, mkdtemp, readdir, rm, cp, mkdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
+import { execFileSync } from 'node:child_process'
 import { build } from 'vite'
+import { build as bundle } from 'esbuild'
 import config from '../vite.config.js'
 import { canvasFontFaces, canvasFontFamily } from '../renderer/fonts/manifest.js'
 import { prepareCanvasFonts } from '../renderer/fonts/prepare.js'
+import { checkTextCalibration } from '../renderer/fonts/calibration.js'
+import { variableReference } from './renderer-preview/text-variable-reference.js'
 
 function fontDocument(failed = -1) {
-  const calls = [], added = new Set()
+  const calls = [], fetches = [], added = new Set()
   class FontFace {
     constructor(family, source, descriptors) {
       Object.assign(this, { family, source, ...descriptors, index: calls.length })
@@ -22,7 +27,7 @@ function fontDocument(failed = -1) {
       return this
     }
   }
-  return { doc: { defaultView: { FontFace }, fonts: { add: f => added.add(f), delete: f => added.delete(f) } }, calls, added }
+  return { doc: { defaultView: { FontFace, fetch: async url => { fetches.push(url); const bytes = await readFile(new URL(url)); return { ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) } } }, fonts: { add: f => added.add(f), delete: f => added.delete(f) } }, calls, fetches, added }
 }
 
 test('sixteen original local fonts retain pinned bytes and CSS style mapping', async () => {
@@ -53,17 +58,33 @@ test('sixteen original local fonts retain pinned bytes and CSS style mapping', a
 })
 
 test('preparation awaits every face, registers once per document, and isolates documents', async () => {
-  const { doc, calls, added } = fontDocument()
+  const { doc, calls, fetches, added } = fontDocument()
   const first = prepareCanvasFonts(doc), second = prepareCanvasFonts(doc)
   assert.equal(first, second)
   await first
   assert.equal(calls.length, 16)
   assert.equal(added.size, 16)
+  assert.equal(fetches.length, 13, 'the four variable roles share one fetch')
+  assert.ok(calls.every(call => call.source instanceof Uint8Array))
   await prepareCanvasFonts(doc)
   assert.equal(calls.length, 16)
   const other = fontDocument()
   await prepareCanvasFonts(other.doc)
   assert.equal(other.added.size, 16)
+})
+
+test('a changed system font warns and reaches the host logger without blocking use', async () => {
+  const warnings = [], logged = []
+  let removed = false
+  const doc = { createElement: () => ({ style: {}, remove: () => { removed = true }, getBoundingClientRect: () => ({ width: 0 }) }),
+    body: { append() {} }, defaultView: { console: { warn: (...args) => warnings.push(args) } } }
+  const result = checkTextCalibration(doc, value => { logged.push(value); throw new Error('synthetic logger unavailable') })
+  assert.equal(result.length, 96)
+  assert.equal(removed, true)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(logged.length, 1)
+  assert.equal(logged[0].kind, 'text-layout-calibration')
+  assert.equal(warnings.length, 2)
 })
 
 test('a failed face rejects preparation, leaves no partial registration, and can retry', async () => {
@@ -75,7 +96,7 @@ test('a failed face rejects preparation, leaves no partial registration, and can
   assert.throws(() => prepareCanvasFonts({}), /不支持本地字体/)
 })
 
-test('a standalone Vite build emits sixteen unchanged font files without inlining', async () => {
+test('a standalone Vite build emits thirteen unchanged font files for sixteen styles without inlining', async () => {
   const output = await mkdtemp(join(tmpdir(), 'hicanvas-font-build-'))
   try {
     await build({ configFile: false, publicDir: false, logLevel: 'silent', build: {
@@ -87,11 +108,27 @@ test('a standalone Vite build emits sixteen unchanged font files without inlinin
     for (const file of emitted.filter(file => file.endsWith('.woff2'))) {
       hashes.push(createHash('sha256').update(await readFile(join(output, 'assets', file))).digest('hex'))
     }
-    assert.deepEqual(hashes.sort(), canvasFontFaces.map(face => face.sha256).sort())
+    assert.deepEqual(hashes.sort(), [...new Set(canvasFontFaces.map(face => face.sha256))].sort())
     const scripts = emitted.filter(file => file.endsWith('.js'))
     assert.equal(scripts.length, 1)
     const script = await readFile(join(output, 'assets', scripts[0]), 'utf8')
     assert.doesNotMatch(script, /data:font|base64|file:\/\//)
     for (const file of emitted.filter(file => file.endsWith('.woff2'))) assert.ok(script.includes(file))
+  } finally { await rm(output, { recursive: true, force: true }) }
+})
+
+test('a bundled Node host resolves exactly the same original font bytes at its packaged path', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'hicanvas-node-fonts-'))
+  try {
+    await mkdir(join(output, 'runtime'))
+    await cp(fileURLToPath(import.meta.resolve('unicode-properties/data.trie')), join(output, 'runtime/data.trie'))
+    await cp(new URL('../renderer/fonts/files/', import.meta.url), join(output, 'renderer/fonts/files'), { recursive: true })
+    const module = join(output, 'runtime/font-host.mjs')
+    await bundle({ stdin: { contents: "export { prepareNodeTextLayout } from './server/text-layout.mjs'; export { measureText } from './renderer/geometry.js'", resolveDir: new URL('../', import.meta.url).pathname }, outfile: module, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent' })
+    const reference = variableReference.find(row => row.size === 24 && row.weight === 700 && row.style === 'italic' && row.text.startsWith('ABC'))
+    const result = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `const m = await import(${JSON.stringify(pathToFileURL(module).href)}); m.prepareNodeTextLayout(); console.log(JSON.stringify({chinese:m.measureText('天地', {font:'sans',size:24}), variable:m.measureText(${JSON.stringify(reference.text)}, {font:'draw',size:24,weight:700,style:'italic'})}))`], { encoding: 'utf8', timeout: 10000 }))
+    assert.deepEqual(result.chinese, { width: 48, unknown: [] })
+    assert.ok(Math.abs(result.variable.width - reference.width) < .05, 'the bundled Node host must apply the same C variable-font repair')
+    assert.deepEqual(result.variable.unknown, [])
   } finally { await rm(output, { recursive: true, force: true }) }
 })

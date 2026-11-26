@@ -1,4 +1,5 @@
 import './test-sandbox.mjs'
+import './renderer-test-fonts.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { getShapeBounds, getShapePageBounds, hitTestCanvas, pointInShape } from '../renderer/geometry.js'
@@ -61,4 +62,14 @@ test('长便签在旋转画框内缩放后，页面外框与带相机的点中�
   assert.ok(Math.abs(bounds.h - 100) < 1e-8)
   assert.equal(hitTestCanvas(snapshot, { x: 200, y: 220 }, { x: 200, y: 0, z: 2 }), child.id)
   assert.equal(hitTestCanvas(snapshot, { x: 140, y: 220 }, { x: 200, y: 0, z: 2 }), frame.id)
+})
+
+
+test('便签富文本按粗体的实际字距断行，外框随行数增长', () => {
+  const shape = note()
+  shape.props = { ...shape.props, font: 'sans', richText: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'W'.repeat(64), marks: [{ type: 'bold' }] }] }] } }
+  const bold = getShapeBounds(shape)
+  shape.props = { ...shape.props, richText: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'W'.repeat(64) }] }] } }
+  const normal = getShapeBounds(shape)
+  assert.ok(bold.h > normal.h, 'bold advances must affect wrapping and the saved note bounds')
 })

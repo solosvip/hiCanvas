@@ -1,4 +1,5 @@
 import '../tools/test-sandbox.mjs'
+import '../tools/renderer-test-fonts.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createCanvasSnapshot } from '../model/index.js'

@@ -3,6 +3,8 @@ import { createServer as createHttpServer } from 'node:http'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createFixture } from './perf/fixture.mjs'
+import { appendFile, mkdir } from 'node:fs/promises'
+import { requireLocalRequest, jsonBody } from '../server/local-request.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 export function createRendererFixture(count, { dash = 'solid' } = {}) {
@@ -16,9 +18,22 @@ export async function startRendererPreview({ port = 0 } = {}) {
   let server
   const http = createHttpServer((request, response) => server ? server.middlewares(request, response) : response.end())
   await new Promise((accept, reject) => { http.once('error', reject); http.listen(port, '127.0.0.1', accept) })
-  try { server = await createServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: ['react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils'] }, server: { middlewareMode: true, hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port } }, plugins: [{ name: 'readonly-renderer-preview', configureServer(vite) {
-    vite.middlewares.use((request, response, next) => {
+  try { server = await createServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: ['react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port } }, plugins: [{ name: 'readonly-renderer-preview', configureServer(vite) {
+    vite.middlewares.use(async (request, response, next) => {
       const url = new URL(request.url, 'http://127.0.0.1')
+      if (url.pathname === '/__renderer_font_warning') {
+        try {
+          requireLocalRequest(request)
+          if (request.method !== 'POST') { response.writeHead(405); response.end(); return }
+          const data = await jsonBody(request)
+          if (data.kind !== 'text-layout-calibration' || !Array.isArray(data.warnings) || data.warnings.length > 96
+            || data.warnings.some(w => !['sans', 'serif', 'mono', 'draw'].includes(w.font) || ![400, 700].includes(w.weight) || !['normal', 'italic'].includes(w.style) || !['天', 'あ', 'ｱ', '한', '😀', '。'].includes(w.sample) || !Number.isFinite(w.actual) || !Number.isFinite(w.expected))) throw new Error('Invalid calibration data')
+          await mkdir(resolve(root, '.scratch'), { recursive: true })
+          await appendFile(resolve(root, '.scratch/renderer-font-calibration.log'), JSON.stringify({ at: new Date().toISOString(), ...data }) + '\n')
+          response.writeHead(204); response.end()
+        } catch { response.writeHead(400); response.end() }
+        return
+      }
       if (url.pathname === '/') request.url = `/tools/renderer-preview/index.html${url.search}`
       if (url.pathname !== '/__renderer_fixture') return next()
       if (request.method !== 'GET') { response.writeHead(405); response.end(); return }

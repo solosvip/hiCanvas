@@ -1,5 +1,6 @@
 import { createCanvasStore } from '../../model/index.js'
 import { mountCanvasRenderer } from '../../renderer/index.js'
+import { textLayout, measureText, getTextLayoutStats } from '../../renderer/geometry.js'
 
 const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 const check = (condition, message) => { if (!condition) throw new Error(message) }
@@ -24,7 +25,8 @@ export async function runTextProbe() {
     await settle()
     const node = host.querySelector(`[data-shape-id="${text.id}"]`), body = node.firstElementChild
     let bounds = body.getBoundingClientRect()
-    check(close(bounds.width, 144) && close(bounds.height, 112.5), '中文、多行及空行的既有文字边界改变')
+    const layout = textLayout(text.props)
+    check(close(bounds.width, layout.w) && close(bounds.height, layout.h), '中文、多行及空行的显示与几何外框不一致')
     check(body.textContent === 'AB中<b>' && !body.querySelector('b'), '文字内容缺失或被解析为标记')
     const boundsOfText = (root, value) => {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
@@ -35,28 +37,34 @@ export async function runTextProbe() {
       throw new Error(`没有画出文字：${value}`)
     }
     const widthOfText = value => boundsOfText(body, value).width
-    check(close(widthOfText('AB中'), 72), '中英文混排没有保留既有估算行宽')
+    check(close(widthOfText('AB中'), layout.lines[0].width * layout.scale), '中英文自然宽度与共享测量不符')
     const firstLine = boundsOfText(body, 'AB中'), lastLine = boundsOfText(body, '<b>')
-    check(firstLine.top >= bounds.top && firstLine.bottom <= bounds.top + 37.6, '文字基线超出第一行')
-    check(close(lastLine.top - firstLine.top, 75), '跨过空行后的文字纵向间距改变')
+    check(firstLine.top >= bounds.top && firstLine.bottom <= bounds.top + layout.lineHeight * layout.scale + .1, '文字基线超出第一行')
+    check(close(lastLine.top - firstLine.top, layout.lineHeight * layout.scale * 2), '跨过空行后的文字纵向间距改变')
     const frameNode = host.querySelector('[data-shape-type="frame"]')
     check(boundsOfText(frameNode, '中文 Frame').bottom <= frameNode.firstElementChild.getBoundingClientRect().top, '框标题没有位于框体上方')
+    const beforeCamera = getTextLayoutStats()
     view.setCamera({ x: 5, y: 7, z: 2 }); await settle()
+    check(JSON.stringify(getTextLayoutStats()) === JSON.stringify(beforeCamera), '相机变化重新测字')
     bounds = body.getBoundingClientRect()
-    check(close(bounds.width, 288) && close(bounds.height, 225), '相机缩放改变了文字局部布局')
+    check(close(bounds.width, layout.w * 2) && close(bounds.height, layout.h * 2), '相机缩放改变了文字局部布局')
     check(close(bounds.left, 70) && close(bounds.top, 154), '画面变换与公开相机坐标约定不一致')
     store.put([{ ...text, props: { ...text.props, scale: 2, color: 'red', richText: richText(['更新']) } }])
     await settle()
     const updated = node.firstElementChild.getBoundingClientRect()
-    check(close(updated.width, 384) && close(updated.height, 100) && node.textContent === '更新', '记录变更未更新内容、缩放或边界')
+    check(close(updated.width, 384) && close(updated.height, 24 * 1.35 * 4) && node.textContent === '更新', '记录变更未更新内容、缩放或边界')
     view.setCamera({ x: 0, y: 0, z: 1 })
     store.put([{ ...text, props: { ...text.props, scale: 1, richText: richText(['é😀中']) } }])
     await settle()
-    check(close(widthOfText('é😀中'), 84), '组合字符或 emoji 没有保留估算行宽')
+    check(close(widthOfText('é😀中'), measureText('é😀中', { font: text.props.font, size: 24 }).width), '组合字符／emoji的自然宽度与共享测量不符')
     const tabbed = { ...text, props: { ...text.props, scale: 1, richText: richText(['A\tB']) } }
     store.put([tabbed]); await settle()
-    check(close(widthOfText(body.textContent), 36), '制表符超出既有估算行宽')
+    check(close(widthOfText(body.textContent), measureText('A\tB', { font: text.props.font, size: 24 }).width), '制表符没有按共享规则定位')
     check(JSON.stringify(store.get(text.id).props.richText) === JSON.stringify(tabbed.props.richText), '显示规范化不应修改原始文字记录')
-    return { mixedTextAndEmptyLines: true, estimatedLineWidths: true, scaledBounds: true, textRecordUpdates: true, frameTitle: true }
+    const editable = document.createElement('div'); editable.contentEditable = 'true'; host.querySelector('[data-canvas-renderer]').append(editable)
+    const editingStyle = getComputedStyle(editable)
+    check(editingStyle.textSpacingTrim === 'space-all' && editingStyle.textAutospace === 'no-autospace', '编辑态未明确关闭标点挤压和自动加距')
+    editable.remove()
+    return { mixedTextAndEmptyLines: true, naturalLineWidths: true, cameraDoesNotMeasure: true, editingSpacing: true, scaledBounds: true, textRecordUpdates: true, frameTitle: true }
   } finally { view.unmount(); host.remove() }
 }
