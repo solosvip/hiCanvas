@@ -1,4 +1,5 @@
 import '../tools/test-sandbox.mjs'
+import '../tools/renderer-test-fonts.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createCanvasSnapshot } from '../model/index.js'
@@ -155,7 +156,10 @@ test('文字整体改字号倍率，横向边框改换行宽度；翻转后文�
   point(unlocked, { x: 400, y: 450 })
   assert.equal(unlocked.props.scale, 3)
   const flipped = run(initial, { ...command, scale: { x: -2, y: 2 } }).snapshot.store[id('A')]
-  point(flipped, { x: -800, y: 300 })
+  // Autosized text now has its natural width instead of the old 200px stub.
+  // Its reflected right edge must remain the reflected original left edge.
+  point(flipped, { x: -2 * (200 + getShapeBounds(initial.store[id('A')]).w), y: 300 })
+  near(flipped.x + getShapeBounds(flipped).w, -400)
   assert.equal(flipped.props.scale, 2)
   assert.equal(flipped.rotation, 0)
   assert.deepEqual(flipped.props.richText, initial.store[id('A')].props.richText)

@@ -9,6 +9,12 @@ import { selectionSmoke } from './selection-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
 
+import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
+import { measureText, layoutText } from '../../renderer/geometry.js'
+import { textLayoutCorpus } from './text-layout-corpus.js'
+prepareNodeTextLayout()
+const nodeTextCorpus = textLayoutCorpus(measureText, layoutText)
+
 const manifest = JSON.parse(await readFile(process.argv.at(-1), 'utf8'))
 const origin = new URL(manifest.url).origin
 if (!origin.startsWith('http://127.0.0.1:')) throw new Error('仅允许本机合成预览。')
@@ -124,17 +130,18 @@ async function run() {
       const pan = await until(async () => { const value = await state(); return value.camera.x !== initial.camera.x && value })
       window.webContents.sendInputEvent({ type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: -40, modifiers: ['control'], canScroll: true })
       const zoom = await until(async () => { const value = await state(); return value.camera.z !== pan.camera.z && value })
-      let lifecycle, cameraLayout, text, frameTitles, fonts
+      let lifecycle, cameraLayout, text, fonts, textLayout, frameTitles
       if (count === 5000) cameraLayout = { empty: await cameraLayoutProbe(), selected: await cameraLayoutProbe(true) }
       if (count === 5000) frameTitles = await measureFrameTitlePerformance(window.webContents, manifest.output)
       if (count === 500) {
         lifecycle = await evaluate("import('/tools/renderer-preview/probe.js').then(module => module.runLifecycleProbe())")
         text = await evaluate("import('/tools/renderer-preview/text-probe.js').then(module => module.runTextProbe())")
         fonts = await evaluate("import('/tools/renderer-preview/font-probe.js').then(module => module.runFontProbe())")
+        textLayout = await evaluate(`import('/tools/renderer-preview/text-layout-probe.js').then(module => module.runTextLayoutProbe(${JSON.stringify(nodeTextCorpus)}))`)
       }
       const camera = count === 500 ? await cameraSmoke(window, manifest.output) : undefined
       const selection = count === 500 ? await selectionSmoke(window, manifest.output) : undefined
-      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, selection, frameTitles, camera })
+      samples.push({ count, initial, pan: pan.camera, zoom: zoom.camera, lifecycle, cameraLayout, text, fonts, textLayout, selection, frameTitles, camera })
       console.log(`${count} 元素与 ${initial.decodedImages} 张图片通过；真实滚轮平移/缩放通过。`)
       window.destroy(); window = undefined
     }

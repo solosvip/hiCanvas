@@ -2,48 +2,41 @@ import { createElement as h, useMemo, useRef } from 'react'
 import { textLayout } from './text.js'
 import { colorPaint, FRAME_TITLE_PAINT } from './palette.js'
 import { useValue } from '@tldraw/state-react'
-import { canvasFontFamily } from './font-families.js'
+import { canvasFontStyle } from './font-families.js'
 
-let context
-const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-function fontMetrics(size, family) {
-  context ||= document.createElement('canvas').getContext('2d')
-  context.font = `${size}px ${family}`
-  const metrics = context.measureText('M')
-  return { ascent: metrics.fontBoundingBoxAscent, descent: metrics.fontBoundingBoxDescent }
-}
-
-// Chromium re-lays out SVG text when an ancestor's CSS scale changes, including
-// during native wheel hit testing. HTML lines keep their layout across camera
-// transforms. Measure only when a record renders, never for camera updates.
-function Line({ text, width, size, family, baseline }) {
-  // SVG's collapsed whitespace displayed tabs as spaces. Keep that display
-  // semantic while preserving the raw record and the shared estimated widths.
-  const displayed = text.replace(/\t/g, ' ')
-  const { ascent, descent } = fontMetrics(size, family)
-  const naturalWidth = context.measureText(displayed).width
-  // Per-line transforms are expensive on large boards. Use
-  // spacing for the existing approximate widths; glyphs retain their height.
-  const letters = [...graphemes.segment(displayed)].length
-  const letterSpacing = width && letters ? (width - naturalWidth) / letters : 0
-  // Chromium floors half-pixel inline leading. Match its strut rounding so a
-  // newly loaded face with odd ascent/descent does not shift above the line.
-  return h('div', { style: { position: 'absolute', left: 0, top: baseline - Math.floor((size + ascent - descent) / 2), fontFamily: family, fontSize: size, lineHeight: `${size}px`, whiteSpace: 'pre', letterSpacing } }, displayed)
+// Shape data supplies dimensions and font size. Each calculated line is kept
+// intact; the browser only paints glyphs, never chooses another line break.
+export function TextLines({ layout, font, align = 'start' }) {
+  return layout.lines.map((line, i) => h('div', { key: i, 'data-text-line': i, style: {
+    ...canvasFontStyle(font),
+    position: 'absolute', left: 0, top: i * layout.lineHeight, width: '100%', height: layout.lineHeight,
+    fontSize: layout.size, lineHeight: `${layout.lineHeight}px`, whiteSpace: 'pre', tabSize: 2,
+    textAlign: align === 'middle' ? 'center' : align, textSpacingTrim: 'space-all', textAutospace: 'no-autospace',
+  } }, line.runs.map((run, j) => h('span', { key: j, style: canvasFontStyle(font, run.weight, run.style) }, run.text))))
 }
 
 export function Text({ props }) {
-  const { lines, size, scale, lineHeight, w, h: height } = textLayout(props)
-  return h('div', { style: { width: w, height, color: colorPaint(props).text } },
-    h('div', { style: { transformOrigin: '0 0', transform: `scale(${scale})` } },
-      lines.map((line, i) => h(Line, { key: i, text: line.text, width: line.width, size, family: canvasFontFamily(props.font), baseline: i * lineHeight + size }))))
+  const layout = textLayout(props)
+  return h('div', { style: { width: layout.w, height: layout.h, color: colorPaint(props).text } },
+    h('div', { style: { position: 'relative', width: layout.w / layout.scale, height: layout.h / layout.scale, transformOrigin: '0 0', transform: `scale(${layout.scale})` } },
+      h(TextLines, { layout, font: props.font, align: props.textAlign })))
 }
 
+let titleMeasure
 export function FrameTitle({ text, width, camera }) {
   const { z } = useValue(camera)
   const label = text || 'Frame'
   const naturalWidth = useMemo(() => {
-    fontMetrics(12, 'system-ui')
-    return Math.max(...label.split('\n').map(line => context.measureText(line).width)) + 12
+    // Canvas still compresses punctuation; measure the title's explicit
+    // space-all style. This display-only exception never enters saved bounds.
+    if (!titleMeasure) {
+      titleMeasure = document.createElement('span')
+      Object.assign(titleMeasure.style, { position: 'fixed', visibility: 'hidden', contain: 'layout style paint', width: 'max-content', font: '12px system-ui', whiteSpace: 'pre', textSpacingTrim: 'space-all', textAutospace: 'no-autospace' })
+    }
+    titleMeasure.textContent = label
+    document.body.append(titleMeasure)
+    try { return titleMeasure.getBoundingClientRect().width + 12 }
+    finally { titleMeasure.remove() }
   }, [label])
   const desiredWidth = Math.min(naturalWidth, width * z + 16)
   const viewport = useRef({ label, frameWidth: width, width: desiredWidth })
@@ -59,7 +52,7 @@ export function FrameTitle({ text, width, camera }) {
   // 不把缩放CSS变量继承给整张画板；文字过长省略，显式换行保留。
   // Explicit size + containment prevents title width changes propagating a
   // document-wide layout. Measuring a new label never runs on camera updates.
-  return h('div', { 'data-frame-title-root': '', style: { position: 'absolute', left: 0, top: 0, width: naturalWidth, height: 28, contain: 'strict', transformOrigin: '0 0', transform: `scale(${1 / z}) translate(-7px, -28px)`, fontFamily: 'system-ui', fontSize: 12, color: FRAME_TITLE_PAINT.text } },
+  return h('div', { 'data-frame-title-root': '', style: { position: 'absolute', left: 0, top: 0, width: naturalWidth, height: 28, contain: 'strict', transformOrigin: '0 0', transform: `scale(${1 / z}) translate(-7px, -28px)`, fontFamily: 'system-ui', fontSize: 12, color: FRAME_TITLE_PAINT.text, textSpacingTrim: 'space-all', textAutospace: 'no-autospace' } },
     h('div', { 'data-frame-title': '', style: { width: viewport.current.width, height: 28, boxSizing: 'border-box', paddingBottom: 4, overflow: 'hidden' } },
       h('div', { style: { height: 24, display: 'flex', alignItems: 'center', borderRadius: 4, background: FRAME_TITLE_PAINT.background, boxShadow: `inset 0 0 0 1px ${FRAME_TITLE_PAINT.background}` } },
         h('span', { title: label, style: { padding: '0 6px', whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis' } }, label))))

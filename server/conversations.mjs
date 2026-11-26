@@ -8,6 +8,7 @@ import { createCanvasStorage, canvasDir as defaultRoot, readJsonFile, writeJsonA
 import { httpError, withFileLock } from './file-lock.mjs'
 import { mergeLegacyPages, restoreSingleCanvasView, singlePageId } from './single-canvas.mjs'
 import { createCanvasHistory } from './canvas-history.mjs'
+import { prepareNodeTextLayout } from './text-layout.mjs'
 
 function readOnly(value) {
   for (const child of Object.values(value)) if (child && typeof child === 'object') readOnly(child)
@@ -15,6 +16,7 @@ function readOnly(value) {
 }
 
 export function createConversations(root = defaultRoot) {
+  prepareNodeTextLayout()
   const history = createCanvasHistory()
   root = resolve(root)
   const directory = join(root, 'conversations')

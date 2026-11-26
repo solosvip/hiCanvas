@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url))
 const dataPackages = /^@tldraw\/(?:store|tlschema|state|utils|validate)(?:\/|$)/
+const textPackages = /^(?:fontkit|linebreak|unicode-segmenter)(?:\/|$)/
 // 编辑层只能经纯几何入口进入渲染层；入口带进来的渲染层文件不许是画面入口或组件文件，
 // React 与 DOM 另由下面的依赖和宿主检查拦住。新增纯几何小文件不用改这里。
 const geometryEntry = 'renderer/geometry.js'
@@ -47,9 +48,10 @@ export async function checkRuntimeBoundary({ root = projectRoot, entryPoints = [
         if (specifier.startsWith('.') || specifier.startsWith('/')) {
           const target = relative(root, resolve(dirname(args.importer), specifier))
           const inside = /^(?:engine|model)\//.test(target)
-          const allowed = /^(?:engine|model)\//.test(importer) ? inside || importer.startsWith('engine/') && target === geometryEntry : pureGeometryInput(target) || target.startsWith('model/')
+          const versionMetadata = importer === 'renderer/text-variable-metrics.js' && target === 'node_modules/fontkit/package.json'
+          const allowed = /^(?:engine|model)\//.test(importer) ? inside || importer.startsWith('engine/') && target === geometryEntry : pureGeometryInput(target) || target.startsWith('model/') || versionMetadata
           if (!allowed) throw new Error(`运行时越界引用：${target}`)
-        } else if (!dataPackages.test(specifier)) throw new Error(`运行时不允许的依赖：${specifier}`)
+        } else if (!dataPackages.test(specifier) && !textPackages.test(specifier)) throw new Error(`运行时不允许的依赖：${specifier}`)
       })
       // 在加载前拒绝，避免检查本身读取受限包的源码。
       builder.onLoad({ filter: /[/\\]node_modules[/\\](?:tldraw|@tldraw[/\\](?:editor|assets))[/\\]/ }, () => { throw new Error('拒绝加载受限包源码。') })

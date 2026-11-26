@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url))
 const dataPackages = /^@tldraw\/(?:store|tlschema|state|state-react|utils|validate)(?:\/|$)/
+const textPackages = /^(?:fontkit|linebreak|unicode-segmenter)(?:\/|$)/
 const reactPackages = /^(?:react|react-dom)(?:\/|$)/
-const domGlobals = new Set(['window', 'document', 'navigator', 'self', 'location', 'history', 'screen', 'Element', 'Node', 'Text', 'Image', 'Audio', 'Event', 'EventTarget', 'ImageData', 'Path2D', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver', 'OffscreenCanvas', 'customElements', 'localStorage', 'sessionStorage'])
-const isDomName = name => domGlobals.has(name) || /^(?:DOM|HTML|SVG|Canvas|WebGL|CSS|XML|XPath)/.test(name || '') || /^(?:Mouse|Pointer|Keyboard|Wheel|Touch|Input|Focus|Drag|Clipboard|Custom|Animation|Transition|Message)Event$/.test(name || '')
+const domGlobals = new Set(['window', 'document', 'navigator', 'self', 'location', 'history', 'screen', 'Element', 'Node', 'Text', 'Image', 'Audio', 'Event', 'EventTarget', 'ImageData', 'Path2D', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver', 'OffscreenCanvas', 'customElements', 'localStorage', 'sessionStorage', 'CSS'])
+const isDomName = name => domGlobals.has(name) || /^(?:DOM|HTML|SVG|Canvas|WebGL|CSS|XML|XPath)[A-Z][A-Za-z0-9]*$/.test(name || '') || /^(?:Mouse|Pointer|Keyboard|Wheel|Touch|Input|Focus|Drag|Clipboard|Custom|Animation|Transition|Message)Event$/.test(name || '')
 
 function checkNoDom(source, path) {
   const walk = node => {
@@ -40,8 +41,9 @@ export async function checkRendererBoundary({ root = projectRoot, geometry = fal
         if (args.kind === 'entry-point' || !/^(?:renderer|model)\//.test(importer)) return
         if (specifier.startsWith('.') || specifier.startsWith('/')) {
           const target = relative(root, resolve(dirname(args.importer), specifier))
-          if (!target.startsWith('renderer/') && target !== 'model/index.js') throw new Error(`渲染层越界引用：${target}`)
-        } else if (!dataPackages.test(specifier) && !reactPackages.test(specifier)) throw new Error(`渲染层未允许的依赖：${specifier}`)
+          const versionMetadata = importer === 'renderer/text-variable-metrics.js' && target === 'node_modules/fontkit/package.json'
+          if (!target.startsWith('renderer/') && target !== 'model/index.js' && !versionMetadata) throw new Error(`渲染层越界引用：${target}`)
+        } else if (!dataPackages.test(specifier) && !reactPackages.test(specifier) && !textPackages.test(specifier)) throw new Error(`渲染层未允许的依赖：${specifier}`)
       })
       if (geometry) builder.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async args => {
         const contents = await readFile(args.path, 'utf8')

@@ -5,3 +5,4 @@
 export { canvasToScreen, screenToCanvas, hitTestCanvas } from './geometry.js'
 export { mountCanvasRenderer } from './mount.js'
 export { prepareCanvasFonts } from './fonts/prepare.js'
+export { canvasFontStyle } from './font-families.js'

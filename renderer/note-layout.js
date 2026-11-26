@@ -1,43 +1,35 @@
-import { plainText } from './text.js'
-import { measureNoteText, splitNoteCharacters } from './note-text-metrics.js'
+import { layoutText } from './text.js'
+import { richTextRuns, sliceTextRuns } from './text-runs.js'
 
 const paperWidth = 200, padding = 16, textWidth = paperWidth - padding * 2
+const cached = new WeakMap()
+const layoutKeys = ['scale', 'size', 'fontSizeAdjustment', 'font', 'richText', 'growY', 'verticalAlign', 'align']
 
-function wrapParagraph(paragraph, size, font) {
-  const lines = []
-  let text = ''
-  const push = () => { lines.push(text); text = '' }
-  // Latin words stay together; CJK and emoji may break at grapheme boundaries.
-  // Runtime pre-wrap preserves spaces; TAB occupies one space. A trailing run
-  // may hang past the line, moving the following word to the next line.
-  const tokens = paragraph.replace(/\t/g, ' ').match(/[\u0000-\u024f]+|[^\u0000-\u024f]+/gu) || []
-  const words = tokens.flatMap(token => /^[\u0000-\u024f]+$/.test(token) ? token.match(/[^ ]+| +/g) : splitNoteCharacters(token))
-  for (const word of words) {
-    if (/^ +$/.test(word)) { text += word; continue }
-    if (measureNoteText(text + word, size, font) > textWidth && text) push()
-    if (measureNoteText(word, size, font) <= textWidth) text += word
-    else for (const char of splitNoteCharacters(word)) {
-      if (measureNoteText(text + char, size, font) > textWidth && text) push()
-      text += char
-    }
-  }
-  push()
-  return lines
-}
-
-// 2026-11-25 对照运行中的旧版画面测量：200×200，四边16；
-// 四档字号18/22/26/32，行高1.35，Chromium布局取1/64像素。
+// Observed note geometry stays 200px wide with 16px padding. Only its shared
+// text measurement/wrapping seam changes; line height retains 1/64px rounding.
 export function noteLayout(props) {
+  const values = layoutKeys.map(key => props[key]), previous = cached.get(props)
+  if (previous && values.every((value, i) => Object.is(value, previous.values[i]))) return previous.result
   const scale = props.scale || 1
   const size = ({ s: 18, m: 22, l: 26, xl: 32 }[props.size] || 22) * (props.fontSizeAdjustment ?? 1)
+  const font = props.font || 'draw', content = richTextRuns(props.richText)
+  const layout = layoutText(content.text, { font, size, width: textWidth, runs: content.runs })
   const lineHeight = Math.floor(size * 1.35 * 64) / 64
-  const lines = plainText(props.richText).split('\n').flatMap(paragraph => wrapParagraph(paragraph, size, props.font)).map(text => ({ text, width: measureNoteText(text, size, props.font) }))
-  const height = Math.max(paperWidth + Math.max(0, props.growY || 0), lines.length * lineHeight + padding * 2)
-  const top = props.verticalAlign === 'start' ? padding : props.verticalAlign === 'end' ? height - padding - lines.length * lineHeight : (height - lines.length * lineHeight) / 2
-  for (const [i, line] of lines.entries()) {
-    const alignedWidth = line.width > textWidth ? measureNoteText(line.text.trimEnd(), size, props.font) : line.width
-    line.left = ['start', 'start-legacy'].includes(props.align) ? padding : ['end', 'end-legacy'].includes(props.align) ? paperWidth - padding - alignedWidth : (paperWidth - alignedWidth) / 2
-    line.top = top + i * lineHeight
-  }
-  return { w: paperWidth * scale, h: height * scale, paperWidth, height, size, scale, lineHeight, lines }
+  const height = Math.max(paperWidth + Math.max(0, props.growY || 0), layout.lines.length * lineHeight + padding * 2)
+  const top = props.verticalAlign === 'start' ? padding : props.verticalAlign === 'end' ? height - padding - layout.lines.length * lineHeight : (height - layout.lines.length * lineHeight) / 2
+  const lines = layout.lines.map((line, i) => {
+    let alignedWidth = line.width
+    if (line.width > textWidth && /[ \t]+$/u.test(line.text)) {
+      const trimmed = line.text.replace(/[ \t]+$/u, ''), end = line.start + trimmed.length
+      const runs = sliceTextRuns(content.runs, line.start, end).map(run => ({ ...run,
+        start: run.start - line.start, end: run.end - line.start,
+      }))
+      alignedWidth = layoutText(trimmed, { font, size, runs }).w
+    }
+    const left = ['start', 'start-legacy'].includes(props.align) ? padding : ['end', 'end-legacy'].includes(props.align) ? paperWidth - padding - alignedWidth : (paperWidth - alignedWidth) / 2
+    return { ...line, left, top: top + i * lineHeight }
+  })
+  const result = { w: paperWidth * scale, h: height * scale, paperWidth, height, size, scale, lineHeight, lines, unknown: layout.unknown, unsupported: content.unsupported }
+  cached.set(props, { values, result })
+  return result
 }

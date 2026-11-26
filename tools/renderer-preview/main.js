@@ -30,7 +30,10 @@ Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.f
 } }), writable: false, configurable: false })
 
 try {
-  await prepareCanvasFonts(document)
+  await prepareCanvasFonts(document, { onWarning: async diagnostic => {
+    const response = await fetch('/__renderer_font_warning', { method: 'POST', headers: { 'content-type': 'application/json', 'x-hicanvas-client': '1' }, body: JSON.stringify(diagnostic) })
+    if (!response.ok) throw new Error('本机校准日志写入失败。')
+  } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
   else if (['arrows', 'routes', 'lines', 'bindings', 'bound-elbows'].includes(gallery)) metadata = createConnectionGallery(gallery)
