@@ -8,6 +8,7 @@
   --color-minimap-viewport: #0000001a;
   --color-overlay-crop-ghost: #0000001a;
   --color-overlay-scribble-stroke: #2f80ed52;
+  --color-grid-dot: #6e6e6e;
   --color-secondary: #596170;
   --color-tertiary: #0ea5e9;
   --color-neutral: #f7f5ef;
@@ -42,6 +43,12 @@
   --spacing-minimap-height: 88px;
   --spacing-minimap-breakpoint: 840px;
   --spacing-text-editor-min-width: 1px;
+  --spacing-grid-dot-radius: 1px;
+  --spacing-grid-dot-offset: 0.5px;
+  --spacing-grid-fade-start: 7px;
+  --spacing-grid-fade-range: 18px;
+  --spacing-grid-coarse-fade-start: 13px;
+  --spacing-grid-coarse-fade-range: 17px;
   --spacing-none: 0px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;

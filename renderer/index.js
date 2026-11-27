@@ -1,7 +1,8 @@
 // Framework-neutral mount: mountCanvasRenderer(element, {store,camera?,pageId?,loadGeneratedFrame?,reduceMotion?})
 // returns setCamera/getCamera, hitTest, setOverlays, setReduceMotion and unmount.
-// setOverlays takes selection/marquee/crop/connection/snap-guides descriptions
+// setOverlays takes selection/marquee/crop/connection/snap-guides/grid descriptions
 // in canvas units; guide points/ticks are rendered with constant CSS thickness.
+// A grid has positive spacing in canvas units and paints below the shape world.
 // Overlay descriptions and camera are copied; mounting/drawing never edits Store.
 export { canvasToScreen, screenToCanvas, hitTestCanvas } from './geometry.js'
 export { mountCanvasRenderer } from './mount.js'

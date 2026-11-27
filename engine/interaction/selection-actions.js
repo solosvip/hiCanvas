@@ -7,7 +7,7 @@ const unavailable = reason => ({ status: 'unavailable', reason })
 
 // The only action-to-runtime adapter. Menus and keyboard use the same planner
 // and preview/commit path; held arrow keys merely extend this same transaction.
-export function createSelectionActions({ session, targets, selection, duplicates, read, change, report, pageId }) {
+export function createSelectionActions({ session, targets, selection, duplicates, snapping, read, change, report, pageId }) {
   let held = null, disposed = false
   function context() {
     const state = read()
@@ -38,7 +38,7 @@ export function createSelectionActions({ session, targets, selection, duplicates
   function run(id, options) {
     const blocked = reason()
     if (blocked) return unavailable(blocked)
-    const plan = planCanvasAction(id, context(), options)
+    const plan = planAction(id, options)
     if (!plan.available) return unavailable(plan.reason)
     const previous = [...read().selectedIds]
     try {
@@ -49,11 +49,17 @@ export function createSelectionActions({ session, targets, selection, duplicates
       change({ selectedIds: previous }); report(error); throw error
     }
   }
+  function planAction(id, options) {
+    const plan = planCanvasAction(id, context(), options)
+    // Session grid policy changes the interaction's step, never the command
+    // planner's public defaults. Programmatic and held-key actions share it.
+    return plan.available && id.startsWith('nudge-') ? { ...plan, commands: plan.commands.map(command => ({ ...command, delta: snapping.nudge(command.delta, options?.largeStep === true) })) } : plan
+  }
   function nudge(binding, input) {
     const blocked = reason(true)
     if (blocked) return unavailable(blocked)
     if (!held && input.repeat) return unavailable('orphan-repeat')
-    const plan = planCanvasAction(binding.action, context(), { largeStep: input.shiftKey })
+    const plan = planAction(binding.action, { largeStep: input.shiftKey })
     if (!plan.available) return unavailable(plan.reason)
     try {
       if (!held) {

@@ -6,6 +6,7 @@ import { checkedCamera, hitTestCanvas } from './geometry.js'
 import { createScene } from './scene.js'
 import { CanvasWorld } from './shapes.js'
 import { CanvasOverlays, checkedOverlays } from './overlays.js'
+import { CanvasGrid } from './grid.js'
 import { createTextEditingView } from './text-editing-view.js'
 import { textEditingStyle } from './text-editing-style.js'
 
@@ -34,7 +35,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   try { flushSync(() => root.render(createElement(Fragment, null,
     createElement('style', null, textEditingStyle),
     createElement('style', null, '[data-canvas-renderer] [contenteditable] { text-spacing-trim: space-all; text-autospace: no-autospace; word-break: normal; overflow-wrap: break-word; white-space: pre-wrap; tab-size: 2; }'),
-    createElement(CanvasWorld, { scene, camera: view }), createElement(CanvasOverlays, { camera: view, overlays, reduceMotion: scene.reduceMotion })))) }
+    createElement(CanvasGrid, { camera: view, overlays }), createElement(CanvasWorld, { scene, camera: view }), createElement(CanvasOverlays, { camera: view, overlays, reduceMotion: scene.reduceMotion })))) }
   catch (error) { unmount(); throw error }
   const assertActive = () => { if (!active) throw new Error('渲染器已卸载。') }
   return Object.freeze({

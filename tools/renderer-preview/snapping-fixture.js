@@ -13,7 +13,7 @@ export function createSnappingFixture(mode) {
       fill: 'solid'
     }
   });
-  const commands = mode === 'resize' ? [rectangle('shape:moving', 100, 180, 150, 100), rectangle('shape:fixed', 380, 180, 90, 100)] : mode === 'gap' ? [rectangle('shape:a', 200, 240, 80, 80), rectangle('shape:b', 380, 240, 80, 80), rectangle('shape:moving', 700, 350, 80, 80)] : [rectangle('shape:fixed', 200, 200, 100, 80), rectangle('shape:moving', 430, 320, 60, 50)];
+  const commands = mode === 'grid' ? [rectangle('shape:moving', 103, 107, 60, 50)] : mode === 'grid-priority' ? [rectangle('shape:fixed', 200, 200, 103, 80), rectangle('shape:moving', 430, 320, 60, 50)] : mode === 'resize' || mode === 'grid-resize' ? [rectangle('shape:moving', 100, 180, 150, 100), rectangle('shape:fixed', mode === 'grid-resize' ? 383 : 380, 180, 90, 100)] : mode === 'gap' ? [rectangle('shape:a', 200, 240, 80, 80), rectangle('shape:b', 380, 240, 80, 80), rectangle('shape:moving', 700, 350, 80, 80)] : [rectangle('shape:fixed', 200, 200, 100, 80), rectangle('shape:moving', 430, 320, 60, 50)];
   const snapshot = executeCanvasCommands(createCanvasSnapshot(), commands).snapshot;
   const currentPageId = Object.values(snapshot.store).find(record => record.typeName === 'page').id;
   return {

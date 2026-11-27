@@ -3,6 +3,7 @@ import { mountCanvasRenderer } from '../../renderer/index.js'
 
 const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 const guide = () => ({kind:'snap-guides',bounds:{x:0,y:0,w:0,h:0},lines:[{start:{x:10,y:20},end:{x:10,y:300},points:[{x:10,y:20},{x:10,y:300}],ticks:[{x:10,y:160}],gap:true}]})
+const grid = () => ({ kind: 'grid', bounds: { x: 0, y: 0, w: 0, h: 0 }, spacing: 10 })
 
 // Separate read-only renderer contract probe on its own synthetic Store. It
 // uses the public mount/setOverlays boundary, never an internal validator.
@@ -33,6 +34,24 @@ export async function snappingOverlayProbe() {
     check(line().style.transform===before,'拒绝非法描述时破坏了现有覆盖层')
     check(JSON.stringify(store.getStoreSnapshot())===beforeSnapshot,'提示线写入了画板')
     view.setOverlays([]);await settle();check(!line(),'清理覆盖层后线段仍在')
-    return {copiedHostInput:true,rejectedInvalidAndOverflowingGuides:true,invalidUpdateAtomic:true,documentUnchanged:true}
+    const gridInput = grid(); view.setOverlays([gridInput]); gridInput.spacing = 80
+    view.setCamera({ x: 13, y: -7, z: .5 }); await settle()
+    const pattern = () => host.querySelector('[data-grid-factor="1"]')
+    check(Number(pattern().getAttribute('width')) === 5, '网格保留宿主格距引用')
+    check(Number(pattern().getAttribute('x')) === 1.5 && Number(pattern().getAttribute('y')) === -3.5, '点阵未随相机平移')
+    const gridNode = host.querySelector('[data-overlay-kind="grid"]'), world = host.querySelector('[data-renderer-world]')
+    check(Boolean(gridNode.compareDocumentPosition(world) & Node.DOCUMENT_POSITION_FOLLOWING), '点阵盖在作品上方')
+    for (const spacing of [0, -1, NaN, Infinity, Number.MAX_VALUE, '10']) {
+      let rejected = false
+      try { view.setOverlays([{ ...grid(), spacing }]) } catch { rejected = true }
+      check(rejected, '网格公开边界接受非法或溢出格距')
+    }
+    view.setCamera({ x: 0, y: 0, z: 2 }); await settle()
+    check(Number(pattern().getAttribute('width')) === 20, '非法更新破坏现有网格')
+    const dotStyle = getComputedStyle(pattern().querySelector('circle'))
+    check(dotStyle.fill === 'rgb(110, 110, 110)' && Math.abs(Number(dotStyle.opacity) - 13 / 18) < .0001 && dotStyle.r === '1px', '网格颜色、透明度或点半径没有取设计令牌')
+    check(JSON.stringify(store.getStoreSnapshot()) === beforeSnapshot, '网格写进画板')
+    view.setOverlays([]); await settle(); check(!pattern(), '关闭网格后点阵仍在')
+    return {copiedHostInput:true,rejectedInvalidAndOverflowingGuides:true,invalidUpdateAtomic:true,documentUnchanged:true,gridContract:true}
   } finally {view.unmount();host.remove();store.dispose()}
 }
