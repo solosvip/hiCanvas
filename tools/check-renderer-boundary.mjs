@@ -11,9 +11,14 @@ const textPackages = /^(?:fontkit|linebreak|unicode-segmenter)(?:\/|$)/
 const reactPackages = /^(?:react|react-dom)(?:\/|$)/
 const captureImports={
   'film-video-frames.js':['mediabunny'],
-  'capture-render.js':['html2canvas/dist/lib/dom/document-cloner.js'],
+  'capture-render.js':['html2canvas/dist/lib/dom/document-cloner.js','html2canvas/dist/lib/render/font-metrics.js'],
   'capture-clip-fix.js':['html2canvas/dist/lib/index.js','html2canvas/dist/lib/render/stacking-context.js','html2canvas/dist/lib/render/effects.js','html2canvas/dist/lib/render/bound-curves.js','html2canvas/dist/lib/render/path.js'],
 }
+// The development previews pre-bundle these exact html2canvas internals
+// (noDiscovery). Deriving their list from this whitelist keeps the two in step:
+// a path allowed here but missing there loads as raw CommonJS and the preview
+// page fails on its first import (#153).
+export const captureLibraryImports = [...new Set(Object.values(captureImports).flat())].filter(path => path.startsWith('html2canvas/'))
 const textViewPackages = /^@tiptap\/(?:core|starter-kit|extension-highlight|extension-code|pm)(?:\/|$)/
 const textViewImporters = new Set(['renderer/text-editing-view.js', 'renderer/text-schema.js'])
 const domGlobals = new Set(['window', 'document', 'navigator', 'self', 'location', 'history', 'screen', 'Element', 'Node', 'Text', 'Image', 'Audio', 'Event', 'EventTarget', 'ImageData', 'Path2D', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver', 'OffscreenCanvas', 'customElements', 'localStorage', 'sessionStorage', 'CSS'])

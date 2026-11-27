@@ -9,18 +9,20 @@ import {cowartUiOverrides} from '../../src/editor/overrides.jsx'
 // Only the editor and output boundaries are fixtures. All four production
 // entry functions, resource waiting, html2canvas, Ports and parent composition
 // run unchanged. No real clipboard, file download, MCP or paid API is used.
-window.startCapturePreview=async({font})=>{
+window.startCapturePreview=async({font,fontMode='font'})=>{
   const checks=[],artifacts={},publications=[],toasts=[]
   const check=(name,value)=>{checks.push({name,pass:!!value});if(!value)throw new Error(name)}
   const bitmap=document.createElement('canvas');bitmap.width=80;bitmap.height=40
   const paint=bitmap.getContext('2d');paint.fillStyle='#f04733';paint.fillRect(0,0,40,40);paint.fillStyle='#279a73';paint.fillRect(40,0,40,40)
-  const html=number=>`<!doctype html><meta charset="utf-8"><style>
-  @font-face{font-family:CaptureFixture;src:url(data:font/woff2;base64,${font})}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#e9edf4}
+  const fontSource=fontMode==='failed'?'AA==':font
+  const fontRule=['plain','timeout','cross-origin','script-font'].includes(fontMode)?'':`@font-face{font-family:CaptureFixture;src:url(data:font/woff2;base64,${fontSource})}`
+  const html=number=>`<!doctype html><meta charset="utf-8">${fontMode==='cross-origin'?'<link rel="stylesheet" href="https://hicanvas-fonts-test.invalid/font.css">':''}<style>
+  ${fontRule}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#e9edf4}
   .clip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:280px;height:140px;overflow:hidden;border-radius:16px;background:#24314c;border:4px solid #24314c}
   .inside{position:absolute;left:-12px;top:-7px;width:310px;height:160px;background:linear-gradient(35deg,#f9df9a,#cadff8)}
   h1{position:relative;margin:14px 20px 5px;font:700 23px ${number===3?'system-ui':'CaptureFixture,serif'};color:#263654}p{position:relative;margin:0 20px;font:italic 15px ${number===3?'system-ui':'CaptureFixture,serif'};color:#263654}img{position:absolute;width:80px;height:40px;right:18px;bottom:12px;transform:rotate(-7deg)}
   span{display:inline;vertical-align:baseline;padding:0 1px}
-  </style><div class="clip"><div class="inside"></div><h1>Capture ${number} · Aa012</h1><p><span>Fonts, rounded crop &amp; transform</span></p><img id="raster"></div><script>setTimeout(()=>{document.querySelector('#raster').src=${JSON.stringify(bitmap.toDataURL())}},250)<\/script>`
+  </style><div class="clip"><div class="inside"></div><h1>Capture ${number} · Aa012</h1><p><span>Fonts, rounded crop &amp; transform</span></p><img id="raster"></div><script>setTimeout(()=>{document.querySelector('#raster').src=${JSON.stringify(bitmap.toDataURL())}},250)${fontMode==='script-font'?`;const face=new FontFace('CaptureFixture','url(data:font/woff2;base64,${font})');document.fonts.add(face);face.load().catch(()=>{})`:''}<\/script>`
   const web={id:'shape:web',type:'embed',x:100,y:70,props:{w:320,h:180},meta:{cowartHtmlDraft:true}}
   const slides={id:'shape:slides',type:'frame',props:{name:'合成幻灯片'},meta:{cowartAiSlides:true}}
   const pages=[1,2].map(number=>({id:'shape:slide-'+number,type:'embed',x:400*number,y:0,parentId:slides.id,props:{w:320,h:180},meta:{cowartHtmlDraft:true}}))
@@ -106,7 +108,7 @@ window.startCapturePreview=async({font})=>{
     button.onclick=async()=>{window.__captureSmoke.running=key;try{await run();window.__captureSmoke.completed.push(key)}catch(error){window.__captureSmoke.error=error.stack}finally{window.__captureSmoke.running=null}}
     document.querySelector('#controls').append(button)
   }
-  window.__captureSmoke={checks,artifacts,completed:[],error:null,running:null,async dispose(){
+  window.__captureSmoke={checks,artifacts,editCommand:(command,value)=>getContentChannel(cowartHtmlDraftIframes.get(web.id)).request(command,value),completed:[],error:null,running:null,async dispose(){
     HTMLAnchorElement.prototype.click=originalClick
     if(originalClipboard)Object.defineProperty(navigator,'clipboard',originalClipboard);else delete navigator.clipboard
     cowartHtmlDraftIframes.clear();await Promise.all(publications.map(frame=>frame.dispose()))

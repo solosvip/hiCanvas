@@ -1,9 +1,39 @@
 import html2canvas from './capture-clip-fix.js'
 
+import {FontMetrics} from 'html2canvas/dist/lib/render/font-metrics.js'
+import {captureFontEnvironment,createFontCaptureClone} from './capture-realm.js'
+
 import { DocumentCloner } from 'html2canvas/dist/lib/dom/document-cloner.js'
+
+const metricDocuments = new WeakMap()
+const originalMetrics = FontMetrics.prototype.parseMetrics
+FontMetrics.prototype.parseMetrics = function(...args) {
+  const original = this._document
+  const scoped = metricDocuments.get(original)
+  if (!scoped) return originalMetrics.apply(this,args)
+  this._document = scoped
+  try { return originalMetrics.apply(this,args) }
+  finally { this._document = original }
+}
 
 const activeCaptures = new WeakMap()
 const originalCloneElement = DocumentCloner.prototype.createElementClone
+const originalToIFrame = DocumentCloner.prototype.toIFrame
+DocumentCloner.prototype.toIFrame = function(doc,bounds) {
+  const capture=activeCaptures.get(doc)
+  if (!capture) return originalToIFrame.call(this,doc,bounds)
+  if (doc.fonts?.size) return createFontCaptureClone(this,doc,bounds,capture.signal).then(frame=>{
+    capture.clones.add(frame)
+    return frame
+  })
+  const existing=new Set(doc.querySelectorAll('iframe.html2canvas-container'))
+  const result=originalToIFrame.call(this,doc,bounds)
+  for (const frame of doc.querySelectorAll('iframe.html2canvas-container')) if (!existing.has(frame)) {
+    frame.setAttribute('data-hicanvas-capture-realm','')
+    capture.clones.add(frame)
+  }
+  return result
+}
 
 // html2canvas replaces <video> with <canvas> itself and inserts helper nodes.
 // Record actual clone identities while its pinned synchronous clone pass runs.
@@ -24,13 +54,22 @@ DocumentCloner.prototype.createElementClone = function (node) {
   return clone
 }
 
-export async function renderHtmlDraftDocument(iframeDocument, { width, height, pixelRatio, freezeAtCurrentFrame = false, videoFrames }) {
-  const capture = { nodes: new WeakMap(), videoFrames }
+export async function renderHtmlDraftDocument(iframeDocument, { width, height, pixelRatio, freezeAtCurrentFrame = false, videoFrames, captureSignal = new AbortController().signal }) {
+  const capture = { nodes: new WeakMap(), videoFrames, signal: captureSignal, clones: new Set() }
   const previous = activeCaptures.get(iframeDocument)
-  activeCaptures.set(iframeDocument, capture)
+  const fonts = captureFontEnvironment(iframeDocument,document)
+  const previousMetrics = metricDocuments.get(document)
   try {
-  return html2canvas(iframeDocument.documentElement, {
+  if (fonts.canvas) {
+    fonts.canvas.width=Math.floor(width*pixelRatio);fonts.canvas.height=Math.floor(height*pixelRatio)
+    metricDocuments.set(document,fonts.document)
+  }
+  let rendering
+  activeCaptures.set(iframeDocument,capture)
+  try {
+  rendering = html2canvas(iframeDocument.documentElement, {
     allowTaint: false,
+    canvas: fonts.canvas,
     backgroundColor: '#ffffff',
     height,
     logging: false,
@@ -71,5 +110,12 @@ export async function renderHtmlDraftDocument(iframeDocument, { width, height, p
     // so separate capture documents can render concurrently without interference.
     if (previous) activeCaptures.set(iframeDocument, previous)
     else activeCaptures.delete(iframeDocument)
+  }
+  return await rendering
+  } finally {
+    for (const frame of capture.clones) frame.remove()
+    fonts.dispose()
+    if (previousMetrics) metricDocuments.set(document,previousMetrics)
+    else metricDocuments.delete(document)
   }
 }
