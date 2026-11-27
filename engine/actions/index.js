@@ -18,6 +18,10 @@ const scalable = context => Boolean(context.frame && context.canScale !== false)
 // Two-selection menu has stretch/pack; stack/distribute first appear at three.
 // Packing order remains the current command's behavior pending #154.
 export const canvasActions = Object.freeze([
+  entry('duplicate', '复制副本', 1, context => {
+    const offset = context.duplicateOffset || { x: Math.abs(context.frame.w * Math.cos(context.frame.rotation || 0)) + Math.abs(context.frame.h * Math.sin(context.frame.rotation || 0)) + 10, y: 0 }
+    return { commands: [{ type: 'duplicate_shapes', ids: context.ids, offset }], selectedIds: context.ids, selectDuplicateResult: true, duplicateOffset: offset }
+  }, shortcut(['d'], { mod: true }), context => Boolean(context.frame)),
   ...[
     ['left', '靠左', 'a'], ['center-horizontal', '水平居中', 'h'], ['right', '靠右', 'd'],
     ['top', '靠上', 'w'], ['center-vertical', '垂直居中', 'v'], ['bottom', '靠下', 's'],

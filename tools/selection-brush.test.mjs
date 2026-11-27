@@ -67,8 +67,13 @@ test('涂抹不按几何外框误选空心形状，不穿过旋转画框的裁�
     await brush(f, [190, 190], [210, 210], { altKey: true }); assert.deepEqual(f.selected(), [])
     await brush(f, [50, 200], [350, 200], { altKey: true }); assert.deepEqual(f.selected(), ['shape:hollow'])
     await brush(f, [530, 60], [590, 60], { altKey: true }); assert.deepEqual(f.selected(), [])
-    await brush(f, [530, 110], [590, 110], { altKey: true }); assert.deepEqual(f.selected(), ['shape:clipped'])
+    // Start on blank canvas: Alt on the child starts clone-drag (#125). Crossing
+    // the frame border selects its root; the clipped-away path above hits neither.
+    f.pointer('down', 490, 110, { altKey: true }); f.pointer('move', 590, 110, { altKey: true })
+    assert.equal(f.state().mode, 'scribble'); assert.deepEqual(f.selected(), ['shape:frame'])
+    await f.pointer('up', 590, 110, { altKey: true })
     await brush(f, [870, 140], [880, 160], { altKey: true }); assert.deepEqual(f.selected(), ['shape:arrow'])
+    assert.equal(f.commits.length, 0); assert.deepEqual(f.current(), f.initial)
   } finally { f.close() }
 })
 
