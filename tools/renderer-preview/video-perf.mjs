@@ -36,7 +36,7 @@ try {
   const cases = []
   for (let round = 1; round <= 3; round++) for (const amount of [0, 3]) {
     const fixture = amount ? videos : plain
-    cases.push({ renderer: 'preview', count: 5000, repeat: cases.length + 1, round, videoCount: amount, counts: fixture.counts, assetCount: fixture.assetCount, targetId: fixture.targetId, camera: fixture.viewState.camera, url: `${preview.url}/?count=5000${amount ? '&videos=3' : ''}` })
+    cases.push({ renderer: 'preview', count: 5000, repeat: cases.length + 1, round, videoCount: amount, playingVideoCount: amount ? 1 : 0, counts: fixture.counts, assetCount: fixture.assetCount, targetId: fixture.targetId, camera: fixture.viewState.camera, url: `${preview.url}/?count=5000${amount ? '&videos=3' : ''}` })
   }
   const resultPath = join(outputDir, 'samples.json'), manifest = join(outputDir, 'manifest.json')
   await writeFile(manifest, JSON.stringify({ baseUrl: preview.url, origins: [preview.url], cases, durationMs: 2500, outputDir, resultPath }))
@@ -50,12 +50,12 @@ try {
   const result = JSON.parse(await readFile(resultPath, 'utf8'))
   assert.equal(result.samples.length, 6); assert.deepEqual(result.blockedHosts, []); assert.deepEqual(result.consoleErrors, [])
   const median = values => [...values].sort((a,b) => a-b)[Math.floor(values.length/2)]
-  const rows = result.samples.map((sample, i) => ({ videoCount: cases[i].videoCount, round: cases[i].round, openMs: sample.openMs, pan: sample.phases.pan, zoom: sample.phases.zoom }))
+  const rows = result.samples.map((sample, i) => ({ videoCount: cases[i].videoCount, playingVideoCount: cases[i].playingVideoCount, round: cases[i].round, openMs: sample.openMs, pan: sample.phases.pan, zoom: sample.phases.zoom }))
   const comparison = {}
   for (const phase of ['pan', 'zoom']) {
     comparison[phase] = Object.fromEntries([0, 3].map(amount => [amount, { paintFps: median(rows.filter(r => r.videoCount === amount).map(r => r[phase].paint.fps)), rafFps: median(rows.filter(r => r.videoCount === amount).map(r => r[phase].raf.fps)) }]))
   }
-  await writeFile(join(outputDir, 'report.json'), JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), loadBefore, loadAfter: os.loadavg(), platform: os.platform(), cpu: os.cpus()[0]?.model, unaffectedRecordsSha256: hash, replacedShapeIds: [...affected], camera: plain.viewState.camera, load: '5000 shapes; same seeded board, three image bodies replaced by three muted looping 320×180 videos; 0/3 interleaved three rounds; fresh media per sample', method: 'Unmodified tools/perf/electron.mjs input, 2500ms phases, host clock, RAF and actual paint; drag remains not applicable per existing driver', comparison, rows, raw: result }, null, 2))
+  await writeFile(join(outputDir, 'report.json'), JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), loadBefore, loadAfter: os.loadavg(), platform: os.platform(), cpu: os.cpus()[0]?.model, unaffectedRecordsSha256: hash, replacedShapeIds: [...affected], camera: plain.viewState.camera, load: '5000 shapes; same seeded board, three image bodies replaced by three muted 320×180 videos, exactly one playing and two paused; 0/3 interleaved three rounds; fresh media per sample', readiness: 'All three videos readyState >= 2; exactly one unpaused with currentTime > .05, exactly two paused; explicit synthetic session playback, never saved autoplay', method: 'Unmodified tools/perf/electron.mjs input, 2500ms phases, host clock, RAF and actual paint; drag remains not applicable per existing driver', comparison, rows, raw: result }, null, 2))
   console.log(JSON.stringify(comparison))
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')

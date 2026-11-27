@@ -2,7 +2,7 @@ import { getIndexAbove } from '@tldraw/utils'
 import { toRichText } from '@tldraw/tlschema'
 import { CanvasEditError } from '../errors.js'
 
-// 沿用现有命令的 tldraw 5.1.1 默认值，不引入编辑器或形状工具。
+// 沿用现有命令的默认值；#186按用户决定让新视频保持暂停。
 function defaultProps(type) {
   const text = { color: 'black', size: 'm', font: 'sans', scale: 1, richText: toRichText('') }
   switch (type) {
@@ -12,7 +12,7 @@ function defaultProps(type) {
     case 'arrow': return { ...text, kind: 'arc', elbowMidPoint: 0.5, dash: 'solid', fill: 'none', labelColor: 'black', bend: 0, start: { x: 0, y: 0 }, end: { x: 200, y: 0 }, arrowheadStart: 'none', arrowheadEnd: 'arrow', labelPosition: 0.5 }
     case 'line': return { color: 'black', size: 'm', dash: 'draw', spline: 'line', scale: 1, points: { a1: { id: 'a1', index: 'a1', x: 0, y: 0 }, a2: { id: 'a2', index: 'a2', x: .1, y: .1 } } }
     case 'image': return { w: 512, h: 512, assetId: null, playing: true, url: '', crop: null, flipX: false, flipY: false, altText: '' }
-    case 'video': return { w: 320, h: 180, assetId: null, time: 0, playing: true, autoplay: true, url: '', altText: '' }
+    case 'video': return { w: 320, h: 180, assetId: null, time: 0, playing: false, autoplay: false, url: '', altText: '' }
     case 'embed': return { w: 1024, h: 576, url: '' }
     case 'frame': return { w: 1024, h: 576, name: '', color: 'black' }
     case 'group': return {}
