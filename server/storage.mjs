@@ -20,6 +20,9 @@ const pageIdPrefix = 'page:'
 const globalAssetsRoute = '/assets/'
 const pageAssetsRoute = '/page-assets/'
 const mimeTypes = new Map([
+  ['.mp4', 'video/mp4'],
+  ['.webm', 'video/webm'],
+  ['.mov', 'video/quicktime'],
   ['.apng', 'image/apng'],
   ['.avif', 'image/avif'],
   ['.gif', 'image/gif'],
@@ -350,7 +353,26 @@ async function serveCanvasAsset(req, res, next) {
     sandboxActiveAsset(res, mimeTypes.get(extname(filePath).toLowerCase()) ?? 'application/octet-stream')
     res.setHeader('content-length', String(fileStat.size))
     res.setHeader('cache-control', 'no-cache')
-    createReadStream(filePath).pipe(res)
+    let range
+    if (['.mp4', '.mov', '.webm'].includes(extname(filePath).toLowerCase())) {
+      res.setHeader('accept-ranges', 'bytes')
+      if (req.headers.range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range)
+        let start = NaN, end = NaN
+        if (match && (match[1] || match[2])) {
+          start = match[1] ? Number(match[1]) : Math.max(0, fileStat.size - Number(match[2]))
+          end = match[1] ? match[2] ? Math.min(Number(match[2]), fileStat.size - 1) : fileStat.size - 1 : fileStat.size - 1
+        }
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= fileStat.size) {
+          res.statusCode = 416; res.setHeader('content-range', `bytes */${fileStat.size}`); res.setHeader('content-length', '0'); res.end(); return
+        }
+        range = { start, end }; res.statusCode = 206
+        res.setHeader('content-range', `bytes ${start}-${end}/${fileStat.size}`); res.setHeader('content-length', String(end - start + 1))
+      }
+    }
+    if (req.method === 'HEAD') { res.end(); return }
+    const stream = createReadStream(filePath, range)
+    stream.on('error', error => res.destroy(error)); res.once('close', () => stream.destroy()); stream.pipe(res)
   } catch (error) {
     if (error.code === 'ENOENT') {
       res.statusCode = 404
