@@ -285,7 +285,7 @@ export async function imageImportSmoke(window, output, files) {
   const failedCount = shapes(await state()).length
   await drop([files.png, files.bad]); await until(() => evaluate("document.querySelector('#status').textContent.includes('损坏')"), '损坏文件提示')
   check(shapes(await state()).length === failedCount, '损坏的第二项留下半批图片')
-  await evaluate(`window.__imageRealFetch=fetch;window.__imageUploads=0;window.fetch=(url,options)=>new URL(url,location.href).pathname==='/api/canvas/reference'&&++window.__imageUploads===2?Promise.resolve(Response.json({error:'合成上传失败'},{status:503})):window.__imageRealFetch(url,options);void 0`)
+  await evaluate(`window.__imageRealFetch=fetch;window.__imageUploads=0;window.fetch=(url,options)=>{const args=typeof options?.body==='string'?JSON.parse(options.body):{};return new URL(url,location.href).pathname==='/api/canvas/reference'&&args.dataUrl&&args.purpose!=='file-import-prepare'&&++window.__imageUploads===2?Promise.resolve(Response.json({error:'合成上传失败'},{status:503})):window.__imageRealFetch(url,options)};void 0`)
   try {
     await drop([files.png, files.portrait]); await until(() => evaluate("window.__imageUploads===2 && document.querySelector('#status').textContent.includes('合成上传失败')"), '真实第二次上传失败反馈')
     check(shapes(await state()).length === failedCount, '上传失败留下半批图片')

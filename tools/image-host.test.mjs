@@ -28,7 +28,10 @@ async function setup(t, mode = '') {
   const interaction = { state: { get: () => state } }
   const gate = new Promise(resolve => { release = resolve })
   t.mock.method(globalThis, 'fetch', async (_url, options) => {
-    const args = JSON.parse(options.body); requests.push(args)
+    const args = JSON.parse(options.body)
+    if (args.purpose === 'file-import-begin') return Response.json({ importToken: 'synthetic-attempt' })
+    if (args.purpose === 'file-import-abort') { saved.clear(); return Response.json({ remaining: 0 }) }
+    requests.push(args)
     if (mode === 'wait') await gate
     if (mode === '503' && ++count === 2) return Response.json({ error: '合成上传失败' }, { status: 503 })
     const image = args.dataUrl.startsWith('data:image/svg+xml;') ? decodeSvgUpload(args.dataUrl) : args.purpose === 'file-import' ? decodeImageUpload(args.dataUrl) : decodeVideoUpload(args.dataUrl), src = `/c/synthetic/assets/${saved.size}.${image.extension}`
@@ -111,6 +114,7 @@ for (const mode of ['503', 'decode-fail']) test(`支持项${mode}导致整批不
   assert.equal(f.shapes().length, 0)
   assert.equal(f.session.state.get().revision, '0')
   assert.match(f.errors[0], mode === '503' ? /上传失败/ : /损坏/)
+  assert.equal(f.saved.size, 0, '导入失败后本次此前上传的文件不能留在资料目录')
   if (mode === 'decode-fail') { assert.equal(f.requests.length, 0); assert.equal(f.saved.size, 0) }
 })
 for (const action of ['dispose', 'selection']) test(`异步上传期间${action}不提交、不碰已销毁视图`, async t => {

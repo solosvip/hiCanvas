@@ -78,7 +78,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       if (path === '/api/agent/requests/claim' && req.method === 'POST') return sendJson(res, 200, { requests: await requests.list(id, await jsonBody(req)) })
       const completion = path.match(/^\/api\/agent\/requests\/([a-f0-9-]{36})$/)
       if (completion && req.method === 'PUT') return sendJson(res, 200, { request: await requests.complete(id, completion[1], await jsonBody(req)) })
-      if (path === '/api/canvas/reference' && req.method === 'POST') return sendJson(res, 200, await media.reference(id, await jsonBody(req)))
+      if (path === '/api/canvas/reference' && req.method === 'POST') return sendJson(res, 200, await media.reference(id, await jsonBody(req), actor))
       if (path === '/api/canvas/asset/read' && req.method === 'POST') {
         const result = await media.readAsset(id, (await jsonBody(req)).assetUrl)
         return sendJson(res, 200, { dataBase64: result.bytes.toString('base64'), mimeType: result.mimeType, assetPath: result.assetPath })

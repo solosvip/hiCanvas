@@ -1,5 +1,5 @@
-import { mkdir, open, unlink, realpath } from 'node:fs/promises'
-import { basename, relative, sep } from 'node:path'
+import { basename } from 'node:path'
+import { createAttemptFiles } from './asset-attempt-files.mjs'
 import { createCanvasMedia } from './canvas-media.mjs'
 import { createContentAssets, localContentAssetPath, contentAssetType } from './content-assets.mjs'
 import { contentBase, rewriteContentReferences } from './content-references.mjs'
@@ -156,28 +156,17 @@ export function createClipboardAssets(workspace) {
   }
   async function paste(id, { expectedRevision, commands, parentOrigin = virtual }, actor) {
     if (!Array.isArray(commands) || commands.length !== 1 || commands[0]?.type !== 'paste_content') throw httpError('需要一次内部粘贴命令。')
-    const created = []
+    const created = createAttemptFiles((await workspace.storageFor(id)).canvasDir)
     try {
       return await workspace.submitCommands(id, expectedRevision, actor, async snapshot => {
         const prepared = await prepare(id, commands[0], parentOrigin, snapshot)
-        if (prepared.files.length) {
-          const dir = await workspace.assetsDir(id)
-          await mkdir(dir, { recursive: true })
-          const delta = relative(await realpath((await workspace.storageFor(id)).canvasDir), await realpath(dir))
-          if (delta === '..' || delta.startsWith('..' + sep) || delta.startsWith(sep)) throw httpError('目标资源目录不能指向画板外。', 403)
-        }
-        for (const file of prepared.files) {
-          const handle = await open(file.assetPath, 'wx', 0o600)
-          created.push(file.assetPath)
-          try { await handle.writeFile(file.bytes) } finally { await handle.close() }
-        }
+        for (const file of prepared.files) await created.write(file, file.bytes)
         return [prepared.command]
       })
     } catch (error) {
       // Only files created by this attempt, never a pre-existing target file.
-      const cleanup = await Promise.allSettled(created.map(path => unlink(path)))
-      const failures = cleanup.filter(r => r.status === 'rejected' && r.reason.code !== 'ENOENT')
-      if (failures.length) throw new AggregateError([error, ...failures.map(r => r.reason)], '粘贴失败且新资源清理不完整。')
+      const { failures } = await created.rollback()
+      if (failures.length) throw new AggregateError([error, ...failures], '粘贴失败且新资源清理不完整。')
       throw error
     }
   }

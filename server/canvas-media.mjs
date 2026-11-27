@@ -8,6 +8,7 @@ import { httpError } from './file-lock.mjs'
 import { decodeVideoUpload } from './video-upload.mjs'
 import { decodeImageUpload } from './image-upload.mjs'
 import { decodeSvgUpload } from './svg-sanitize.mjs'
+import { createMediaImportAttempts } from './media-import-attempts.mjs'
 
 export function createCanvasMedia(workspace) {
   async function assetDestination(id, name) {
@@ -38,14 +39,18 @@ export function createCanvasMedia(workspace) {
     const mimeType = ({ html: 'text/html', htm: 'text/html', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml' })[ext] || 'application/octet-stream'
     return { bytes, mimeType, assetPath: join(directory, name) }
   }
-  async function reference(id, args) {
+  async function reference(id, args, actor = 'http') {
+    if (args.purpose === 'file-import-begin') return createMediaImportAttempts(workspace).begin(id, actor, args.fileCount)
+    if (args.purpose === 'file-import-abort') return createMediaImportAttempts(workspace).abort(id, args.importToken, actor)
     if (args.purpose !== undefined && !['file-import', 'file-import-prepare'].includes(args.purpose)) throw httpError('未知资源上传用途。')
     if (args.purpose === 'file-import-prepare') {
       const image = decodeSvgUpload(args.dataUrl)
       return { dataUrl: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`, mimeType: image.mimeType, isAnimated: false, warnings: image.warnings }
     }
     const image = args.purpose === 'file-import' ? typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:image/svg+xml;') ? decodeSvgUpload(args.dataUrl) : decodeImageUpload(args.dataUrl) : typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:video/') ? decodeVideoUpload(args.dataUrl) : decodeReference(args.dataUrl)
-    const saved = await saveAsset(id, image.bytes, `reference.${image.extension}`)
+    const saved = args.importToken !== undefined
+      ? await createMediaImportAttempts(workspace).upload(id, args.importToken, actor, image.bytes, image.extension)
+      : await saveAsset(id, image.bytes, `reference.${image.extension}`)
     return { ...saved, src: saved.assetUrl, mimeType: image.mimeType, ...(args.purpose === 'file-import' && { w: image.w, h: image.h, isAnimated: image.isAnimated, ...(image.warnings && { warnings: image.warnings }) }) }
   }
   async function insertHtml(id, args, actor = 'http') {
