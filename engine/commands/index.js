@@ -19,6 +19,7 @@ import { rotateShapes } from './rotate-shapes.js'
 import { scaleShapes } from './scale-shapes.js'
 import { cropImage } from './crop-image.js'
 import { replaceImage } from './replace-image.js'
+import { setImageAltText } from './image.js'
 import { insertVideo, replaceVideo, setVideoAltText } from './video.js'
 import { pasteContent } from './paste-content.js'
 
@@ -51,6 +52,7 @@ export const commandHandlers = Object.freeze({
   scale_shapes: scaleShapes,
   crop_image: cropImage,
   replace_image: replaceImage,
+  set_image_alt_text: setImageAltText,
   insert_video: insertVideo,
   replace_video: replaceVideo,
   set_video_alt_text: setVideoAltText,

@@ -40,12 +40,20 @@ export function createPreviewClipboard({ host, transport, sandbox = false, onErr
   return {
     port,
     inspect: () => sandbox ? { reads, writes, formats: structuredClone(formats) } : null,
-    attach(interaction) {
+    attach(interaction, { onFiles } = {}) {
       const handle = event => {
-        if (active) return
+        if (active || event.defaultPrevented) return
+        const files = event.type === 'paste' && onFiles && [...(event.clipboardData?.files || [])]
         active = event
         try {
-          const result = interaction.runAction(event.type)
+          let result
+          if (files?.length) {
+            const target = interaction.getFilePasteTarget()
+            if (target.status === 'unavailable') { active = null; return }
+            // Files stay in the host. The editing layer owns focus/IME gates
+            // and the same cursor preference as ordinary clipboard actions.
+            result = onFiles(files, target.point)
+          } else result = interaction.runAction(event.type)
           if (result?.status === 'unavailable') { active = null; return }
           event.preventDefault()
           Promise.resolve(result).catch(onError).finally(() => { if (active === event) active = null })

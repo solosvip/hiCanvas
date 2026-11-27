@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage } from 'electron'
+import { app, BrowserWindow, nativeImage, clipboard } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -12,7 +12,7 @@ import { selectionSmoke } from './selection-smoke.mjs'
 import { creationSmoke } from './creation-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
-import { imageSmoke } from './image-smoke.mjs'
+import { imageSmoke, prepareImageProbe, imageImportSmoke } from './image-smoke.mjs'
 import { prepareVideoProbe, videoSmoke } from './video-smoke.mjs'
 import {captureSmoke} from '../content-host/capture-smoke.mjs'
 import {filmSmoke} from '../content-host/film-smoke.mjs'
@@ -120,6 +120,17 @@ async function run() {
       samples.push({ frames: await frameSmoke(window, manifest.output) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if (manifest.imagesOnly) {
+      const clipboardCalls = []
+      for (const name of Object.keys(clipboard)) if (typeof clipboard[name] === 'function') clipboard[name] = () => { clipboardCalls.push(name); throw new Error(`System clipboard blocked: ${name}`) }
+      window = createWindow('image-import')
+      await prepareImageProbe(window)
+      await window.loadURL(`${manifest.url}/?gallery=image-import&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ images: await imageImportSmoke(window, manifest.output, manifest.imageFiles) })
+      check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }
     if (manifest.videosOnly) {
       window = createWindow('videos')

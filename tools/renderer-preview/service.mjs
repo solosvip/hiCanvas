@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { mkdir } from 'node:fs/promises'
 import { scratchPath } from '../perf/config.mjs'
 import { createVideoFixture } from './video-fixtures.js'
+import { createImageImportFixture } from './image-fixtures.js'
 import { createFixture } from '../perf/fixture.mjs'
 import { prepareFixture } from '../perf/prepare.mjs'
 import { createClipboardFixture } from './clipboard-fixture.js'
@@ -32,14 +33,14 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
     queues.set(id, next.catch(() => {})); return next
   }
   async function fixture(count) {
-    if (![500, 2000, 5000, 'videos'].includes(count)) throw new Error('合成规模仅支持 500、2000、5000。')
+    if (![500, 2000, 5000, 'videos', 'image-import'].includes(count)) throw new Error('合成规模无效。')
     if (!boards.has(count)) boards.set(count, (async () => {
       const title = `交互合成 ${count}`, existing = (await workspace.list()).find(b => b.title === title)
       const board = existing || await workspace.open({ createNew: true, title })
       let current = await workspace.read(board.id)
-      const data = count === 'videos' ? createVideoFixture(current.snapshot) : createFixture(count, current.snapshot)
+      const data = count === 'videos' ? createVideoFixture(current.snapshot) : count === 'image-import' ? createImageImportFixture(current.snapshot) : createFixture(count, current.snapshot)
       if (!existing) current = await prepareFixture(workspace, board.id, current, data.snapshot)
-      return { count: data.count || count, ...(data.videoFixture && { videoFixture: true }), counts: data.counts, assetCount: data.assetCount, targetId: data.targetId, viewState: data.viewState, conversationId: board.id, persistent: true }
+      return { count: data.count || count, ...(data.videoFixture && { videoFixture: true }), ...(data.imageImportFixture && { imageImportFixture: true }), counts: data.counts, assetCount: data.assetCount, targetId: data.targetId, viewState: data.viewState, conversationId: board.id, persistent: true }
     })())
     return boards.get(count)
   }
@@ -68,8 +69,8 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
       }
       if (path === '/__renderer_fixture') {
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
-        const count = url.searchParams.get('gallery') === 'videos' ? 'videos' : Number(url.searchParams.get('count'))
-        if (![500, 2000, 5000, 'videos'].includes(count)) { res.writeHead(400); res.end(); return }
+        const gallery = url.searchParams.get('gallery'), count = ['videos', 'image-import'].includes(gallery) ? gallery : Number(url.searchParams.get('count'))
+        if (![500, 2000, 5000, 'videos', 'image-import'].includes(count)) { res.writeHead(400); res.end(); return }
         return sendJson(res, 200, await fixture(count))
       }
       if (path.startsWith('/__interaction/')) {

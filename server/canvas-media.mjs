@@ -6,6 +6,7 @@ import { imageDimensions } from './image-dimensions.mjs'
 import { executeCanvasCommands, getMediaTarget } from '../engine/index.js'
 import { httpError } from './file-lock.mjs'
 import { decodeVideoUpload } from './video-upload.mjs'
+import { decodeImageUpload } from './image-upload.mjs'
 
 export function createCanvasMedia(workspace) {
   async function assetDestination(id, name) {
@@ -37,9 +38,10 @@ export function createCanvasMedia(workspace) {
     return { bytes, mimeType, assetPath: join(directory, name) }
   }
   async function reference(id, args) {
-    const image = typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:video/') ? decodeVideoUpload(args.dataUrl) : decodeReference(args.dataUrl)
+    if (args.purpose !== undefined && args.purpose !== 'file-import') throw httpError('未知资源上传用途。')
+    const image = args.purpose === 'file-import' ? decodeImageUpload(args.dataUrl) : typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:video/') ? decodeVideoUpload(args.dataUrl) : decodeReference(args.dataUrl)
     const saved = await saveAsset(id, image.bytes, `reference.${image.extension}`)
-    return { ...saved, src: saved.assetUrl, mimeType: image.mimeType }
+    return { ...saved, src: saved.assetUrl, mimeType: image.mimeType, ...(args.purpose === 'file-import' && { w: image.w, h: image.h, isAnimated: image.isAnimated }) }
   }
   async function insertHtml(id, args, actor = 'http') {
     if (typeof args.htmlContent !== 'string' || !args.htmlContent.trim() || Buffer.byteLength(args.htmlContent) > 5 * 1024 * 1024) throw httpError('需要非空且小于 5 MB 的 HTML。')

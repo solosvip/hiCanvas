@@ -23,6 +23,7 @@ import { createImageGallery } from './image-fixtures.js'
 import { attachImageUi } from './image-ui.js'
 import { addVideoLoad } from './video-fixtures.js'
 import { attachVideoUi } from './video-ui.js'
+import { createMediaUpload } from './media-upload.js'
 import { createDrawGallery } from './draw-fixture.js'
 import { createActionsGallery } from './actions-fixture.js'
 import { createFrameFixture } from './frame-fixture.js'
@@ -45,6 +46,8 @@ const getState = () => {
     creation: state?.creation && structuredClone(state.creation),
     snappingPreferences: state?.snappingPreferences && { ...state.snappingPreferences },
     textEditing: state?.textEditing && structuredClone(state.textEditing),
+    imageAltEditing: state?.imageAltEditing && structuredClone(state.imageAltEditing),
+    ...(metadata?.imageImportFixture && session && { imageRecords: structuredClone(session.store.allRecords().filter(r => ['shape', 'asset'].includes(r.typeName))) }),
     ...(metadata?.connectionEditingFixture && { connectionRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'binding'].includes(record.typeName))) }),
     ...(metadata?.noteEditingFixture && { noteRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'user'].includes(record.typeName))) }),
     ...(textShapes && { textShapes: structuredClone(textShapes), textLayouts: Object.fromEntries(textShapes.filter(shape => shape.type !== 'frame').map(shape => [shape.id, getShapeTextLayout(shape, textContext)])) }),
@@ -71,7 +74,7 @@ try {
     if (!response.ok) throw new Error('本机校准日志写入失败。')
   } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
-  if (gallery === 'videos') { const response = await fetch('/__renderer_fixture?gallery=videos'); if (!response.ok) throw new Error('视频夹具不可用。'); metadata = await response.json() }
+  if (['videos', 'image-import'].includes(gallery)) { const response = await fetch(`/__renderer_fixture?gallery=${gallery}`); if (!response.ok) throw new Error('媒体夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
   else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
@@ -104,7 +107,8 @@ try {
   const actor = sessionStorage.getItem(actorKey) || `preview:${crypto.randomUUID()}`
   sessionStorage.setItem(actorKey, actor)
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
-  const showError = error => { status.textContent = `操作失败：${error.message}` }
+  let hostError = null, wasSubmitting = false
+  const showError = error => { hostError = error; status.textContent = `操作失败：${error.message}` }
   clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true, onError: showError })
   session = await createEditorSession({ transport, actor })
   disposers.push(() => session.dispose())
@@ -126,13 +130,15 @@ try {
   disposers.push(() => navigation.dispose())
   controls = attachPreviewInput(host, interaction, { onError: showError })
   disposers.push(() => controls.dispose())
-  disposers.push(clipboardAdapter.attach(interaction))
   const minimap = attachMinimapUi(navigation.element, host, interaction, { store: session.store, pageId: metadata.viewState.currentPageId, dispatch: input => controls.dispatch(input), onError: showError })
   disposers.push(() => minimap.dispose())
   const videos = gallery === 'videos' ? attachVideoUi(host, interaction, session, metadata, showError) : null
   if (videos) disposers.push(() => videos.dispose())
-  const images = gallery === 'images' ? attachImageUi(host, interaction, session, renderer, showError, params.get('reduceMotion') === '1') : null
+  const images = ['images', 'image-import'].includes(gallery) ? attachImageUi(host, interaction, session, renderer, showError, params.get('reduceMotion') === '1', metadata) : null
   if (images) disposers.push(() => images.dispose())
+  const videoPaste = videos ? createMediaUpload({ session, interaction, metadata, document, onError: showError }) : null
+  if (videoPaste) disposers.push(() => videoPaste.dispose())
+  disposers.push(clipboardAdapter.attach(interaction, { onFiles: images?.importFiles || videoPaste?.importFiles }))
   const creationUi = gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? attachCreationUi(host, interaction, () => controls, showError) : null
   if (creationUi) disposers.push(() => creationUi.dispose())
   const actionsUi = gallery === 'selection-actions' || metadata.clipboardFixture ? attachActionsUi(navigation.element, host, interaction, showError, metadata.clipboardFixture) : null
@@ -144,7 +150,11 @@ try {
     renderer.setCamera(state.camera); renderer.setOverlays(state.overlays); renderer.setTextEditing(state.textEditing); renderer.setVideoInteraction(state)
     navigation.update(state); videos?.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); actionsUi?.update(); controls?.wake()
     minimap.update(state)
-    const error = state.lastError || session.state.get().lastError
+    // File I/O feedback must survive the background refresh for the same save.
+    const submitting = session.state.get().isSubmitting
+    if (submitting && !wasSubmitting) hostError = null
+    wasSubmitting = submitting
+    const error = state.lastError || session.state.get().lastError || hostError
     const message = error ? `操作失败：${error.message}` : ready ? instructions : status.textContent
     if (status.textContent !== message) status.textContent = message
     clearTimeout(cameraTimer)
