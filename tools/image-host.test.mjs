@@ -8,6 +8,8 @@ import { memoryTransport } from './renderer-preview/transport.js'
 import { rasterFiles, animatedImage } from './renderer-preview/image-fixtures.js'
 import { decodeImageUpload } from '../server/image-upload.mjs'
 import { decodeVideoUpload } from '../server/video-upload.mjs'
+import { decodeSvgUpload } from '../server/svg-sanitize.mjs'
+import { svgFiles, svg } from './renderer-preview/svg-fixtures.js'
 import { createPreviewClipboard } from './renderer-preview/clipboard.js'
 import { createCanvasInteraction } from '../engine/index.js'
 import { setImmediate as turn } from 'node:timers/promises'
@@ -29,31 +31,79 @@ async function setup(t, mode = '') {
     const args = JSON.parse(options.body); requests.push(args)
     if (mode === 'wait') await gate
     if (mode === '503' && ++count === 2) return Response.json({ error: '合成上传失败' }, { status: 503 })
-    const image = args.purpose === 'file-import' ? decodeImageUpload(args.dataUrl) : decodeVideoUpload(args.dataUrl), src = `/c/synthetic/assets/${saved.size}.${image.extension}`
+    const image = args.dataUrl.startsWith('data:image/svg+xml;') ? decodeSvgUpload(args.dataUrl) : args.purpose === 'file-import' ? decodeImageUpload(args.dataUrl) : decodeVideoUpload(args.dataUrl), src = `/c/synthetic/assets/${saved.size}.${image.extension}`
+    if (args.purpose === 'file-import-prepare') return Response.json({ dataUrl: `data:image/svg+xml;base64,${image.bytes.toString('base64')}`, mimeType: image.mimeType, warnings: image.warnings })
     saved.set(src, image)
-    return Response.json({ src, mimeType: image.mimeType, isAnimated: image.isAnimated })
+    return Response.json({ src, mimeType: image.mimeType, isAnimated: image.isAnimated, warnings: image.warnings })
   })
   const doc = { createElement: tag => ({ videoWidth: 320, videoHeight: 180, load() {},
-    set src(value) { if (tag === 'video') { queueMicrotask(() => this.onloadedmetadata?.()); return }; decodedSources.push(value); const item = value.startsWith('data:') ? decodeImageUpload(value) : saved.get(value); this.naturalWidth = item.w; this.naturalHeight = item.h; queueMicrotask(() => mode === 'decode-fail' ? this.onerror?.() : this.onload?.()) }, removeAttribute() {},
+    set src(value) { if (tag === 'video') { queueMicrotask(() => this.onloadedmetadata?.()); return }; decodedSources.push(value); const item = value.startsWith('data:image/svg+xml;') ? { w: 320, h: 180 } : value.startsWith('data:') ? decodeImageUpload(value) : saved.get(value); this.naturalWidth = item.w; this.naturalHeight = item.h; queueMicrotask(() => mode === 'decode-fail' ? this.onerror?.() : this.onload?.()) }, removeAttribute() {},
   }) }
-  const upload = createMediaUpload({ session, interaction, document: doc, metadata: { persistent: true, conversationId: 'synthetic', viewState: { currentPageId: Object.values(snapshot.store).find(r => r.typeName === 'page').id } }, onError: error => errors.push(error.message) })
-  const samples = { ...rasterFiles, gif: { base64: animatedImage.split(',')[1], name: 'animated.gif', mimeType: 'image/gif' } }
+  const upload = createMediaUpload({ session, interaction, document: doc, metadata: { persistent: mode !== 'gallery', conversationId: 'synthetic', viewState: { currentPageId: Object.values(snapshot.store).find(r => r.typeName === 'page').id } }, onError: error => errors.push(error.message) })
+  const samples = { ...rasterFiles, ...svgFiles, gif: { base64: animatedImage.split(',')[1], name: 'animated.gif', mimeType: 'image/gif' } }
   const files = keys => keys.map(key => new File([Buffer.from(samples[key].base64, 'base64')], samples[key].name, { type: samples[key].mimeType }))
   t.after(() => { release(); upload.dispose(); session.dispose() })
   return { upload, errors, requests, decodedSources, saved, files, session, release, select: () => { state = { ...state, selectedIds: ['shape:changed'] } }, shapes: () => session.store.allRecords().filter(r => r.typeName === 'shape') }
 }
-test('宿主上传六格式实际字节，专用用途，元数据交公共事务；过滤SVG后剩余一次提交', async t => {
+test('宿主上传六格式实际字节，专用用途，元数据交公共事务；过滤TXT后剩余一次提交', async t => {
   const f = await setup(t)
-  const svg = new File(['<svg/>'], 'unsupported.svg', { type: 'image/svg+xml' })
-  assert.equal(await f.upload.importFiles([...f.files(['png', 'portrait', 'avif', 'apng', 'jpeg', 'webp', 'gif']), svg], { x: 550, y: 420 }), true)
+  const text = new File(['synthetic'], 'unsupported.txt', { type: 'text/plain' })
+  assert.equal(await f.upload.importFiles([...f.files(['png', 'portrait', 'avif', 'apng', 'jpeg', 'webp', 'gif']), text], { x: 550, y: 420 }), true)
   assert.equal(f.shapes().length, 7)
   assert.equal(f.requests.length, 7)
   assert.equal(f.decodedSources.length, 7)
   assert.ok(f.decodedSources.every(src => src.startsWith('data:image/')))
   assert.ok(f.shapes().every(shape => f.saved.has(f.session.store.get(shape.props.assetId).props.src)))
   assert.ok(f.requests.every(request => request.purpose === 'file-import'))
-  assert.match(f.errors[0], /SVG.*过滤/)
+  assert.match(f.errors[0], /过滤/)
   await f.session.undo(); assert.equal(f.shapes().length, 0)
+})
+test('SVG先准备后只解码安全字节，再上传规范结果；SVG与PNG整批一次撤销重做', async t => {
+  const f = await setup(t)
+  assert.equal(await f.upload.importFiles(f.files(['svg-script', 'png']), { x: 550, y: 420 }), true)
+  assert.deepEqual(f.requests.map(item => item.purpose), ['file-import-prepare', 'file-import', 'file-import'])
+  assert.doesNotMatch(Buffer.from(f.decodedSources[0].split(',')[1], 'base64').toString(), /script|svg-test.invalid/)
+  assert.equal(f.requests[1].dataUrl, f.decodedSources[0])
+  assert.equal(f.saved.size, 2); assert.equal(f.shapes().length, 2)
+  assert.match(f.errors[0], /移除/)
+  await f.session.undo(); assert.equal(f.shapes().length, 0)
+  await f.session.redo(); assert.equal(f.shapes().length, 2)
+})
+for (const mode of ['decode-fail', 'gallery']) test(`SVG ${mode}不写素材、不提交`, async t => {
+  const f = await setup(t, mode)
+  assert.equal(await f.upload.importFiles(f.files(['svg']), { x: 0, y: 0 }), false)
+  assert.deepEqual(f.requests.map(item => item.purpose), mode === 'gallery' ? [] : ['file-import-prepare'])
+  assert.equal(f.saved.size, 0); assert.equal(f.shapes().length, 0)
+  assert.match(f.errors[0], mode === 'gallery' ? /只读|准备/ : /损坏/)
+})
+test('SVG准备中销毁不解码、不最终上传、不回写已销毁视图', async t => {
+  const f = await setup(t, 'wait'), pending = f.upload.importFiles(f.files(['svg']), { x: 0, y: 0 })
+  await turn(); f.upload.dispose(); f.release()
+  assert.equal(await pending, false); assert.equal(f.saved.size, 0); assert.equal(f.decodedSources.length, 0)
+  assert.equal(f.shapes().length, 0); assert.equal(f.errors.length, 0)
+})
+test('SVG坏XML使混合批次零形状；8MiB批量预算在任何读解码上传前拒绝', async t => {
+  const f = await setup(t)
+  assert.equal(await f.upload.importFiles(f.files(['png', 'svg-bad-xml']), { x: 0, y: 0 }), false)
+  assert.equal(f.shapes().length, 0)
+  const before = f.requests.length, huge = new File([new Uint8Array(2 * 1024 * 1024)], 'large.svg', { type: 'image/svg+xml' })
+  assert.equal(await f.upload.importFiles(Array(5).fill(huge), { x: 0, y: 0 }), false)
+  assert.equal(f.requests.length, before); assert.match(f.errors.at(-1), /8 MiB/)
+})
+test('SVG单批原始字节8MiB正边界允许，加一字节在任何请求前拒绝', async t => {
+  const f = await setup(t), wrapper = svg('<rect/><!-- -->')
+  const source = wrapper.replace('<!-- -->', '<!--' + 'x'.repeat(2 * 1024 * 1024 - Buffer.byteLength(wrapper) + 1) + '-->')
+  const file = new File([source], 'boundary.svg', { type: 'image/svg+xml' }), batch = Array(4).fill(file)
+  assert.equal(await f.upload.importFiles(batch, { x: 0, y: 0 }), true)
+  assert.equal(f.shapes().length, 4); assert.equal(f.requests.length, 8)
+  assert.equal(await f.upload.importFiles([...batch, new File(['x'], 'extra.svg', { type: 'image/svg+xml' })], { x: 0, y: 0 }), false)
+  assert.equal(f.requests.length, 8); assert.match(f.errors.at(-1), /8 MiB/)
+})
+test('SVG最终保存503明确失败，准备成功仍零素材/零形状', async t => {
+  const f = await setup(t, '503')
+  assert.equal(await f.upload.importFiles(f.files(['svg']), { x: 0, y: 0 }), false)
+  assert.deepEqual(f.requests.map(item => item.purpose), ['file-import-prepare', 'file-import'])
+  assert.equal(f.saved.size, 0); assert.equal(f.shapes().length, 0); assert.match(f.errors[0], /上传失败/)
 })
 for (const mode of ['503', 'decode-fail']) test(`支持项${mode}导致整批不落形状`, async t => {
   const f = await setup(t, mode)

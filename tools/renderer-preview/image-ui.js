@@ -24,7 +24,7 @@ export function attachImageUi(host, interaction, session, renderer, onError, red
   const selected = () => state.selectedIds.length === 1 ? session.store.get(state.selectedIds[0]) : null
   button('crop', '裁剪', () => interaction.cropImage({ type: 'start' }))
   for (const [axis, label] of [['x', '水平镜像'], ['y', '垂直镜像']]) button(`flip-${axis}`, label, () => command({ type: 'flip_shapes', ids: state.selectedIds, axis }))
-  const file = doc.createElement('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg,image/webp,image/gif,image/apng,image/avif'; file.hidden = true; panel.append(file)
+  const file = doc.createElement('input'); file.type = 'file'; file.accept = 'image/png,image/jpeg,image/webp,image/gif,image/apng,image/avif,image/svg+xml'; file.hidden = true; panel.append(file)
   button('import', '导入图片', () => { pendingId = null; file.multiple = true; file.value = ''; file.click() })
   button('replace', '替换图片', () => { pendingId = selected()?.id; file.multiple = false; file.value = ''; file.click() })
   listen(file, 'change', () => attempt(async () => {
