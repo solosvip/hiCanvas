@@ -45,6 +45,7 @@ export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUr
   globalThis.addEventListener?.('pagehide',release,{once:true})
   if(signal?.aborted){release();signal.throwIfAborted()}
   return {attributes:{src:instance.url,sandbox},dispose:release,
+    get disposed(){return disposed},
     bind(iframe,options={}){
       if(disposed)throw new Error('内容实例已失效。')
       if(boundIframe!==iframe){channel?.dispose();boundIframe=iframe;channel=bindContentChannel(iframe,{url:instance.url,instanceId:instance.id,...options})}

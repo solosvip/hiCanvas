@@ -17,10 +17,13 @@ function transport({afterPost,invalid=false}={}){
 }
 test('生成网页只用内容实例，data URL解码后登记且卸载只撤销一次',async()=>{
   const on=transport(),frame=await loadGeneratedFrame(null,{directUrl:'data:text/html,hello',fetcher:on.fetcher})
+  assert.equal(frame.disposed,false)
   assert.deepEqual(frame.attributes,{src:instance.url,sandbox:'allow-forms allow-popups allow-scripts allow-same-origin'})
   const registered=JSON.parse(on.calls.find(call=>call.method==='POST').body)
   assert.equal(registered.html,'<h1>decoded</h1>')
   await Promise.all([frame.dispose(),frame.dispose()])
+  assert.equal(frame.disposed,true)
+  assert.throws(()=>frame.bind({}),/内容实例已失效/)
   assert.equal(on.calls.filter(call=>call.method==='DELETE').length,1)
 })
 test('同页并发挂载共用启动信息，取消一个挂载不取消其余挂载的启动请求',async t=>{
@@ -67,6 +70,7 @@ test('旧全局素材来源不跟随当前画板参数，续租失败撤销并�
   t.mock.timers.tick(instance.leaseMs/2)
   await new Promise(resolve=>setImmediate(resolve))
   assert.equal(failing.calls.filter(call=>call.method==='DELETE').length,1)
+  assert.equal(active.disposed,true)
   t.mock.timers.tick(instance.leaseMs*2)
   await new Promise(resolve=>setImmediate(resolve))
   assert.equal(failing.calls.filter(call=>call.method==='DELETE').length,1)

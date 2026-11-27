@@ -28,7 +28,10 @@ async function electron(executable,config){
     child.once('error',error=>{clearTimeout(timer);clearTimeout(force);reject(error)})
     child.once('close',code=>{clearTimeout(timer);clearTimeout(force);code===0?resolve():reject(new Error('幻灯片原生回归失败：'+config.result))})
   })
-  return JSON.parse(await readFile(config.result,'utf8'))
+  const report=JSON.parse(await readFile(config.result,'utf8'))
+  assert.deepEqual(report.uncaught,[],'整轮幻灯片不得出现未接住的异常')
+  assert.ok(report.checks.some(check=>check.name==='整轮幻灯片零未接住异常'&&check.pass),'原生驱动必须实际执行异常断言')
+  return report
 }
 try{
   await build({root,build:{outDir:distDir,rollupOptions:{input:join(root,'tools/content-host/slides.html')}},logLevel:'warn'})
