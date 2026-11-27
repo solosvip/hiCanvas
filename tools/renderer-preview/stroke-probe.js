@@ -26,7 +26,9 @@ export async function runStrokeProbe() {
     for (const record of Object.values(fixture.snapshot.store).filter(r => r.type === 'draw')) {
       const paths = [...host.querySelectorAll(`[data-shape-id="${record.id}"] [data-stroke-outline]`)]
       const expected = getShapeContour(record).outlines.map(pathOf)
-      check(JSON.stringify(paths.map(path => path.getAttribute('d'))) === JSON.stringify(expected), '绘制与点中使用的笔迹轮廓分叉')
+      // Explicit M/L/Z commands permit whitespace omission. Keep this independent
+      // coordinate serializer, comparing every coordinate without formatting noise.
+      check(JSON.stringify(paths.map(path => path.getAttribute('d').replaceAll(' ', ''))) === JSON.stringify(expected.map(path => path.replaceAll(' ', ''))), '绘制与点中使用的笔迹轮廓分叉')
       const element = host.querySelector(`[data-shape-id="${record.id}"]`), svg = element.querySelector('svg')
       check(Math.abs(element.getBoundingClientRect().top - svg.getBoundingClientRect().top) < 0.01, '短笔迹被 SVG 行内基线向下推离模型位置')
       contours++

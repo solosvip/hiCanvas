@@ -5,6 +5,49 @@ import { INK_WIDTHS, strokeRadii } from './stroke-metrics.js'
 const mix = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t })
 const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y)
 
+const byProps = new WeakMap(), shared = new Map()
+const geometryProps = ['size', 'isPen', 'dash', 'isClosed', 'fill', 'scale', 'scaleX', 'scaleY']
+// Copies of identical ink can share work too. Bound the strong cache by entries,
+// coordinate count and key length; live records use weak keys and need no cleanup.
+const sharedLimit = 64, sharedPointLimit = 65536, sharedKeyLimit = 16384
+let sharedPoints = 0
+
+function readonlyGeometry(value) {
+  if (!value) return value
+  for (const point of value.outline) Object.freeze(point)
+  for (const path of value.outlines) Object.freeze(path)
+  for (const key of ['outline', 'outlines', 'fill', 'decorations', 'bounds']) Object.freeze(value[key])
+  return Object.freeze(value)
+}
+
+export function getStrokeGeometry(shape) {
+  const props = shape.props
+  // Records from snapshots may be mutable. Compare values, including each encoded
+  // segment, rather than trusting object identity or an unpersisted revision.
+  const inputs = [shape.type, ...geometryProps.map(key => props[key])]
+  for (const segment of props.segments || []) inputs.push(segment.type, segment.path)
+  const before = byProps.get(props)
+  if (before && before.inputs.length === inputs.length && inputs.every((value, i) => Object.is(value, before.inputs[i]))) return before.value
+  const simple = inputs.every(value => value == null || ['string', 'boolean'].includes(typeof value) || typeof value === 'number' && Number.isFinite(value))
+  const key = simple ? JSON.stringify(inputs) : ''
+  let value
+  if (key && shared.has(key)) {
+    const entry = shared.get(key); shared.delete(key); shared.set(key, entry); value = entry.value
+  } else {
+    value = readonlyGeometry(buildStrokeGeometry(shape))
+    const points = value?.outline.length || 0
+    if (key && key.length <= sharedKeyLimit && points <= sharedPointLimit) {
+      shared.set(key, { value, points }); sharedPoints += points
+      while (shared.size > sharedLimit || sharedPoints > sharedPointLimit) {
+        const oldest = shared.keys().next().value
+        sharedPoints -= shared.get(oldest).points; shared.delete(oldest)
+      }
+    }
+  }
+  byProps.set(props, { inputs, value })
+  return value
+}
+
 // 2026-11-25 对照运行中的旧版画面测量：虚线 2w/2w，圆点 0.1/2w，
 // 均为圆头、偏移为零。沿平滑后的弧长分段，绘制与命中共用圆头轮廓。
 function dashedOutlines(points, radius, dash) {
@@ -29,7 +72,7 @@ function dashedOutlines(points, radius, dash) {
   return result
 }
 
-export function getStrokeGeometry(shape) {
+function buildStrokeGeometry(shape) {
   const props = shape.props, segments = []
   let travelled = 0, steps = 0
   for (const segment of props.segments || []) {
