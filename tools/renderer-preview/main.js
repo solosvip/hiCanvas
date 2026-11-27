@@ -69,6 +69,7 @@ const getState = () => {
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
     ...(metadata?.selectionActions && { actionShapes: session.store.allRecords().filter(r => r.typeName === 'shape').map(r => structuredClone(r)), actions: interaction.getActions() }),
     ...(metadata?.frameInteractionFixture && { frameRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
+    ...(metadata?.slidesFixture && session && { slidesRecords: structuredClone(session.store.allRecords()), boardId: metadata.conversationId }),
     ...(metadata?.eraserFixture && { erasingIds: [...state.erasingIds], eraser: state.eraser && structuredClone(state.eraser), eraserRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
     ...(metadata?.laserFixture && { laserRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')), laserDocument: structuredClone(session.store.allRecords().sort((a, b) => a.id.localeCompare(b.id))) }),
     ...(metadata?.focusFixture && { focusRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
@@ -93,6 +94,7 @@ try {
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
   else if (gallery === 'embed-editing') metadata = createEmbedsFixture()
   else if (gallery === 'export') metadata = createExportFixture(undefined, params.get('case') || 'static')
+  else if (gallery === 'slides') { const response = await fetch(`/__renderer_fixture?gallery=slides&case=${encodeURIComponent(params.get('case') || 'base')}`); if (!response.ok) throw new Error('Slides 夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
   else if (gallery === 'frame-interaction') metadata = createFrameFixture(params.get('frameCase') || 'drag')
@@ -130,7 +132,7 @@ try {
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
   let hostError = null, wasSubmitting = false, wasClipboardBusy = false
   const showError = error => { hostError = error; status.textContent = `操作失败：${error.message}` }
-  clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true, onError: showError })
+  clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true || metadata.slidesFixture === true, onError: showError })
   session = await createEditorSession({ transport, actor })
   disposers.push(() => session.dispose())
   if (metadata.persistent) { const records = session.store.allRecords(); metadata.count = records.filter(r => r.typeName === 'shape').length; metadata.counts = records.filter(r => r.typeName === 'shape').reduce((counts, r) => ({ ...counts, [r.type]: (counts[r.type] || 0) + 1 }), {}); metadata.assetCount = records.filter(r => r.typeName === 'asset').length }

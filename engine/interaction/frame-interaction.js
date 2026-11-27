@@ -3,6 +3,7 @@ import { isEqual } from '@tldraw/utils'
 import { CanvasEditError } from '../errors.js'
 import { connectionCoordinates } from './connection-coordinates.js'
 import { MAX_REPLAYS } from '../runtime/index.js'
+import { isSlidesContainer } from '../slides-layout.js'
 
 const empty = () => ({ added: {}, updated: {}, removed: {} })
 const commandsFor = diff => [
@@ -22,15 +23,23 @@ export function createFrameDrag({ session, index, targets }, starts) {
     return [...ids].sort()
   }
   const membership = new Map(starts.map(start => [start.id, descendants(start.id)]))
+  const slidesMembership = new Map()
   function capture(id, descendants = false) {
-    if (expected.has(id)) return
     const record = index.getRecord(id)
-    expected.set(id, record || null)
+    if (!expected.has(id)) {
+      expected.set(id, record || null)
+      if (record?.typeName === 'shape') capture(record.parentId)
+    }
     if (record?.typeName !== 'shape') return
-    capture(record.parentId)
     if (descendants) for (const child of targets.records.childIds(id)) capture(child, true)
   }
+  function captureSlides(id) {
+    if (!isSlidesContainer(index.getRecord(id)) || slidesMembership.has(id)) return
+    slidesMembership.set(id, descendants(id))
+    capture(id, true)
+  }
   starts.forEach(start => capture(start.id, true))
+  starts.forEach(start => captureSlides(start.parentId))
   function preview(commands) {
     if (!commands.length) return
     const result = session.preview(commands)
@@ -50,6 +59,7 @@ export function createFrameDrag({ session, index, targets }, starts) {
       // dissolve it on an ordinary drag. Container migration moves its root.
       if (index.getRecord(index.getRecord(start.id)?.parentId)?.type === 'group') continue
       const parentId = intersections.has(start.id) ? target : targets.pageId
+      captureSlides(parentId)
       if (index.getRecord(start.id)?.parentId === parentId) continue
       if (!groups.has(parentId)) groups.set(parentId, [])
       groups.get(parentId).push(start.id)
@@ -68,7 +78,8 @@ export function createFrameDrag({ session, index, targets }, starts) {
         if (!parents.has(parentId)) parents.set(parentId, [])
         parents.get(parentId).push(start.id)
       }
-      if (!parents.size) return session.commitGesture()
+      const hasChanges = Object.values(changes).some(records => Object.keys(records).length)
+      if (!parents.size && (!slidesMembership.size || !hasChanges)) return session.commitGesture()
       const moved = new Map(starts.filter(start => parents.get(index.getRecord(start.id)?.parentId)?.includes(start.id)).map(start => {
         const record = index.getRecord(start.id)
         return [start.id, { record, parentId: start.parentId, point: connectionCoordinates(index, start.id).page({ x: 0, y: 0 }), rotation: targets.lineage(start.id).reduce((sum, r) => sum + r.rotation, 0) }]
@@ -77,7 +88,7 @@ export function createFrameDrag({ session, index, targets }, starts) {
       for (let replay = 0; ; replay++) {
         // A conflict refreshes the confirmed Store. Retry only when every
         // involved subtree/parent is unchanged; unrelated image jobs may land.
-        if ([...membership].some(([id, ids]) => !isEqual(descendants(id), ids)) || [...expected].some(([id, before]) => !isEqual(index.getRecord(id) || null, before))) throw new CanvasEditError('拖动涉及的形状或画框已变化，本次操作已取消。', 'conflict')
+        if ([...membership, ...slidesMembership].some(([id, ids]) => !isEqual(descendants(id), ids)) || [...expected].some(([id, before]) => !isEqual(index.getRecord(id) || null, before))) throw new CanvasEditError('拖动涉及的形状或画框已变化，本次操作已取消。', 'conflict')
         const diff = commandsFor({ ...changes, removed: {} }).filter(command => !moved.has(command.record.id))
         for (const [id, intent] of moved) {
           const local = connectionCoordinates(index, intent.parentId).local(intent.point)

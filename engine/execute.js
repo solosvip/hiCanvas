@@ -4,6 +4,7 @@ import { CanvasEditError } from './errors.js'
 import { commandHandlers } from './commands/index.js'
 import { validateRelationships } from './relationships.js'
 import { reconcileGroups, previousRecords } from './group-consistency.js'
+import { reconcileSlides } from './slides-consistency.js'
 
 // MCP 在自己的工具参数中限制 500 条；HTTP 请求另有 50 MB 上限，编辑器的大手势允许一次提交。
 export const MAX_TRANSACTION_COMMANDS = 20000
@@ -28,16 +29,39 @@ export function executeCanvasTransaction(snapshot, commands, { finalize = false 
     const input = structuredClone(commands)
     const results = []
     const journal = []
+    const implicitParents = new Set()
     if (finalize) store.addHistoryInterceptor(entry => journal.push(entry.changes))
     const changes = store.extractingChanges(() => store.atomic(() => {
       for (const command of input) {
         const handler = command && Object.hasOwn(commandHandlers, command.type) && commandHandlers[command.type]
         if (!handler) throw new CanvasEditError('未知的画板操作。')
+        const start = journal.length
         results.push(handler(store, command) ?? null)
+        if (finalize) {
+          if (command.type === 'create_shape' && !command.parentId) {
+            for (const diff of journal.slice(start)) for (const id of Object.keys(diff.added)) implicitParents.add(id)
+          } else {
+            const explicit = command.type === 'reparent_shapes' ? command.ids : command.type === 'put' ? [command.record.id] : command.changes?.parentId ? [command.id] : []
+            for (const id of explicit) implicitParents.delete(id)
+            for (const diff of journal.slice(start)) for (const [id, [before, after]] of Object.entries(diff.updated)) if (before.parentId !== after.parentId) implicitParents.delete(id)
+          }
+        }
       }
       // 倒放历史恢复当时的原值，不再次执行组的编辑规则。
-      if (finalize) reconcileGroups(store, journal.flatMap(previousRecords))
+      if (finalize) {
+        reconcileGroups(store, journal.flatMap(previousRecords))
+        reconcileSlides(store, journal, implicitParents)
+      }
       validateRelationships(store, loaded.pageId)
+      // Media receipts describe the finalized placement, including reflow
+      // caused by a later command in this same transaction.
+      if (finalize) for (const result of results) {
+        if (!result?.shapeRecord) continue
+        const shape = result?.shapeId && store.get(result.shapeId)
+        if (!shape) { result.shapeRecord = null; result.bounds = null; continue }
+        result.shapeRecord = shape
+        result.bounds = { x: shape.x, y: shape.y, w: shape.props.w, h: shape.props.h }
+      }
     }))
     for (const [id, [before, after]] of Object.entries(changes.updated)) {
       if (isEqual(before, after)) delete changes.updated[id]

@@ -66,12 +66,12 @@
 | 编号 | 名称 | 触发方式 | 预期行为 | 来源（当前文件、符号） | 现有自动测试 |
 | --- | --- | --- | --- | --- | --- |
 | C29 | 按指定页数生成幻灯片（适配） | 界面：幻灯片提示面板，页数菜单/自定义页数→发送 | 页数与参考图进入请求；自定义页数 1–50，Agent 逐页 HTML 写进同一容器，页序元数据明确。 | `CowartAiSlidesGenerationPanel`；[generationRequests.jsx](../../src/editor/generationRequests.jsx) `sendAiSlidesGenerationRequest`；[generationPrompts.jsx](../../src/editor/generationPrompts.jsx) `buildAiSlidesGenerationPrompt` | 部分 T01：多页 HTML 归属及排列；无页数面板、生成页数满足要求的回归。 |
-| C30 | 图片与 HTML 混排、拖入与粘贴 | 界面：将图片/网页拖进 Slides；选中 Slides 后粘贴 | 同一套 Slides 可含图片与 HTML；粘贴内容归入选中的容器，保留作品资源；不只是截图拼图。 | [slidesLayout.jsx](../../src/editor/slidesLayout.jsx) `preparePastedItemForAiSlides`、`movePastedItemsIntoAiSlides`、`copySelectedCowartContent` | 无：拖入、复制粘贴及混排。 |
-| C31 | 幻灯片自动排版与页序 | 界面：增删/移动容器内页面；后台：HTML 插入 | 按页面横向位置确定顺序，统一间隔排列并扩展容器；生成页面可按父容器元数据被收纳。 | `getAiSlidesItems`、`layoutAiSlides`、`adoptGeneratedAiSlidesItems`；[media-placement.js](../../engine/media-placement.js) `placeMedia` | 部分 T01：服务端插入三页横排；无拖动重排及前端收纳回归。 |
+| C30 | 图片与 HTML 混排、拖入与粘贴 | 界面：将图片/网页拖进 Slides；选中 Slides 后粘贴；新底座：公开命令与交互 | 图片和自有HTML为直接作品页；普通元素/组不拆。新底座唯一选中Slides或其直接作品页时以所属Slides为粘贴目标，整套复制保树，细则见#142。 | [slidesLayout.jsx](../../src/editor/slidesLayout.jsx)；[placement.js](../../engine/clipboard/placement.js)；[frame-interaction.js](../../engine/interaction/frame-interaction.js) | 新底座公开命令/历史/交互永久回归；原生与真实系统剪贴板的有效范围见#142两栏报告。 |
+| C31 | 幻灯片自动排版与页序 | 界面：增删/移动容器内页面；后台：HTML 插入 | 新底座同次事务按中心/index补位并重算框尺寸；撤销精确还原。旧界面共用纯计算，不再全画板按历史提示收纳；锁/极端负间距差异见#142。 | [slides-layout.js](../../engine/slides-layout.js)；[slides-consistency.js](../../engine/slides-consistency.js)；`getAiSlidesItems`、`layoutAiSlides` | T01及公开命令/历史/交互、5000无关元素零查询、新旧排版零二次改动；原生执行结果见#142交付。 |
 | C32 | 预览、缩略图与翻页 | 界面：Slides「演示」；侧栏缩略图、上下页或键盘 | 演示器显示当前页和总页数；缩略图跳页；左右键/空格翻页、Esc 退出，首末页不越界。 | [slidesToolbar.jsx](../../src/editor/slidesToolbar.jsx) `CowartSlidesToolbar`；[SlidesPresentation.jsx](../../src/editor/SlidesPresentation.jsx) `CowartSlidesPresentationOverlay` | 部分：[原生守卫](../../tools/content-slides-smoke.mjs)验证上下页按钮、父子页键盘差异和首末边界；未覆盖缩略图与Esc。 |
 | C33 | 全屏播放与交互页面 | 界面：演示器「播放」 | 请求浏览器全屏，失败仍保留干净演示视图；空白区域点击翻页，HTML 中按钮、表单等交互点击不当作普通翻页。 | `CowartSlidesPresentationOverlay`；[slidesMedia.jsx](../../src/editor/slidesMedia.jsx) `isInteractiveHtmlClick`、`CowartSlidesMedia` | 部分：原生守卫验证29类点击和两种保存地址；[通道回归](../../tools/slides-channel.test.mjs)验证方向、旧代、额度和突发。使用真实全屏失败后的演示视图，未占用系统全屏。 |
 | C34 | 幻灯片按标注生成新套稿 | 界面：有内容 Slides→按标注修改 | 截图包含源 Slides/HTML 与标注；原稿保留，下方创建新 Slides 供 Agent 写入同页数修订稿；提交失败清理本次新建空目标。 | [htmlAnnotations.jsx](../../src/editor/htmlAnnotations.jsx) `sendAiSlidesAnnotationEditRequest`、`createAiSlidesBelowSource` | 无：截图、新目标及失败清理；T01/T03 只覆盖通用写回和队列。 |
-| C35 | 整套逐页 PNG 导出 | 界面：Slides 导出菜单→图片 | 按页序导出 `page-01.png` 等到同一新目录；HTML 页用 DOM 截图，图片页按页渲染，防止覆盖另一套导出。 | [exports.jsx](../../src/editor/exports.jsx) `exportCowartSlides`；[exports.mjs](../../server/exports.mjs) `saveExport` | 部分 T02：共同目录与安全路径；无逐页截图内容与顺序回归。 |
+| C35 | 整套逐页 PNG 导出 | 界面：Slides 导出菜单→图片 | 按页序导出 `page-01.png` 等到同一新目录；HTML 页用 DOM 截图，图片页按页渲染，防止覆盖另一套导出。 | [exports.jsx](../../src/editor/exports.jsx) `exportCowartSlides`；[exports.mjs](../../server/exports.mjs) `saveExport` | T02共同目录与安全路径；#142新增实际PNG名称/像素与播放器/离线HTML页序对照，保留三页基线并覆盖重排后删除中间页；执行结果见本单交付。 |
 | C36 | 整套 HTML 与离线播放器导出 | 界面：Slides 导出菜单→HTML | 导出 `pages/page-01.html` 等与 `Play.html`；图片页包装成 HTML，播放器按键/点击翻页；不输出原生 PPTX。打包本画板静态资源，外部在线引用保留并提示需联网。 | [exports.jsx](../../src/editor/exports.jsx) `exportCowartSlides`、`cowartImageSlideHtml`、`cowartSlidesPlayerHtml` | T02及[导出回归](../../server/slides-export.test.mjs)覆盖授权、递归资源和超限失败；原生守卫实际导出并断服以file://打开，检查翻页、父窗口读写拒绝、本地素材及外部CDN不可用时仍可翻页。未覆盖任意动态依赖或图片混排。 |
 | C37 | 移动主工具栏 | 界面：拖工具栏把手；把手获得焦点后方向键/Shift+方向键 | 在画布范围内移动工具栏，窗口变小时保持可达；偏移不写进画板快照或浏览器存储。 | [CowartDraggableToolbar.jsx](../../src/CowartDraggableToolbar.jsx) `CowartDraggableToolbar` | 无。 |
 | C38 | 定制图片替代文本编辑器 | 界面：图片工具栏「文」进入，确认/点外部完成，Esc 取消 | 编辑选中图片 `altText`，只读状态禁用修改；切换图片退出编辑。此条只覆盖 Cowart 替换的编辑器，默认裁剪等在 #20。 | [imageToolbar.jsx](../../src/editor/imageToolbar.jsx) `CowartAltTextEditor` | 无。 |
@@ -279,3 +279,22 @@ CH-C01–C04四类AI框复用与普通创建相同的适用样式快照；目前
 | AI已自测及防的问题 | 留用户集中验证（操作 → 期望） |
 | --- | --- |
 | `tools/style-creation.test.mjs`逐帧覆盖四类AI框的点击/拖动/工具栏、A中心创建、透明度/身份/颜色/尺寸和一次撤销；`tools/ai-frame-size.test.mjs`原断言保留 → 防样式覆盖身份或改变尺寸比例。353项相关接口、文字/便签/连接/笔迹原生及完整renderer:smoke通过，后者含四类AI框和33组零错误/越界请求样本；完整检查192文件2008项、构建与桌面bundle通过。提交门禁由真实钩子执行，接口及既有原生链路不等同于新面板验收。 | 正式面板接入后设默认再创建四类AI框、改尺寸/锁并撤销 → 框身份和大小不被通用样式干扰，透明度作用范围易懂。 |
+
+
+## Slides 容器与统一排版（#142）
+
+已经存下来的画板里，带提示但不在幻灯片里的旧对象，打开时不再被自动收回；这是有意差异。
+
+直接子项中的图片及自有HTML是作品页，普通元素、group和其内部作品保持原树，不拆成页。按局部横向中心排序，中心相同按父级index；页号不控制页序。默认留白12、间距32，保留页宽高、清页自身旋转，容器及祖先旋转保留；非空框按内容重算，至少1048×600且可缩回，空框保留尺寸。MCP插入两张300×150、留白10/间距20时，页位仍为(10,10)/(330,10)，框统一为1048×600。
+
+新底座正式事务收尾统一整理，预览可自由拖动；增删、同套排序、跨套、框尺寸与提示改动都属于同一次保存和撤销。撤销/重做精确恢复当时记录。旧界面排版调用相同纯计算，计时触发不变；历史hint扫描收纳停用。只查询此次受影响容器，5000无关元素的事务对Slides子页查询为零。
+
+有意差异：明确拖出、跨套或粘贴目标优先于旧hint；仅本次新建且未指定父级的候选可按hint收纳，整套复制保留树并映射已知hint。旧版C03把副本页塞回原框、整套Mod+D把带旧hint的副本页拉回，均不沿用。C03属于**旧界面同步修正**：旧粘贴钩子保留本次新父级，只在新复制树里整理已有提示，完成后清掉粘贴状态；这一处改变旧界面的粘贴行为，根落点保持原策略。唯一选中Slides或它的直接作品页时，粘贴叶根进入该Slides；沿用居中/光标及裁切策略，框外光标不得把内容藏在框外。P04旧版读取剪贴板被隔离守卫拦截，没有完整观察结论；这里是新底座规定，不声称已证明旧版相同。
+
+锁定时整笔保护，并返回可区分的 `slides-layout-locked` 与“幻灯片里有锁定的页，无法重新排版”。旧版父级锁定仍可删除子页、锁页时会只排其他页，这两种行为不沿用；新版删除锁页前面的页，因需移动锁页而拒绝。不需要挪动锁页的后方追加可完成。零/无效参数回默认，有限非零负值、小数、数字字符串继续支持，meta不改。负留白/间距可裁切或重叠；间距负到会让页的先后顺序反转时，按刚好不反转的间距排，避免反复换序写入。这一极端边界是有意差异；非有限结果整笔拒绝。
+
+| AI自测层次及防的问题 | 留用户集中验证（操作 → 期望） |
+| --- | --- |
+| `tools/slides-layout.test.mjs`、`slides-commands.test.mjs`：观测字面量、中心/index反向平局、参数与极端负值、锁/提示/树、最终回执、旧适配零更新及5000无关元素零查询 → 防两套排版和历史页被收回。 | 正式界面接入后拖入、拖出、跨套、同套排序，再一次撤销 → 整套页位和框尺寸同时恢复，手感符合预期。 |
+| `tools/slides-history.test.mjs`、`slides-interaction.test.mjs`：完整记录的一撤一重做、父链/组、同父级及成员冲突 → 防重排覆盖别人或漏撤其他页；`server/editor-slides.test.mjs`覆盖真实HTTP的版本/原因码/拒绝不写入。 | 锁住中间页，删前页再在后方追加 → 删除有明确原因，追加成功；组内和旋转框的手势体验集中确认。 |
+| `tools/renderer-preview/slides-check.mjs`永久守卫覆盖真实离屏输入、私有ClipboardEvent、保存重载及整套复制树；`tools/content-slides-smoke.mjs`保留原三页基线，再把真实生成页号与中心顺序对立，重排后删除中间页；三页和两页分别核对实际演示、HTML标题/内容/文件名、断服Play.html和逐页PNG像素颜色。完整门禁运行结果以本单交付为准，不把写好守卫当已经运行。 | 正式演示器打开新旧混合图文稿、缩略图跳页、真实设备拖动与跨应用复制 → 内容与顺序正确；系统剪贴板及前台手感仍待用户集中体验。 |

@@ -10,6 +10,7 @@ window.slidesProbe={
   get iframe(){return document.querySelector('.cowart-slides-present-media iframe')||document.querySelector('.cowart-slides-current-media iframe')},
   state(){const frame=this.iframe;return{presenting:!!document.querySelector('.cowart-slides-viewer.is-presenting'),count:document.querySelector('.cowart-slides-present-controls span')?.textContent,src:frame?.src,srcdoc:frame?.hasAttribute('srcdoc'),buttons:[...document.querySelectorAll('.cowart-slides-viewer button')].map(el=>({text:el.textContent,label:el.getAttribute('aria-label')}))}},
   async export(){return exportCowartSlides(window.__cowartEditor,slidesId,'html')},
+  async exportImages(){return exportCowartSlides(window.__cowartEditor,slidesId,'image')},
   async exportFailure(){
     const editor=window.__cowartEditor,shape=getAiSlidesItems(editor,slidesId)[1]
     editor.updateShape({id:shape.id,type:shape.type,props:{url:'data:text/html,'+encodeURIComponent('<img src="'+location.origin+'/c/'+new URLSearchParams(location.search).get('conversation')+'/assets/missing-export-image.png">')}})

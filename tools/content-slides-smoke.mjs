@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import {build} from 'vite'
 import {createHiCanvasService} from '../server/local-service.mjs'
 import {syntheticSlideHtml,syntheticCdnUrl} from './content-host/slides-cases.js'
+import {markSlideHtml,prepareSlidesContainerOrder,deleteSlidesMiddle,verifyOfflineSlidesOrder} from './content-host/slides-container-order.mjs'
 
 const root=fileURLToPath(new URL('../',import.meta.url)),baseOutput=join(root,'.scratch/content-slides-smoke')
 const port=Number(process.env.HICANVAS_SLIDES_PORT)
@@ -56,24 +57,44 @@ try{
         const wav=Buffer.alloc(44+160);wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);wav.writeUInt32LE(16000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(160,40)
         for(const [name,value] of [['fixture.css','@import "nested.css";@font-face{font-family:SlidesFixture;src:url(font.woff2)}.local-resource{font-family:SlidesFixture;color:rgb(12,34,56);background-image:url(pixel.svg)}'],['font.woff2',await readFile(join(root,'renderer/fonts/files/ibm-plex-sans/IBMPlexSans-Medium.woff2'))],['nested.css','.local-resource{border-color:rgb(7,8,9)}'],['fixture.js','window.syntheticLocalReady=true'],['pixel.svg','<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>'],['tone.wav',wav]])await writeFile(join(assets,name),value)
       }
+      const insertedIds=[]
       for(let number=1;number<=3;number++){
         const state=await api('/api/canvas'+query)
-        let html=syntheticSlideHtml(number)
+        let html=markSlideHtml(syntheticSlideHtml(number),number)
         if(number===2)html=html.replace('</head>','<link rel="stylesheet" href="'+localPrefix+'fixture.css"><script defer src="'+localPrefix+'fixture.js"></script></head>').replace('</body>','<div class="local-resource">Local 本地素材<img id="local-image" src="'+localPrefix+'pixel.svg"><audio id="local-audio" preload="metadata" src="'+localPrefix+'tone.wav"></audio></div></body>')
         const inserted=await api('/api/canvas/html'+query,'POST',{expectedRevision:state.revision,draftShapeId:slidesId,htmlContent:html,displayWidth:1024,displayHeight:576})
+        insertedIds.push(inserted.shapeId)
         // Exercise both saved address formats through the same content host.
         if(!inline)await api('/api/canvas/operations'+query,'POST',{expectedRevision:inserted.revision,operations:[{type:'update',id:inserted.shapeId,changes:{props:{url:'http://cowart.local'+inserted.assetUrl}}}]})
       }
-      const health=await api('/api/health')
-      const app=await electron(executable,{url:url+'/tools/content-host/slides.html'+query,profile:join(variantRoot,'profile-app-'+key),slidesId,inline,localAssets:true,output,result:join(output,'app-'+key+'.json'),contentPort:health.contentHost.port})
-      reports.push(app)
-      {assert.ok(app.observations.export.externalResources.includes(syntheticCdnUrl),'导出返回原外部引用清单');assert.equal(exportWrites,8,'两个成功入口共写8次；后页缺失预检失败不增加写入')}
-      const directory=resolve(app.observations.export.filePath)
-      if(!directory.startsWith(runtime+sep))throw new Error('合成导出路径越界')
-      const offlineDir=join(output,'export-'+key);await mkdir(offlineDir,{recursive:true});await cp(directory,offlineDir,{recursive:true})
+      const health=await api('/api/health'),offlineRuns=[]
+      let containerOrder,expectedWrites=0
+      for(const phase of ['baseline','reordered','deleted']){
+        if(phase==='baseline')containerOrder={pageOrder:[1,2,3],shapeOrder:insertedIds}
+        else if(phase==='reordered')containerOrder=await prepareSlidesContainerOrder(api,query,slidesId,insertedIds)
+        else containerOrder=await deleteSlidesMiddle(api,query,slidesId,containerOrder)
+        const caseOutput=phase==='baseline'?output:join(output,phase),orderOnly=phase!=='baseline'
+        await mkdir(caseOutput,{recursive:true})
+        const app=await electron(executable,{url:url+'/tools/content-host/slides.html'+query,profile:join(variantRoot,'profile-app-'+phase),slidesId,inline,localAssets:true,pageOrder:containerOrder.pageOrder,orderOnly,output:caseOutput,result:join(caseOutput,'app-'+key+'.json'),contentPort:health.contentHost.port})
+        reports.push(app)
+        const pngOutput=join(caseOutput,'png');await mkdir(pngOutput,{recursive:true})
+        for(const png of app.observations.pngExport.results){
+          const source=resolve(png.filePath)
+          if(!source.startsWith(runtime+sep))throw new Error('合成PNG导出路径越界')
+          await cp(source,join(pngOutput,png.fileName))
+        }
+        assert.equal(app.observations.export.externalResources.includes(syntheticCdnUrl),containerOrder.pageOrder.includes(3),'外部引用清单随页面删除更新，基线保留原外部引用')
+        expectedWrites+=2*containerOrder.pageOrder.length+1+(orderOnly?0:4)
+        assert.equal(exportWrites,expectedWrites,'HTML与逐页PNG按实际页数写入；原基线保留第二入口和失败预检断言')
+        const directory=resolve(app.observations.export.filePath)
+        if(!directory.startsWith(runtime+sep))throw new Error('合成导出路径越界')
+        await writeFile(join(caseOutput,'container-order.json'),JSON.stringify({containerOrder,offline:await verifyOfflineSlidesOrder(directory,containerOrder.pageOrder)},null,2)+'\n')
+        const offlineDir=join(caseOutput,'export-'+key);await mkdir(offlineDir,{recursive:true});await cp(directory,offlineDir,{recursive:true})
+        offlineRuns.push({url:pathToFileURL(join(offlineDir,'Play.html')).href,profile:join(variantRoot,'profile-offline-'+phase),localAssets:true,pageOrder:containerOrder.pageOrder,orderOnly,output:caseOutput,result:join(caseOutput,'offline-'+key+'.json'),serverStopped:true})
+      }
       await closeService()
       await assert.rejects(fetch(url+'/api/health',{signal:AbortSignal.timeout(1000)}))
-      reports.push(await electron(executable,{url:pathToFileURL(join(offlineDir,'Play.html')).href,profile:join(variantRoot,'profile-offline-'+key),localAssets:true,output,result:join(output,'offline-'+key+'.json'),serverStopped:true}))
+      for(const config of offlineRuns)reports.push(await electron(executable,config))
     }
     await writeFile(join(output,'report.json'),JSON.stringify({reports},null,2)+'\n')
     results.push({inline,reports})

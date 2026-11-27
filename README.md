@@ -411,3 +411,9 @@ SVG单份输入/输出各2 MiB、单批原始合计8 MiB；树10000节点/64层�
 - 共享普通截图（包括AI参考图、网页和幻灯片）现在也冻结当前动画计算值，保留暂停位置及已播完入场动画的最终状态；只作用于捕获克隆，不改变正在显示内容的播放或进度。影片专用逐帧路径沿用原有冻结行为。
 
 原生专项：设置 `HICANVAS_TEST_ELECTRON` 指向既有Electron可执行文件后，运行 `HICANVAS_EXPORT_PORT=43392 node tools/renderer-preview/export-check.mjs`，输出在 `.scratch/export-smoke/`；该专项也接入 `npm run renderer:smoke`。平台先用14项拒绝/1项成功验证剪贴板、打印、弹窗、外连与下载边界及子框安装回执，再跑原生下载、真实SVG/PNG像素、媒体初始/当前画面及取消/销毁/超时。只允许本次scratch下载，不打开保存对话框。离线回归是 `tools/canvas-export.test.mjs` 和两组 `renderer-export*.test.mjs`，由统一检查入口自动发现。
+
+Slides 容器（#142）在正式编辑事务收尾时整理直接图片/自有 HTML 页，按局部横向中心、同中心按父级 index 排序。默认留白12、间距32；非空框按内容重算且至少1048×600，可以缩回，空框保留大小。页自己的旋转归零，容器及祖先旋转保留。普通元素、组及组内作品不拆成页；显式换父优先于旧提示，只有本次新建且未指定父级的页可自动收纳。锁页需要补位时整笔拒绝，返回 `slides-layout-locked`；不动锁页的后方追加仍可完成。极端负间距按不反转页中心的边界夹住，保存的meta不变；非有限最终几何整笔拒绝。
+
+唯一选中Slides或其直接作品页时，粘贴叶根以它为目标，复用原有居中/光标策略和裁切检查；框外光标仍按既有裁切策略回到可见父级。整套框/组复制保留原根落点和完整子树，后代只映射新编号、父级和已知提示。一次正式命令包含排版的所有连带改动，撤销/重做精确还原，不再另排。旧界面保留计时触发，只用相同纯计算，不再全画板按历史hint收纳。
+
+公开命令/历史/交互与纯计算回归在 `tools/slides-*.test.mjs`，HTTP回归在 `server/editor-slides.test.mjs`，随 `npm test` 执行。登记白板和专用端口、设置已有 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_SLIDES_PORT=43397 node tools/renderer-preview/slides-check.mjs`（避开43398），证据在 `.scratch/slides-native/`。保留原三页基线、重排三页和删除中间页后的两页，分别核对实际演示、逐页HTML/PNG和断服离线页序，使用 `HICANVAS_SLIDES_PORT=43397 node tools/content-slides-smoke.mjs`，证据在 `.scratch/content-slides-smoke/`；两条串行运行。正式交付另跑 `npm run renderer:smoke`、`npm run check` 和真实提交钩子。本机服务的 `CanvasEditError` 响应新增code字段，状态码映射和原有字段保留；临时预览客户端仅明确放行锁页原因码。

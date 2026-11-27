@@ -1,49 +1,27 @@
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { isAiSlidesItemShape, isAiSlidesShape, isAiDraftHolderShape, isAiFilmHolderShape } from './holderMeta.jsx'
-import { AI_SLIDES_GAP, AI_SLIDES_PADDING, AI_SLIDES_DEFAULT_W, AI_SLIDES_DEFAULT_H, AI_DRAFT_HOLDER_LABEL, AI_FILM_LABEL } from './configuration.jsx'
+import { AI_DRAFT_HOLDER_LABEL, AI_FILM_LABEL } from './configuration.jsx'
+import { getSlidesPages, planSlidesLayout } from '../../engine/index.js'
 import { cowartCopiedContent, cowartPendingSlidesPastes } from './assets.jsx'
 function getAiSlidesItems(editor, slidesShapeId) {
-  return editor
-    .getSortedChildIdsForParent(slidesShapeId)
-    .map((shapeId) => editor.getShape(shapeId))
-    .filter(isAiSlidesItemShape)
-    .sort((a, b) => {
-      const aCenter = Number(a.x) + Number(a.props?.w || 0) / 2
-      const bCenter = Number(b.x) + Number(b.props?.w || 0) / 2
-      return aCenter - bCenter
-    })
+  return getSlidesPages(editor.getShape(slidesShapeId), editor.getSortedChildIdsForParent(slidesShapeId).map(id => editor.getShape(id)).filter(Boolean))
+}
+function slidesShapeLocked(editor, id) {
+  const seen = new Set()
+  for (let shape = editor.getShape(id); shape && !seen.has(shape.id); shape = editor.getShape(shape.parentId)) {
+    seen.add(shape.id)
+    if (shape.isLocked) return true
+  }
+  return false
 }
 function layoutAiSlides(editor, slidesShapeId) {
   const slidesShape = editor.getShape(slidesShapeId)
   if (!isAiSlidesShape(slidesShape)) return false
-  const items = getAiSlidesItems(editor, slidesShapeId)
-  if (!items.length) return false
-  const padding = Number(slidesShape.meta?.cowartAiSlidesPadding) || AI_SLIDES_PADDING
-  const gap = Number(slidesShape.meta?.cowartAiSlidesGap) || AI_SLIDES_GAP
-  let cursorX = padding
-  let maxHeight = 0
-  const updates = []
-  for (const item of items) {
-    const width = Math.max(1, Number(item.props?.w) || 1)
-    const height = Math.max(1, Number(item.props?.h) || 1)
-    maxHeight = Math.max(maxHeight, height)
-    if (Math.abs(item.x - cursorX) > 0.01 || Math.abs(item.y - padding) > 0.01 || item.rotation !== 0) {
-      updates.push({ id: item.id, type: item.type, x: cursorX, y: padding, rotation: 0 })
-    }
-    cursorX += width + gap
-  }
-  const nextWidth = Math.max(AI_SLIDES_DEFAULT_W, cursorX - gap + padding)
-  const nextHeight = Math.max(AI_SLIDES_DEFAULT_H, maxHeight + padding * 2)
-  if (
-    Math.abs(Number(slidesShape.props.w) - nextWidth) > 0.01 ||
-    Math.abs(Number(slidesShape.props.h) - nextHeight) > 0.01
-  ) {
-    updates.push({
-      id: slidesShape.id,
-      type: 'frame',
-      props: { w: nextWidth, h: nextHeight }
-    })
-  }
+  let updates
+  try { updates = planSlidesLayout(slidesShape, getAiSlidesItems(editor, slidesShapeId)) }
+  catch { return false }
+  // Legacy timers must not turn a rejected locked layout into a partial one.
+  if (updates.some(update => slidesShapeLocked(editor, update.id))) return false
   if (!updates.length) return false
   editor.updateShapes(updates)
   return true
@@ -53,20 +31,12 @@ function layoutAllAiSlides(editor) {
     if (isAiSlidesShape(shape)) layoutAiSlides(editor, shape.id)
   }
 }
-function adoptGeneratedAiSlidesItems(editor) {
-  const itemsBySlides = new Map()
-  for (const shape of editor.getCurrentPageShapes()) {
-    if (!isAiSlidesItemShape(shape)) continue
-    const slidesShapeId = shape.meta?.cowartAiSlidesParentShapeId
-    const slidesShape = slidesShapeId ? editor.getShape(slidesShapeId) : null
-    if (!isAiSlidesShape(slidesShape) || shape.parentId === slidesShapeId) continue
-    const itemIds = itemsBySlides.get(slidesShapeId) ?? []
-    itemIds.push(shape.id)
-    itemsBySlides.set(slidesShapeId, itemIds)
-  }
-  for (const [slidesShapeId, itemIds] of itemsBySlides) {
-    editor.reparentShapes(itemIds, slidesShapeId)
-  }
+function adoptGeneratedAiSlidesItems() {
+  // New generated pages are adopted by the editing transaction, which knows
+  // whether their parent was explicit. The old timer has no such intent and
+  // must not scan saved hints or pull copied/grouped descendants out of trees.
+  // Keep its callback until the legacy App is retired; it performs no writes.
+  return false
 }
 function normalizeAiDraftHolderLabels(editor) {
   const updates = editor
@@ -120,6 +90,9 @@ function preparePastedItemForAiSlides(editor, shape, source) {
   if (source !== 'user' || !isAiSlidesItemShape(shape)) return shape
   const pendingPaste = getPendingAiSlidesPaste(editor)
   if (!pendingPaste || pendingPaste.existingShapeIds.has(shape.id)) return shape
+  // Clipboard descendants may arrive before their new parent is in the Store.
+  // Preserve that copied tree instead of pulling its pages into the source.
+  if (shape.parentId?.startsWith('shape:') && !pendingPaste.existingShapeIds.has(shape.parentId)) return shape
   const slidesShape = editor.getShape(pendingPaste.slidesShapeId)
   if (!isAiSlidesShape(slidesShape)) {
     cowartPendingSlidesPastes.delete(editor)
@@ -130,6 +103,26 @@ function preparePastedItemForAiSlides(editor, shape, source) {
     parentId: slidesShape.id
   }
 }
+function normalizeCopiedSlidesHints(editor, roots, existingShapeIds) {
+  const pending = roots.map(shape => shape.id), seen = new Set()
+  while (pending.length) {
+    const id = pending.pop()
+    if (seen.has(id) || existingShapeIds.has(id)) continue
+    seen.add(id)
+    const shape = editor.getShape(id)
+    if (!shape) continue
+    pending.push(...editor.getSortedChildIdsForParent(id))
+    if (!isAiSlidesItemShape(shape) || !Object.hasOwn(shape.meta, 'cowartAiSlidesParentShapeId')) continue
+    const parent = editor.getShape(shape.parentId), meta = { ...shape.meta }
+    if (isAiSlidesShape(parent)) {
+      if (meta.cowartAiSlidesParentShapeId === parent.id) continue
+      meta.cowartAiSlidesParentShapeId = parent.id
+    } else delete meta.cowartAiSlidesParentShapeId
+    // Public Store replacement removes only the stale hint, retaining all
+    // other metadata and leaving geometry and the copied parent chain intact.
+    editor.store.put([{ ...shape, meta }])
+  }
+}
 function movePastedItemsIntoAiSlides(editor) {
   const pendingPaste = getPendingAiSlidesPaste(editor)
   if (!pendingPaste) return false
@@ -138,23 +131,26 @@ function movePastedItemsIntoAiSlides(editor) {
     cowartPendingSlidesPastes.delete(editor)
     return false
   }
-  const pastedItems = editor.getSelectedShapes().filter((shape) =>
-    isAiSlidesItemShape(shape) &&
-    !pendingPaste.existingShapeIds.has(shape.id)
-  )
-  if (!pastedItems.length) return false
+  const pastedRoots = editor.getSelectedShapes().filter(shape => !pendingPaste.existingShapeIds.has(shape.id))
+  if (!pastedRoots.length) return false
+  const pastedItems = pastedRoots.filter(isAiSlidesItemShape)
+  // Clear before writes, whose operationComplete callbacks can reenter here.
+  cowartPendingSlidesPastes.delete(editor)
   editor.run(
     () => {
       const itemsToReparent = pastedItems.filter((shape) => shape.parentId !== slidesShape.id)
       if (itemsToReparent.length) {
         editor.reparentShapes(itemsToReparent.map((shape) => shape.id), slidesShape.id)
       }
-      layoutAiSlides(editor, slidesShape.id)
+      if (pastedItems.length) layoutAiSlides(editor, slidesShape.id)
     },
     { history: 'ignore' }
   )
-  cowartPendingSlidesPastes.delete(editor)
-  return true
+  // Hint repairs belong to the existing paste entry, including mixed roots.
+  // Ignoring them replays stale source hints on redo. Keep legacy geometry
+  // history unchanged and do not add another history stopping point.
+  editor.run(() => normalizeCopiedSlidesHints(editor, pastedRoots, pendingPaste.existingShapeIds), { history: 'record' })
+  return pastedItems.length > 0
 }
 const cowartTldrawOptions = {
   maxPages: 1,

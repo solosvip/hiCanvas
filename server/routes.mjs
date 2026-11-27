@@ -127,7 +127,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       throw httpError('接口或方法不存在。', 405)
     } catch (error) {
       const status = error instanceof CanvasEditError ? (error.code === 'conflict' ? 409 : 400) : error.status
-      sendJson(res, status || 500, { error: status ? error.message : '本机资料无法完整读取或保存；已保留原文件，请检查资料目录。', storage: error.storage, revision: error.revision })
+      sendJson(res, status || 500, { error: status ? error.message : '本机资料无法完整读取或保存；已保留原文件，请检查资料目录。', storage: error.storage, revision: error.revision, ...(error instanceof CanvasEditError && { code: error.code }) })
     }
   }
   middleware.close = () => { bookmarks.close(); return content.close() }
