@@ -12,6 +12,7 @@ function defaultProps(type) {
     case 'arrow': return { ...text, kind: 'arc', elbowMidPoint: 0.5, dash: 'solid', fill: 'none', labelColor: 'black', bend: 0, start: { x: 0, y: 0 }, end: { x: 200, y: 0 }, arrowheadStart: 'none', arrowheadEnd: 'arrow', labelPosition: 0.5 }
     case 'line': return { color: 'black', size: 'm', dash: 'draw', spline: 'line', scale: 1, points: { a1: { id: 'a1', index: 'a1', x: 0, y: 0 }, a2: { id: 'a2', index: 'a2', x: .1, y: .1 } } }
     case 'image': return { w: 512, h: 512, assetId: null, playing: true, url: '', crop: null, flipX: false, flipY: false, altText: '' }
+    case 'video': return { w: 320, h: 180, assetId: null, time: 0, playing: true, autoplay: true, url: '', altText: '' }
     case 'embed': return { w: 1024, h: 576, url: '' }
     case 'frame': return { w: 1024, h: 576, name: '', color: 'black' }
     case 'group': return {}

@@ -5,6 +5,7 @@ import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdir } from 'node:fs/promises'
 import { scratchPath } from '../perf/config.mjs'
+import { createVideoFixture } from './video-fixtures.js'
 import { createFixture } from '../perf/fixture.mjs'
 import { prepareFixture } from '../perf/prepare.mjs'
 
@@ -30,14 +31,14 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
     queues.set(id, next.catch(() => {})); return next
   }
   async function fixture(count) {
-    if (![500, 2000, 5000].includes(count)) throw new Error('合成规模仅支持 500、2000、5000。')
+    if (![500, 2000, 5000, 'videos'].includes(count)) throw new Error('合成规模仅支持 500、2000、5000。')
     if (!boards.has(count)) boards.set(count, (async () => {
       const title = `交互合成 ${count}`, existing = (await workspace.list()).find(b => b.title === title)
       const board = existing || await workspace.open({ createNew: true, title })
       let current = await workspace.read(board.id)
-      const data = createFixture(count, current.snapshot)
+      const data = count === 'videos' ? createVideoFixture(current.snapshot) : createFixture(count, current.snapshot)
       if (!existing) current = await prepareFixture(workspace, board.id, current, data.snapshot)
-      return { count, counts: data.counts, assetCount: data.assetCount, targetId: data.targetId, viewState: data.viewState, conversationId: board.id, persistent: true }
+      return { count: data.count || count, ...(data.videoFixture && { videoFixture: true }), counts: data.counts, assetCount: data.assetCount, targetId: data.targetId, viewState: data.viewState, conversationId: board.id, persistent: true }
     })())
     return boards.get(count)
   }
@@ -48,8 +49,8 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
       requireLocalRead(req)
       if (path === '/__renderer_fixture') {
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
-        const count = Number(url.searchParams.get('count'))
-        if (![500, 2000, 5000].includes(count)) { res.writeHead(400); res.end(); return }
+        const count = url.searchParams.get('gallery') === 'videos' ? 'videos' : Number(url.searchParams.get('count'))
+        if (![500, 2000, 5000, 'videos'].includes(count)) { res.writeHead(400); res.end(); return }
         return sendJson(res, 200, await fixture(count))
       }
       if (path.startsWith('/__interaction/')) {
@@ -67,9 +68,10 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
         })
         return sendJson(res, 200, result)
       }
+      if (path.startsWith('/c/')) return canvas(req, res, () => { res.writeHead(404); res.end() })
       if (path.startsWith('/api/')) {
-        if (['/api/canvas/undo', '/api/canvas/redo'].includes(path) && !(await Promise.all(boards.values())).some(board => board.conversationId === url.searchParams.get('conversation'))) { res.writeHead(404); res.end(); return }
-        if (!['/api/canvas/undo', '/api/canvas/redo', '/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || path === '/api/canvas' && req.method !== 'GET') { res.writeHead(403); res.end(); return }
+        if (['/api/canvas/undo', '/api/canvas/redo', '/api/canvas/reference'].includes(path) && !(await Promise.all(boards.values())).some(board => board.conversationId === url.searchParams.get('conversation'))) { res.writeHead(404); res.end(); return }
+        if (!['/api/canvas/undo', '/api/canvas/redo', '/api/canvas/reference', '/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || path === '/api/canvas' && req.method !== 'GET') { res.writeHead(403); res.end(); return }
         return canvas(req, res, () => { res.writeHead(404); res.end() })
       }
       if (path === '/') req.url = `/tools/renderer-preview/index.html${url.search}`

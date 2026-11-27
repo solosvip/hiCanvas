@@ -13,6 +13,7 @@ import { creationSmoke } from './creation-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
 import { externalSamples } from './external-samples.js'
 import { imageSmoke } from './image-smoke.mjs'
+import { prepareVideoProbe, videoSmoke } from './video-smoke.mjs'
 import {captureSmoke} from '../content-host/capture-smoke.mjs'
 import {filmSmoke} from '../content-host/film-smoke.mjs'
 import {channelSmoke} from '../content-host/channel-smoke.mjs'
@@ -111,6 +112,15 @@ async function run() {
   if (!contentPort) { const health = await fetch(origin + '/api/health'); if (health.ok) contentPort = (await health.json()).contentHost?.port }
   try {
     app.dock?.hide()
+    if (manifest.videosOnly) {
+      window = createWindow('videos')
+      await prepareVideoProbe(window)
+      await window.loadURL(`${manifest.url}/?gallery=videos&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ videos: await videoSmoke(window, manifest.output, manifest.videoFiles) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.snappingOnly) {
       window = createWindow('snapping')
       await window.loadURL(`${manifest.url}/?gallery=snapping&snapping=1&edgeScrolling=0`)
@@ -352,6 +362,13 @@ async function run() {
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
       samples.push({ notes: await noteSmoke(window, manifest.output) })
       window.destroy(); window = undefined
+    }
+    if (!manifest.galleries || manifest.galleries.includes('videos')) {
+      window = createWindow('videos')
+      await prepareVideoProbe(window)
+      await window.loadURL(`${manifest.url}/?gallery=videos&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ videos: await videoSmoke(window, manifest.output) }); window.destroy(); window = undefined
     }
     for (const gallery of ['stroke-styles', 'stroke-details', 'stroke-highlights', 'stroke-transforms']) {
       if (manifest.galleries && !manifest.galleries.includes(gallery)) continue

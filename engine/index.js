@@ -7,3 +7,4 @@ export { createCanvasInteraction, canvasToolRegistry } from './interaction/index
 export { getShapeScalingCapabilities } from './shape-scaling.js'
 export { canvasActions, planCanvasAction } from './actions/index.js'
 export { maxVideoBytes } from './media-limits.js'
+export { createMediaImport } from './interaction/media-import.js'
