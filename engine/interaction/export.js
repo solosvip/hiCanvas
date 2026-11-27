@@ -1,3 +1,5 @@
+import { canvasOwnsFocus } from './keyboard-input.js'
+
 // Read-only output owns no document transaction. Browser and desktop adapters
 // receive a complete result only after the fixed snapshot has finished rendering.
 export function createCanvasExport({ session, interaction, render, download, background }) {
@@ -13,7 +15,7 @@ export function createCanvasExport({ session, interaction, render, download, bac
     if (state.textEditing || state.inputContext?.owner === 'text-editing') return 'text-editing'
     if (runtime.isGestureActive || state.mode !== 'idle') return 'pointer-gesture'
     if (state.inputContext?.isComposing) return 'composing'
-    if (state.inputContext?.owner && state.inputContext.owner !== 'canvas' && !(origin === 'toolbar' && state.inputContext.owner === 'form')) return 'input-owner'
+    if (state.inputContext?.owner && !canvasOwnsFocus(state.inputContext) && !(origin === 'toolbar' && state.inputContext.owner === 'form')) return 'input-owner'
     return null
   }
   function cancel() { active?.abort(new Error('输出已取消。')) }

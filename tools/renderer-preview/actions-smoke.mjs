@@ -122,16 +122,25 @@ export async function actionsSmoke(target, output) {
   // Button mouse-down does not focus it on every macOS Chromium setting.
   // Set real DOM focus as fixture setup; the host must derive its own owner.
   await evaluate('document.querySelector("#navigation button").focus();void 0')
-  const beforeForm = await state()
+  const beforeButton = await state()
   check(await evaluate('document.activeElement?.dataset.action === "first-content"'), '真实按钮没有获得DOM焦点')
-  const keysBeforeForm = await evaluate('window.__actionKeys.length')
+  const keysBeforeButton = await evaluate('window.__actionKeys.length')
   // An offscreen inactive document may defer focus events; the native key's
-  // target must still make the host report the form owner before dispatch.
+  // target must still report the new button owner before the canvas handles it.
+  s = await edit(() => press('Delete'))
+  const buttonKeys = await evaluate(`window.__actionKeys.slice(${keysBeforeButton})`)
+  check(buttonKeys.some(e => ['Delete', 'Backspace'].includes(e.key) && e.targetAction === 'first-content'), '原生删除键没有送达真实按钮')
+  check(beforeButton.selectedIds.length === 1 && s.inputContext.owner === 'button' && s.commitCalls === beforeButton.commitCalls + 1 && !s.selectedIds.length && s.actionShapes.length === beforeButton.actionShapes.length - 1 && !shape(s, 'a'), '按钮Delete没有只删除选中对象一次')
+  s = await undo()
+  check(s.commitCalls === beforeButton.commitCalls + 1 && same(pose(s), pose(beforeButton)), '按钮Delete没有一次撤销完整恢复')
+  await click(180, 260)
+  check(same((await state()).selectedIds, beforeButton.selectedIds), '真实input保护须先选回可删除对象')
+  await evaluate('(()=>{const node=document.createElement("input");node.id="actions-form-probe";node.value="synthetic";document.body.append(node);node.focus()})();void 0')
+  check(await evaluate('document.activeElement?.id === "actions-form-probe"'), '真实input没有获得DOM焦点')
+  const beforeForm = await state()
   await press('Delete'); s = await state()
-  const formKeys = await evaluate(`window.__actionKeys.slice(${keysBeforeForm})`)
-  check(formKeys.some(e => ['Delete', 'Backspace'].includes(e.key) && e.targetAction === 'first-content'), '原生删除键没有送达真实按钮')
-  check(s.inputContext.owner === 'form' && s.revision === beforeForm.revision && same(s.selectedIds, beforeForm.selectedIds) && same(pose(s), pose(beforeForm)), '原生按钮焦点下删除误触画板或未报告表单所有者')
+  check(s.inputContext.owner === 'form' && s.revision === beforeForm.revision && s.commitCalls === beforeForm.commitCalls && same(s.selectedIds, beforeForm.selectedIds) && same(pose(s), pose(beforeForm)), '真实input中的删除键误改文档、选区或位置')
   await remember('enter-and-form-gate')
   await writeFile(join(output, 'actions-final.png'), (await contents.capturePage()).toPNG())
-  return { nativeRepeatFlags: repeats, singleUndoPerHold: true, separatePressesUndoSeparately: true, optionCodeAlignment: true, toolbarActions: 7, framePaddingAndSelection: true, groupLockSelection: true, enterKeepsGesture: true, formGate: true, screenshots: ['actions-fit-frame.png', 'actions-final.png'], samples: samples.length }
+  return { nativeRepeatFlags: repeats, singleUndoPerHold: true, separatePressesUndoSeparately: true, optionCodeAlignment: true, toolbarActions: 7, framePaddingAndSelection: true, groupLockSelection: true, enterKeepsGesture: true, buttonDeleteSingleUndo: true, formGate: true, screenshots: ['actions-fit-frame.png', 'actions-final.png'], samples: samples.length }
 }

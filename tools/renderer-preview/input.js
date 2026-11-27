@@ -6,15 +6,20 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   const captured = new Set()
   let lastTime = 0, animation = null, disposed = false, composing = false
   const owner = target => {
-    if (target?.closest?.('[data-canvas-input-owner="video"]')) return 'form'
-    if (target?.closest?.('[data-canvas-input-owner="text-editing"]')) return 'text-editing'
+    if (target?.closest?.('[data-canvas-input-owner="video"]')) return { owner: 'form' }
+    if (target?.closest?.('[data-canvas-input-owner="text-editing"]')) return { owner: 'text-editing' }
     // Canvas-owned controls outside the canvas element (the minimap) keep keys on the canvas.
-    if (target?.closest?.('[data-canvas-input-owner="canvas"]')) return 'canvas'
-    if (target?.closest?.('[role="menu"], [role="listbox"], [role="dialog"], dialog')) return 'menu'
-    if (target?.closest?.('input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"])')) return 'form'
-    return !target || target === document?.body || target === host || host.contains?.(target) ? 'canvas' : 'form'
+    if (target?.closest?.('[data-canvas-input-owner="canvas"]')) return { owner: 'canvas' }
+    if (target?.closest?.('[role="menu"], [role="listbox"], [role="dialog"], dialog')) return { owner: 'menu' }
+    if (target?.closest?.('input, textarea, [contenteditable]:not([contenteditable="false"])')) return { owner: 'form' }
+    if (target?.closest?.('select')) return { owner: 'select' }
+    const control = target?.closest?.('button, a')
+    if (control?.getAttribute('aria-haspopup') === 'menu') return { owner: 'menu-trigger', expanded: control.getAttribute('aria-expanded') === 'true' }
+    if (target?.closest?.('a')) return { owner: 'anchor' }
+    if (target?.closest?.('button')) return { owner: target.closest('[role="toolbar"]') ? 'toolbar-button' : 'button' }
+    return { owner: !target || target === document?.body || target === host || host.contains?.(target) ? 'canvas' : 'form' }
   }
-  const reportContext = target => interaction.setInputContext({ owner: owner(target), isComposing: composing })
+  const reportContext = target => interaction.setInputContext({ ...owner(target), ownsArrows: Boolean(target?.closest?.('[data-canvas-own-arrows]')), isComposing: composing })
   const point = event => {
     const box = host.getBoundingClientRect?.() || { left: 0, top: 0 }
     return { x: event.clientX - box.left, y: event.clientY - box.top }
@@ -59,11 +64,6 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   }
   const key = type => event => {
     reportContext(event.target)
-    // A canvas-owned control that dispatches its own arrows (the minimap, #98)
-    // gets them alone: this window-level capture listener runs first, and the
-    // canvas would otherwise nudge the selection and block the minimap's pan
-    // (#124). Key-ups still reach the canvas so a nudge begun there can end.
-    if (type === 'key_down' && event.key?.startsWith('Arrow') && event.target?.closest?.('[data-canvas-own-arrows]')) return
     const name = event.code?.startsWith('Digit') && event.shiftKey ? event.code.slice(5) : event.key
     const result = send({ type, time: event.timeStamp, key: name, code: event.code, repeat: event.repeat, isComposing: event.isComposing, keyCode: event.keyCode, ...modifiers(event) })
     if (result) event.preventDefault()

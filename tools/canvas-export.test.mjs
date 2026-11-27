@@ -26,6 +26,27 @@ test('导出动作固定目标、背景只属于会话，空选回退整页而�
   } finally { exp.dispose(); f.close() }
 })
 
+test('焦点在普通按钮、工具栏按钮、链接或收起的菜单按钮上时，导出照常可用（#209 与 #210 合并）', async () => {
+  const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:a', shapeType: 'geo' }] })
+  const exp = createCanvasExport({ session: f.session, interaction: f.interaction, background: '#ffffff', render: async () => ({ status: 'complete', bytes: new Uint8Array([1]), mime: 'image/png' }), download: async () => {} })
+  try {
+    for (const owner of ['button', 'toolbar-button', 'anchor', 'menu-trigger']) {
+      f.interaction.setInputContext({ owner })
+      assert.equal((await exp.run({ origin: 'toolbar' })).status, 'complete', owner)
+      assert.equal((await exp.run()).status, 'complete', owner)
+    }
+    // An open menu, a native select and composition still keep the action away.
+    f.interaction.setInputContext({ owner: 'menu-trigger', expanded: true })
+    assert.equal((await exp.run({ origin: 'toolbar' })).reason, 'input-owner')
+    f.interaction.setInputContext({ owner: 'select' })
+    assert.equal((await exp.run({ origin: 'toolbar' })).reason, 'input-owner')
+    assert.equal((await exp.run()).reason, 'input-owner')
+    f.interaction.setInputContext({ owner: 'toolbar-button', isComposing: true })
+    assert.equal((await exp.run({ origin: 'toolbar' })).reason, 'composing')
+    assert.equal(f.commits.length, 0)
+  } finally { exp.dispose(); f.close() }
+})
+
 test('导出期间固定快照与选择；重复动作、文字输入和手势不争用；销毁后不下载', async () => {
   const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:a', shapeType: 'geo' }] })
   let finish, received, writes = 0

@@ -49,7 +49,7 @@ import { createEmbedEditing } from './embeds.js'
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
 // button/buttons; key events carry key/code/repeat/isComposing and optional IME
 // keyCode 229; wheel carries CSS-pixel delta. Hosts report inputContext with the
-// setter on focus/composition changes. Only canvas-owned keys reach tools.
+// setter on focus/composition changes; keyboard-input decides which keys reach tools.
 // Products choose allowed tools from this registry; tool state never enters the
 // document Store. Future tools get the same normalized input and context.
 export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, note: createNoteTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, eraser: createEraserTool, laser: createLaserTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
@@ -57,7 +57,7 @@ export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, h
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
 // Hosts may supply design tokens; the engine validates and copies the values.
-export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null, clipboard: clipboardPort, boardId = '' }) {
+export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null, clipboard: clipboardPort, boardId = '', onRequestFocus }) {
   if (!session?.store || !toolIds.length || toolIds.some(id => !Object.hasOwn(canvasToolRegistry, id))) throw new Error('交互模块需要运行时和已登记工具。')
   const metrics = checkedHandleMetrics(handleMetrics)
   if (typeof controlPointSnapping !== 'boolean') throw new Error('控制点吸附需要布尔值。')
@@ -309,7 +309,9 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         const edited = textInput.beforeKeyboard(input)
         if (edited.handled) return edited.result ?? true
         const routed = keyboard.route(input)
-        return routed.input ? dispatchCore(routed.input) : routed.result ?? routed.handled
+        const result = routed.input ? dispatchCore(routed.input) : routed.result ?? routed.handled
+        if (routed.requestFocus && result === true) onRequestFocus?.(routed.requestFocus)
+        return result
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
     dispose() { if (disposed) return; aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
