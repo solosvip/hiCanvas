@@ -46,10 +46,14 @@ spacing:
   text-editor-min-width: 1px
   grid-dot-radius: 1px
   grid-dot-offset: 0.5px
-  grid-fade-start: 7px
-  grid-fade-range: 18px
-  grid-coarse-fade-start: 13px
-  grid-coarse-fade-range: 17px
+  grid-l1-fade-start: 7px
+  grid-l1-fade-range: 18px
+  grid-l4-fade-start: 6px
+  grid-l4-fade-range: 34px
+  grid-l16-fade-start: 8px
+  grid-l16-fade-range: 52px
+  grid-l64-fade-start: -640px
+  grid-l64-fade-range: 736px
   none: 0px
   xs: 4px
   sm: 8px
@@ -107,7 +111,7 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 
 ## Components
 
-网格点阵在作品下方，用 grid-dot 色和固定屏幕 grid-dot-radius 半径、grid-dot-offset 像素偏移。基础格距属于交互规则（10画布单位），显示10/40/160/640四层。透明度由屏幕格距与 grid-fade-start/range 令牌算出并夹在0–1：基础层7px开始、18px内淡入，其余层13px开始、17px内淡入；它们也是透明度曲线的唯一设计参数。旧版公开DOM读数在0.5/1/2倍的基础层为0/1⁄6/13⁄18，40单位层在0.5倍为7⁄17，其余观测层为1；负透明度的原始值按浏览器实际钳制为0。更低视角下的粗层淡入曲线尚未逐点复核，暂统一粗层参数，作为有意差异记录。点阵随相机平移缩放，在低视角淡出密层，不拦截输入；关闭会话网格偏好即移除。
+网格点阵在作品下方，用 grid-dot 色和固定屏幕 grid-dot-radius 半径、grid-dot-offset 像素偏移。基础格距属于交互规则（10画布单位），显示基础格距的1/4/16/64倍四层。每层根据自己在屏幕上的格距单独淡入，透明度由对应 grid-l1/l4/l16/l64-fade-start/range 令牌算出并夹在0–1；最粗一层的起点是负数，为了镜头拉得很远时仍然留着粗格点。四层共用同一个线性公式，参数来自隔离旧版26个视角的公开DOM读数。点阵随相机平移缩放，在低视角淡出密层，不拦截输入；关闭会话网格偏好即移除。
 
 对象吸附提示线复用 error（接近旧版截图的红色）与 overlay-brush-stroke 细线，叉形锚点和等间距中点刻度复用 xs 长度；线宽与标记尺寸固定为屏幕 CSS 像素，位置使用画布坐标。旧版精确颜色和线宽未取得可确认读数，本轮沿用这些既有令牌，作为功能清单中的有意差异。提示仅在变换手势中显示，松手、取消、切换工具和失焦时清除；不增加正式设置界面。
 
