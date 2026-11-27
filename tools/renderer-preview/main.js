@@ -31,6 +31,9 @@ import { createEraserFixture } from './eraser-fixture.js'
 import { createLaserFixture } from './laser-fixture.js'
 import { attachActionsUi } from './actions-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
+import { createExportFixture } from './export-fixture.js'
+import { attachExportUi } from './export-ui.js'
+import { installExportProbe } from './export-probe.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
 import { createPreviewClipboard } from './clipboard.js'
 import { observeEditorTarget } from '../perf/editor-observation.js'
@@ -87,6 +90,7 @@ try {
   if (['videos', 'image-import'].includes(gallery)) { const response = await fetch(`/__renderer_fixture?gallery=${gallery}`); if (!response.ok) throw new Error('媒体夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
   else if (gallery === 'embed-editing') metadata = createEmbedsFixture()
+  else if (gallery === 'export') metadata = createExportFixture(undefined, params.get('case') || 'static')
   else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
   else if (gallery === 'frame-interaction') metadata = createFrameFixture(params.get('frameCase') || 'drag')
@@ -144,6 +148,11 @@ try {
   const instructions = `${metadata.count} 个合成元素 · D/B/X 画笔 · ⇧D 荧光笔 · Shift 接直线 · Shift 点击增减／框选追加 · Ctrl 反转框选 · Alt 涂抹 · Shift 拖动锁轴 · Enter/Esc 组导航 · Tab 顺序选择 · 拖动移动 · 角点／边线缩放 · 角外旋转 · Shift 等比／15° · Alt 中心缩放 · H 手形／空格平移 · Z 缩放 · ⇧0/1/2 · ⌘/Ctrl Z 撤销 · Esc 取消${metadata.persistent ? ' · 松手保存' : ' · 临时预览，刷新还原'}`
   const navigation = attachNavigationUi(host, interaction, showError, (...args) => controls.navigate(...args))
   disposers.push(() => navigation.dispose())
+  if (metadata.exportFixture) {
+    const output = attachExportUi(navigation.element, host, session, interaction, showError)
+    disposers.push(() => output.dispose())
+    disposers.push(installExportProbe({ host, session, interaction, transport, output }))
+  }
   controls = attachPreviewInput(host, interaction, { onError: showError })
   disposers.push(() => controls.dispose())
   const minimap = attachMinimapUi(navigation.element, host, interaction, { store: session.store, pageId: metadata.viewState.currentPageId, dispatch: input => controls.dispatch(input), onError: showError })

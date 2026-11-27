@@ -61,6 +61,24 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
   async function handle(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1'), path = url.pathname
     try {
+      if (path === '/__export_resource') {
+        // Fixed synthetic pixels only. The native harness redirects its one
+        // declared remote image here before any external connection is made.
+        if (req.method !== 'GET' || !/^127\.0\.0\.1(?::\d+)?$/.test(req.headers.host || '')) { res.writeHead(403); res.end(); return }
+        res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'no-store', 'access-control-allow-origin': '*' })
+        res.end('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path fill="rgb(32,239,96)" d="M0 0H20V20H0Z"/></svg>')
+        return
+      }
+      if (path === '/__export_guard') {
+        // This fixed, synthetic document is deliberately embeddable from the
+        // other loopback hostname to prove the OOPIF pre-document guard.
+        if (!/^(127\.0\.0\.1|localhost)(?::\d+)?$/.test(req.headers.host || '')) { res.writeHead(403); res.end(); return }
+        const probe = url.searchParams.get('probe')
+        if (req.method !== 'GET' || probe && !['clipboard', 'print', 'dialog', 'network', 'download'].includes(probe)) { res.writeHead(400); res.end(); return }
+        res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' })
+        res.end('<!doctype html><meta charset="utf-8"><body>owned export guard' + (probe ? `<script>window.__HICANVAS_EXPORT_GUARD__.probe(${JSON.stringify(probe)})</script>` : ''))
+        return
+      }
       requireLocalRead(req)
       if (path === '/__clipboard_fixture') {
         const name = url.searchParams.get('board')
@@ -92,7 +110,8 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
       if (path.startsWith('/api/')) {
         const mutations = ['/api/canvas/undo', '/api/canvas/redo', '/api/canvas/reference', '/api/canvas/clipboard/copy', '/api/canvas/clipboard/paste']
         if (mutations.includes(path) && !(await Promise.all(boards.values())).some(board => board.conversationId === url.searchParams.get('conversation'))) { res.writeHead(404); res.end(); return }
-        if (![...mutations, '/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || path === '/api/canvas' && req.method !== 'GET') { res.writeHead(403); res.end(); return }
+        const exportRoutes = ['/api/health', '/api/content-host/instances']
+        if (![...mutations, ...exportRoutes, '/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || ['/api/canvas', '/api/health'].includes(path) && req.method !== 'GET') { res.writeHead(403); res.end(); return }
         return canvas(req, res, () => { res.writeHead(404); res.end() })
       }
       if (path === '/') req.url = `/tools/renderer-preview/index.html${url.search}`
@@ -104,12 +123,12 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
   try {
     // Keep the Vite connection on this HTTP port; disabling its watcher stops
     // updates without making the browser retry a missing WebSocket server.
-    vite = await createViteServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: [...captureLibraryImports, 'react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, ...(!watch && { watch: null }), hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port } } })
+    vite = await createViteServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: [...captureLibraryImports, 'react', 'react-dom', 'react-dom/client', 'react-dom/server.browser', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, ...(!watch && { watch: null }), hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port } } })
   } catch (error) { http.closeAllConnections(); http.close(); throw error }
   // A read-only diagnostic snapshot lets checks distinguish no watchers from a
   // broken update connection. Do not expose the mutable Vite server or watcher.
   return { url: `http://127.0.0.1:${http.address().port}`, getWatchedPaths: () => Object.keys(vite.watcher.getWatched()), async close() {
-    await vite.close(); http.closeAllConnections(); await new Promise((yes, no) => http.close(error => error ? no(error) : yes()))
+    await vite.close(); await canvas.close(); http.closeAllConnections(); await new Promise((yes, no) => http.close(error => error ? no(error) : yes()))
   } }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

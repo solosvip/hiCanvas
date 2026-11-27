@@ -52,7 +52,7 @@ export async function captureDocument(host,options,signal,{film=false,videoFrame
     aborted()
     // html2canvas cannot stop its clone/render pass. Retain the single capture
     // slot until it finishes, then discard pixels on cancel without transferring.
-    canvas=await realm.render(doc,{...options,freezeAtCurrentFrame:film,videoFrames,captureSignal:signal})
+    canvas=await realm.render(doc,{...options,freezeAtCurrentFrame:true,videoFrames,captureSignal:signal})
     aborted()
     const result={width:canvas.width,height:canvas.height,pixels:canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data.buffer}
     return result
