@@ -23,7 +23,7 @@ export function CanvasGrid({ camera, overlays }) {
       h('circle', { 'data-grid-dot': '', style: {
         '--grid-step': `${layer.step}px`,
         cx: 'var(--spacing-grid-dot-offset)', cy: 'var(--spacing-grid-dot-offset)', r: 'var(--spacing-grid-dot-radius)', fill: 'var(--color-grid-dot)',
-        opacity: `clamp(0, calc((var(--grid-step) - var(--spacing-grid-${layer.factor === 1 ? '' : 'coarse-'}fade-start)) / var(--spacing-grid-${layer.factor === 1 ? '' : 'coarse-'}fade-range)), 1)`,
+        opacity: `clamp(0, calc((var(--grid-step) - var(--spacing-grid-l${layer.factor}-fade-start)) / var(--spacing-grid-l${layer.factor}-fade-range)), 1)`,
       } })))),
     layers.map(layer => h('rect', { key: layer.id, width: '100%', height: '100%', fill: `url(#${layer.id})` })))
 }

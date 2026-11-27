@@ -45,10 +45,14 @@
   --spacing-text-editor-min-width: 1px;
   --spacing-grid-dot-radius: 1px;
   --spacing-grid-dot-offset: 0.5px;
-  --spacing-grid-fade-start: 7px;
-  --spacing-grid-fade-range: 18px;
-  --spacing-grid-coarse-fade-start: 13px;
-  --spacing-grid-coarse-fade-range: 17px;
+  --spacing-grid-l1-fade-start: 7px;
+  --spacing-grid-l1-fade-range: 18px;
+  --spacing-grid-l4-fade-start: 6px;
+  --spacing-grid-l4-fade-range: 34px;
+  --spacing-grid-l16-fade-start: 8px;
+  --spacing-grid-l16-fade-range: 52px;
+  --spacing-grid-l64-fade-start: -640px;
+  --spacing-grid-l64-fade-range: 736px;
   --spacing-none: 0px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;

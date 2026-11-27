@@ -1,5 +1,6 @@
 import { createCanvasSnapshot, createCanvasStore } from '../../model/index.js'
 import { mountCanvasRenderer } from '../../renderer/index.js'
+import { gridFadeProbe } from './grid-fade-probe.js'
 
 const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 const guide = () => ({kind:'snap-guides',bounds:{x:0,y:0,w:0,h:0},lines:[{start:{x:10,y:20},end:{x:10,y:300},points:[{x:10,y:20},{x:10,y:300}],ticks:[{x:10,y:160}],gap:true}]})
@@ -50,8 +51,9 @@ export async function snappingOverlayProbe() {
     check(Number(pattern().getAttribute('width')) === 20, '非法更新破坏现有网格')
     const dotStyle = getComputedStyle(pattern().querySelector('circle'))
     check(dotStyle.fill === 'rgb(110, 110, 110)' && Math.abs(Number(dotStyle.opacity) - 13 / 18) < .0001 && dotStyle.r === '1px', '网格颜色、透明度或点半径没有取设计令牌')
+    const gridFade = await gridFadeProbe(view, host, settle)
     check(JSON.stringify(store.getStoreSnapshot()) === beforeSnapshot, '网格写进画板')
     view.setOverlays([]); await settle(); check(!pattern(), '关闭网格后点阵仍在')
-    return {copiedHostInput:true,rejectedInvalidAndOverflowingGuides:true,invalidUpdateAtomic:true,documentUnchanged:true,gridContract:true}
+    return {copiedHostInput:true,rejectedInvalidAndOverflowingGuides:true,invalidUpdateAtomic:true,documentUnchanged:true,gridContract:true,gridFade}
   } finally {view.unmount();host.remove();store.dispose()}
 }
