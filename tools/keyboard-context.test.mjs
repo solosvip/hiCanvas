@@ -27,6 +27,57 @@ async function fixture(options = {}) {
   }
 }
 
+test('三个样式快捷键共用样式API，Option字符按物理code识别且重复不是开关', async () => {
+  const f = await fixture()
+  try {
+    f.interaction.select('all')
+    await f.key('†', { code: 'KeyT', altKey: true })
+    assert.equal(f.session.store.get('shape:a').props.color, 'white')
+    assert.equal(f.interaction.getStyles().next.color, 'white')
+    await f.key('ƒ', { code: 'KeyF', altKey: true })
+    assert.equal(f.session.store.get('shape:a').props.fill, 'fill')
+    await f.key('F', { code: 'KeyF', altKey: true, shiftKey: true })
+    assert.equal(f.session.store.get('shape:a').props.fill, 'lined-fill')
+    assert.equal(f.commits.length, 3)
+    await f.key('F', { code: 'KeyF', altKey: true, shiftKey: true })
+    assert.equal(f.commits.length, 3)
+    assert.equal(f.session.store.get('shape:a').props.fill, 'lined-fill')
+    f.interaction.select('clear')
+    await f.key('f', { altKey: true })
+    assert.equal(f.interaction.getStyles().next.fill, 'fill')
+    assert.equal(f.commits.length, 3, '无选择的快捷键只更新会话')
+  } finally { f.close() }
+})
+
+test('样式快捷键不截走表单、菜单、文字、组字或禁用输入，也不取消进行中的拖动', async () => {
+  const f = await fixture()
+  try {
+    f.interaction.select('all')
+    const before = f.interaction.getStyles().next
+    const keys = [['†', { code: 'KeyT', altKey: true }], ['ƒ', { code: 'KeyF', altKey: true }], ['F', { code: 'KeyF', altKey: true, shiftKey: true }]]
+    for (const owner of ['form', 'menu', 'text-editing']) {
+      f.interaction.setInputContext({ owner })
+      for (const [key, extra] of keys) assert.equal(await f.key(key, extra), false)
+    }
+    f.interaction.setInputContext({ owner: 'canvas' })
+    for (const extra of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }, { metaKey: true }, { ctrlKey: true }]) for (const [key, binding] of keys) await f.key(key, { ...binding, ...extra })
+    f.interaction.setInputContext({ owner: 'canvas', isComposing: true })
+    for (const [key, extra] of keys) await f.key(key, extra)
+    f.interaction.setInputContext({ owner: 'canvas' }); f.interaction.setShortcutsEnabled(false)
+    for (const [key, extra] of keys) await f.key(key, extra)
+    f.interaction.setShortcutsEnabled(true)
+    assert.deepEqual(f.interaction.getStyles().next, before)
+    assert.equal(f.commits.length, 0)
+    f.pointer('down', 150, 150); f.pointer('move', 180, 180)
+    for (const [key, extra] of keys) await f.key(key, extra)
+    assert.equal(f.session.state.get().isGestureActive, true)
+    assert.equal(f.session.store.get('shape:a').props.color, 'black')
+    await f.pointer('up', 180, 180)
+    assert.equal(f.commits.length, 1)
+    assert.deepEqual(f.interaction.getStyles().next, before)
+  } finally { f.close() }
+})
+
 for (const owner of ['form', 'menu', 'text-editing']) test(`输入归 ${owner} 时，工具、视角及撤销按键都不落到画布；切回后恢复`, async () => {
   const f = await fixture({ reduceMotion: true })
   try {
