@@ -27,6 +27,7 @@ import { createMediaUpload } from './media-upload.js'
 import { createDrawGallery } from './draw-fixture.js'
 import { createActionsGallery } from './actions-fixture.js'
 import { createFrameFixture } from './frame-fixture.js'
+import { createEraserFixture } from './eraser-fixture.js'
 import { attachActionsUi } from './actions-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
@@ -57,6 +58,7 @@ const getState = () => {
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
     ...(metadata?.selectionActions && { actionShapes: session.store.allRecords().filter(r => r.typeName === 'shape').map(r => structuredClone(r)), actions: interaction.getActions() }),
     ...(metadata?.frameInteractionFixture && { frameRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
+    ...(metadata?.eraserFixture && { erasingIds: [...state.erasingIds], eraser: state.eraser && structuredClone(state.eraser), eraserRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, parentId: r.parentId, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, props: structuredClone(r.props), meta: structuredClone(r.meta), ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
     revision: session?.state.get().revision, commitCalls: transport?.getCommitCount?.() ?? null, submitting: session?.state.get().isSubmitting || false, pasteAtCursor: state?.pasteAtCursor, clipboardBusy: state?.clipboardBusy || false, privateClipboard: clipboardAdapter?.inspect(), lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
@@ -79,6 +81,7 @@ try {
   else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
   else if (gallery === 'frame-interaction') metadata = createFrameFixture(params.get('frameCase') || 'drag')
+  else if (gallery === 'eraser') metadata = createEraserFixture(params.get('eraseCase') || 'multi')
   else if (gallery === 'creation') metadata = createCreationFixture()
   else if (gallery === 'connection-editing') metadata = createConnectionEditingFixture()
   else if (gallery === 'note-editing') metadata = createNoteEditingFixture()
@@ -116,7 +119,7 @@ try {
   // Observation counter proves pointer hit queries do not serialize the board.
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
-  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), toolIds: gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), toolIds: metadata.eraserFixture ? (params.get('limited') === '1' ? ['select'] : ['select', 'hand', 'draw', 'highlight', 'eraser']) : gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), textEditing: {
     onChange: (content, selection) => interaction.editText({ type: 'update', content, selection }),

@@ -5,6 +5,7 @@ import { checkedScribble, ScribbleOverlay } from './scribble-overlay.js'
 import { checkedConnectionOverlay, ConnectionOverlay } from './connection-overlay.js'
 import { checkedSnapGuides, SnapGuides } from './snap-guides.js'
 import { checkedGrid } from './grid.js'
+import { checkedEraser, EraserOverlay } from './eraser-overlay.js'
 const overlayStyle = Object.freeze({ position: 'absolute', inset: 'var(--spacing-none)', pointerEvents: 'none', transformOrigin: '0 0' })
 const itemStyle = Object.freeze({ position: 'absolute', left: 'var(--spacing-none)', top: 'var(--spacing-none)', transformOrigin: '0 0' })
 
@@ -12,6 +13,7 @@ export function checkedOverlays(value) {
   if (!Array.isArray(value)) throw new Error('覆盖层需要描述数组。')
   return Object.freeze(value.map(item => {
     if (item?.kind === 'scribble') return checkedScribble(item)
+    if (item?.kind === 'eraser') return checkedEraser(item)
     if (item?.kind === 'snap-guides') return checkedSnapGuides(item)
     if (item?.kind === 'grid') return checkedGrid(item)
     if (['connection', 'snap', 'note'].includes(item?.kind)) return checkedConnectionOverlay(item)
@@ -42,6 +44,7 @@ export function CanvasOverlays({ camera, overlays, reduceMotion }) {
     items.map((item, i) => {
       if (item.kind === 'grid') return null // Grid lives below the shape world.
       if (item.kind === 'scribble') return h(ScribbleOverlay, { key: `scribble:${i}`, item, zoom: view.z })
+      if (item.kind === 'eraser') return h(EraserOverlay, { key: `eraser:${i}`, item, zoom: view.z })
       if (item.kind === 'snap-guides') return h(SnapGuides, { key: `snap-guides:${i}`, item, zoom: view.z })
       if (['connection', 'snap', 'note'].includes(item.kind)) return h(ConnectionOverlay, { key: `${item.kind}:${item.id || i}`, item, zoom: view.z })
       const brush = item.kind === 'marquee', stroke = `var(--spacing-overlay-${brush ? 'brush' : 'selection'}-stroke)`

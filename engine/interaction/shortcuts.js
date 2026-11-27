@@ -29,6 +29,7 @@ export const canvasShortcutBindings = Object.freeze([
   binding('draw', ['d'], { ...plain, group: 'draw', tool: 'draw' }),
   binding('draw-alias', ['b', 'x'], { ...plain, shift: undefined, group: 'draw', tool: 'draw' }),
   binding('highlight', ['d'], { ...plain, shift: true, group: 'draw', tool: 'highlight' }),
+  binding('tool-eraser', ['e'], { ...plain, tool: 'eraser' }),
   binding('create-rectangle', ['r'], { ...plain, group: 'creation', tool: 'geo', geo: 'rectangle' }),
   binding('create-ellipse', ['o'], { ...plain, group: 'creation', tool: 'geo', geo: 'ellipse' }),
   binding('create-geo', ['g'], { ...plain, group: 'creation', tool: 'geo' }),

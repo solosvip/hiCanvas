@@ -236,6 +236,10 @@ npm run renderer:smoke
 
 手绘验证使用同一隔离宿主的 `/?gallery=draw-input`：D/B/X 画笔，Shift+D 荧光笔，Shift 自由／直线接段，Esc 丢弃当前未提交笔画；检测到笔输入后可用「退出手写笔模式」恢复鼠标。该合成图鉴只保存在内存中，刷新还原，支持整笔撤销和重做。设置 `HICANVAS_TEST_ELECTRON` 指向已有 Electron 可执行文件并登记专用端口后，运行 `HICANVAS_DRAW_PORT=43398 node tools/renderer-preview/draw-check.mjs`；原生手绘、CDP pen 压感、真实退出按钮、叠色和三档缩放结果写入 `.scratch/draw-smoke/`。高频硬件采样与真实手写板仍需人工验收。
 
+橡皮擦（#130）：在 `toolIds` 开放 `eraser` 后，画布按 E 进入；普通点按多层，Mod（Command/Ctrl）点按顶层，移动超过4屏幕px后按整段累积多层，命中容差8屏幕px随视角反向换算。完全透明对象也可擦，锁定对象及锁定祖先跳过；未聚焦组提升到整组，命中未锁子对象时仍级联删除锁定兄弟。画框只以边线参与擦除，子对象按可见裁剪几何命中。按住期间文档不变；松手一次既有删除命令、一次事务；Esc、切工具、失焦或pointer_cancel取消且不占撤销。远端改动命中目标、后代或相关绑定时拒绝本次擦除，无关改动保留；网络响应丢失只重读，不重复删除。
+
+会话公开 `erasingIds` 和 `eraser`，后者经 `overlays` 输出 `{kind:'eraser',ids,points,tailScale,bounds}` 纯值；`setOverlays` 校验、复制冻结并按ID订阅，只淡化命中根的普通树和荧光背景树，不改Store；原记录opacity乘DESIGN淡化令牌的alpha，挂载时解析，令牌变更后需重新挂载。尾迹宽度来自DESIGN令牌并保持屏幕尺寸；有界点列和100ms收尾是有意近似，不能当成旧版的精确寿命/缓动。合成图鉴 `/?gallery=eraser`，另有 `eraseCase=group/frame/geometry/half/empty`；只在内存编辑，刷新还原。登记全量时段和专用端口、设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_ERASER_PORT=43390 node tools/renderer-preview/eraser-check.mjs`，原生输入与截图在 `.scratch/eraser-smoke/`。真实系统失焦、设备手感及功能清单中的差异留用户集中验收；正式界面尚未切换。
+
 文字合成图鉴用 `/?gallery=text-editing`，完整格式保留样本用 `/?gallery=text-formatted`：双击文字、几何、箭头标签或画框标题进入编辑，选中后 Enter 也可进入；双击空白直接写字，T 点击自动宽、长拖固定宽。Esc、Mod+Enter 和画布外部点击保存当前会话，画框标题也支持普通 Enter；组字期间不完成。清空普通文字会删除它，清空标签或标题只清字段；新空文字退出不留历史。一次编辑、样式切换和自动大小合为一次画板撤销；编辑内撤销由文本视图处理。保存等待期间只读，失败恢复草稿。这里的 Esc 保存与画笔 Esc 丢弃分别遵循各自事务。
 
 便签合成图鉴用 `/?gallery=note-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `note` 后，N 或工具栏创建固定纸面便签，双击编辑。选中便签四边的「+」在邻位创建并编辑；编辑时 Tab/Shift+Tab 横向续建（尊重 RTL），Mod+Enter/Mod+Shift+Enter 向下/上续建，已有邻居直接复用。源文与一次键盘续建合为一次提交/撤销；下一张便签的输入另算一次。拖动单张便签时，在同层、同角度、同比例便签的相邻位置局部吸附，半径严格小于10 CSS px，Esc 取消移动及指示；这项既有局部策略不受对象吸附偏好或 Ctrl/Meta 影响。

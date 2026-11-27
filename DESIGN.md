@@ -10,6 +10,8 @@ colors:
   minimap-viewport: "#0000001a"
   overlay-crop-ghost: "#0000001a"
   overlay-scribble-stroke: "#2f80ed52"
+  overlay-eraser-preview: "#00000052"
+  overlay-eraser-stroke: "#0000000a"
   grid-dot: "#6e6e6e"
   secondary: "#596170"
   tertiary: "#0ea5e9"
@@ -34,6 +36,7 @@ spacing:
   overlay-selection-stroke: 2px
   overlay-brush-stroke: 1px
   overlay-scribble-stroke: 12px
+  overlay-eraser-stroke: 12px
   overlay-handle-size: 10px
   overlay-handle-stroke: 2px
   overlay-handle-hit: 12px
@@ -120,6 +123,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 线条和连接箭头的选中态显示圆形端点与段间控制柄，复用 overlay-handle-size、overlay-handle-stroke、primary、surface 和 full 圆角令牌；尺寸及点击范围保持屏幕 CSS 像素。单选连接线使用这些控制柄，多选仍用共同选择框。控制点吸附的临时指示使用同尺寸主色圆点，松手或取消即消失，不写入画板。
 
 选择动作的合成预览将无快捷键的拉伸、堆排、紧凑排布、全部解锁和适配画框按钮放进既有视角工具栏，沿用现有按钮、禁用、焦点与间距令牌。可用状态由编辑层提供，不新增正式菜单或视觉令牌。
+
+橡皮擦预览不改作品透明度记录：命中根的渲染透明度为原记录透明度乘 overlay-eraser-preview 的 alpha，普通绘制树与荧光背景树同步，避免后代重复淡化。alpha在挂载时从八位十六进制CSS令牌解析，修改令牌后重新挂载生效；不对零尺寸组使用mask。尾迹使用 overlay-eraser-stroke 屏幕宽度、圆头；点列有界并随时间收短，停住保留末点，松手短暂收尾后消失。旧版精确寿命、尖尾及缓动未证实，本轮使用100ms和圆头折线近似，作为有意差异集中验收。尾迹色值由2026-11-27两组独立旧版白底截图与新版同位置对照确定：旧版头部合成RGB(246,246,246)，新版(245,245,245)，逐通道差1；使用overlay-eraser-stroke色令牌，永久原生守卫允许逐通道最多差3，不以Canvas反预乘RGBA推断色值。
 
 画笔与荧光笔的合成编辑预览沿用既有工具按钮、焦点和禁用样式；当前工具用已有按下态标示。检测到触控笔后露出「退出手写笔模式」按钮，退出即隐藏；笔画颜色、粗细、压力与荧光叠色是画板文档数据，复用既有笔迹渲染，不新增应用界面令牌。
 

@@ -41,9 +41,9 @@ export function createSpatialIndex(initial, pageId) {
     }
     return result
   }
-  function visible(id) {
+  function visible(id, includeTransparent = false) {
     const lineage = chain(id), root = lineage.at(-1)
-    return Boolean(root && root.parentId === page && lineage.every(r => r.opacity !== 0))
+    return Boolean(root && root.parentId === page && (includeTransparent || lineage.every(r => r.opacity !== 0)))
   }
   function pagePolygon(id, padding = 0) {
     const bounds = getShapeBounds(records[id], connections)
@@ -70,7 +70,9 @@ export function createSpatialIndex(initial, pageId) {
     unindex(id)
     const record = records[id], bounds = record?.type !== 'group' && getBounds(id)
     if (!bounds || ![bounds.x, bounds.y, bounds.w, bounds.h].every(Number.isFinite)) return
-    const padding = record.type === 'geo' ? strokeWidth(record.props) / 2 : 0
+    // Connection bounds describe center paths/caps, not their painted stroke.
+    // Index actual ink too: at high zoom the hit radius can be thinner than it.
+    const padding = ['geo', 'line', 'arrow'].includes(record.type) ? strokeWidth(record.props) / 2 : 0
     const box = { x: bounds.x - padding, y: bounds.y - padding, w: bounds.w + padding * 2, h: bounds.h + padding * 2 }
     let polygon = pagePolygon(id, padding)
     for (const ancestor of chain(id).slice(1)) if (ancestor.type === 'frame') polygon = clipPolygon(polygon, pagePolygon(ancestor.id))
@@ -105,17 +107,17 @@ export function createSpatialIndex(initial, pageId) {
     }
     return left.length - right.length
   }
-  function hitsAtPoint(point, tolerance = 0, { geoInterior = false } = {}) {
+  function hitsAtPoint(point, tolerance = 0, { geoInterior = false, includeTransparent = false } = {}) {
     const ids = candidates({ x: point.x - tolerance, y: point.y - tolerance, w: tolerance * 2, h: tolerance * 2 }).sort(paintOrder).reverse()
     return ids.filter(id => {
       const record = records[id], shape = geoInterior && record.type === 'geo' ? { ...record, props: { ...record.props, fill: 'solid' } } : record
-      return visible(id) && visiblePoint(id, point) && pointInShape(shape, pageToShapePoint(snapshot, id, point), tolerance, connections)
+      return visible(id, includeTransparent) && visiblePoint(id, point) && pointInShape(shape, pageToShapePoint(snapshot, id, point), tolerance, connections)
     })
   }
   function hitTest(point, tolerance = 0) { return hitsAtPoint(point, tolerance)[0] || null }
-  function query(box, { ordered = false } = {}) {
+  function query(box, { ordered = false, includeTransparent = false } = {}) {
     const area = boxPolygon(box)
-    const result = candidates(box).filter(id => visible(id) && clipPolygon(entries.get(id).polygon, area).length > 0)
+    const result = candidates(box).filter(id => visible(id, includeTransparent) && clipPolygon(entries.get(id).polygon, area).length > 0)
     return ordered ? result.sort(paintOrder).reverse() : result
   }
   function applyChanges(changes) {
