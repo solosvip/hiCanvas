@@ -52,14 +52,18 @@ export function checkedDash(dash = 'solid') {
 }
 
 export function parseOptions(args, env = process.env) {
-  const options = { sizes: [500, 2000, 5000], runs: 3, durationMs: 2500, port: Number(env.HICANVAS_PORT), renderer: 'legacy', dash: 'solid', output: '.scratch/perf-results', loadNote: '未注明其他任务负载' }
-  const names = { '--sizes': 'sizes', '--runs': 'runs', '--duration-ms': 'durationMs', '--port': 'port', '--preview-port': 'previewPort', '--renderer': 'renderer', '--dash': 'dash', '--output': 'output', '--load-note': 'loadNote' }
+  const options = { sizes: [500, 2000, 5000], runs: 3, durationMs: 2500, port: Number(env.HICANVAS_PORT), renderer: 'legacy', previewMode: 'editor', workload: 'canvas', dash: 'solid', output: '.scratch/perf-results', loadNote: '未注明其他任务负载' }
+  const names = { '--sizes': 'sizes', '--runs': 'runs', '--duration-ms': 'durationMs', '--port': 'port', '--preview-port': 'previewPort', '--renderer': 'renderer', '--preview-mode': 'previewMode', '--workload': 'workload', '--dash': 'dash', '--output': 'output', '--load-note': 'loadNote' }
   for (let i = 0; i < args.length; i += 2) {
     const key = names[args[i]], value = args[i + 1]
     if (!key || !value || value.startsWith('--')) throw new Error(`无效参数：${args[i]}`)
     options[key] = key === 'sizes' ? value.split(',').map(Number) : ['runs', 'durationMs', 'port', 'previewPort'].includes(key) ? Number(value) : value
   }
   checkedDash(options.dash)
+  if (!['editor', 'renderer'].includes(options.previewMode)) throw new Error('preview-mode 需要 editor 或 renderer。')
+  if (!['canvas', 'handles'].includes(options.workload)) throw new Error('workload 需要 canvas 或 handles。')
+  if (options.workload === 'handles' && (options.sizes.length !== 1 || options.sizes[0] !== 5000)) throw new Error('手柄测量只使用5000档。')
+  if (options.workload === 'handles' && options.previewMode !== 'editor') throw new Error('手柄测量需要真实编辑器。')
   if (!options.sizes.length || options.sizes.some(n => !Number.isInteger(n) || n < 10 || n > 10000) || new Set(options.sizes).size !== options.sizes.length) throw new Error('sizes 需要不重复的整数（10–10000）。')
   if (!Number.isInteger(options.runs) || options.runs < 1 || options.runs > 20) throw new Error('runs 需要 1–20。正式基线至少 3 次。')
   if (!Number.isInteger(options.durationMs) || options.durationMs < 500 || options.durationMs > 30000) throw new Error('duration-ms 需要 500–30000。')
@@ -76,6 +80,8 @@ export function measurementPlan({ renderer, sizes, runs }) {
   const renderers = renderer === 'both' ? ['legacy', 'preview'] : [renderer]
   return Array.from({ length: runs }, (_, i) => sizes.flatMap(count => renderers.map(renderer => ({ renderer, count, repeat: i + 1 })))).flat()
 }
+
+export const measuredPhases = options => options.workload === 'handles' ? ['resize'] : ['pan', 'zoom', 'drag']
 
 export function median(values) {
   if (!values.length || values.some(n => !Number.isFinite(n))) throw new Error('中位数需要非空的有限数值。')

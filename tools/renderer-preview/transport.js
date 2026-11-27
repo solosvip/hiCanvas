@@ -3,7 +3,7 @@ import { executeCanvasCommands, recordCanvasTransaction, undoCanvasTransaction, 
 // Used only by the original fixture/gallery preview. Persistent editing uses
 // the same interaction/runtime through the isolated HTTP host below.
 export function memoryTransport(snapshot) {
-  let saved = snapshot, revision = 0, history
+  let saved = snapshot, revision = 0, history, commitCalls = 0
   const read = async () => ({ snapshot: saved, revision: String(revision) })
   const accept = result => { saved = result.snapshot; revision++; return { ...result, revision: String(revision) } }
   const check = expected => { if (expected !== String(revision)) throw Object.assign(new Error('合成画板版本已改变。'), { code: 'conflict' }) }
@@ -14,8 +14,9 @@ export function memoryTransport(snapshot) {
     return accept(result)
   }
   return {
-    read, subscribe: () => () => {},
+    read, subscribe: () => () => {}, getCommitCount: () => commitCalls,
     async commit({ expectedRevision, commands, actor }) {
+      commitCalls++
       check(expectedRevision)
       const result = executeCanvasCommands(saved, commands)
       history = recordCanvasTransaction(history, actor, result.changes)

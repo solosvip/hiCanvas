@@ -1,4 +1,4 @@
-import { median, measurementPlan } from './config.mjs'
+import { median, measurementPlan, measuredPhases } from './config.mjs'
 
 export function summarizeSamples(samples, options) {
   const planned = measurementPlan(options)
@@ -8,7 +8,7 @@ export function summarizeSamples(samples, options) {
   }
   const summary = planned.filter(s => s.repeat === 1).map(({ renderer, count }) => {
     const group = samples.filter(s => s.renderer === renderer && s.count === count)
-    const phases = Object.fromEntries(['pan', 'zoom', 'drag'].map(name => {
+    const phases = Object.fromEntries(measuredPhases(options).map(name => {
       const applicable = group.map(s => s.phases[name].applicable !== false)
       if (applicable.some(value => value !== applicable[0])) throw new Error(`各轮操作适用性不一致：${renderer}/${count}/${name}`)
       return [name, !applicable[0] ? { applicable: false, reason: group[0].phases[name].reason }
@@ -18,7 +18,7 @@ export function summarizeSamples(samples, options) {
   })
   const comparison = options.renderer === 'both' ? options.sizes.map(count => {
     const legacy = summary.find(s => s.renderer === 'legacy' && s.count === count), preview = summary.find(s => s.renderer === 'preview' && s.count === count)
-    return { count, openRatio: preview.medianOpenMs / legacy.medianOpenMs, panPaintRatio: preview.phases.pan.paint.medianFps / legacy.phases.pan.paint.medianFps, zoomPaintRatio: preview.phases.zoom.paint.medianFps / legacy.phases.zoom.paint.medianFps, dragPaintRatio: preview.phases.drag.applicable === false || legacy.phases.drag.applicable === false ? null : preview.phases.drag.paint.medianFps / legacy.phases.drag.paint.medianFps }
+    return { count, openRatio: preview.medianOpenMs / legacy.medianOpenMs, ...Object.fromEntries(measuredPhases(options).map(name => [`${name}PaintRatio`, preview.phases[name].applicable === false || legacy.phases[name].applicable === false ? null : preview.phases[name].paint.medianFps / legacy.phases[name].paint.medianFps])) }
   }) : []
   return { summary, comparison }
 }
