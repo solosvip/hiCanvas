@@ -12,6 +12,9 @@
   --color-overlay-eraser-stroke: #0000000a;
   --color-overlay-laser-stroke: #ff0000b3;
   --color-grid-dot: #6e6e6e;
+  --color-shape-link-background: #f9fafb;
+  --color-shape-link-ink: #2e2e2e;
+  --color-shape-link-selected: #3182ed;
   --color-secondary: #596170;
   --color-tertiary: #0ea5e9;
   --color-neutral: #f7f5ef;
@@ -33,6 +36,10 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
+  --spacing-shape-link-hit: 44px;
+  --spacing-shape-link-icon: 15px;
+  --spacing-shape-link-tile: 32px;
+  --spacing-shape-link-inset: 6px;
   --spacing-overlay-selection-stroke: 2px;
   --spacing-overlay-brush-stroke: 1px;
   --spacing-overlay-scribble-stroke: 12px;

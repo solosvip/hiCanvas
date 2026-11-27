@@ -10,6 +10,7 @@ import { CanvasGrid } from './grid.js'
 import { createTextEditingView } from './text-editing-view.js'
 import { textEditingStyle } from './text-editing-style.js'
 import { createEraserPreview } from './eraser-preview.js'
+import { ShapeLinks, createShapeLinkState, shapeLinkHitSize } from './shape-links.js'
 
 // The caller owns the Store and input events. Coordinates are CSS pixels
 // relative to element's upper-left corner. This mount never writes to the Store.
@@ -17,6 +18,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   if (!element?.ownerDocument || !store?.getStoreSnapshot) throw new Error('渲染器需要页面元素和模型 Store。')
   if (typeof reduceMotion !== 'boolean') throw new Error('减少动画偏好需要布尔值。')
   const view = atom('renderer camera', checkedCamera(camera)), overlays = atom('renderer overlays', checkedOverlays([]))
+  const links = createShapeLinkState(() => shapeLinkHitSize(element))
   const eraserPreview = createEraserPreview(store, element.ownerDocument.defaultView.getComputedStyle(element).getPropertyValue('--color-overlay-eraser-preview'))
   const host = element.ownerDocument.createElement('div')
   Object.assign(host.style, { position: 'relative', width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none', textSpacingTrim: 'space-all', textAutospace: 'no-autospace' })
@@ -42,7 +44,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   try { flushSync(() => root.render(createElement(Fragment, null,
     createElement('style', null, textEditingStyle),
     createElement('style', null, '[data-canvas-renderer] [contenteditable] { text-spacing-trim: space-all; text-autospace: no-autospace; word-break: normal; overflow-wrap: break-word; white-space: pre-wrap; tab-size: 2; }'),
-    createElement(CanvasGrid, { camera: view, overlays }), createElement(CanvasWorld, { scene, camera: view }), createElement(CanvasOverlays, { camera: view, overlays, reduceMotion: scene.reduceMotion })))) }
+    createElement(CanvasGrid, { camera: view, overlays }), createElement(CanvasWorld, { scene, camera: view }), createElement(CanvasOverlays, { camera: view, overlays, reduceMotion: scene.reduceMotion }), createElement(ShapeLinks, { camera: view, links: links.state })))) }
   catch (error) { unmount(); throw error }
   const assertActive = () => { if (!active) throw new Error('渲染器已卸载。') }
   return Object.freeze({
@@ -58,6 +60,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
     },
     setVideoInteraction(value) { assertActive(); scene.videoState.set(value) },
     setEmbedInteraction(id) { assertActive(); if (id !== null && typeof id !== 'string') throw new Error('嵌入互动需要对象ID或null。'); scene.embedInteraction.set(id) },
+    setShapeLinks(value) { assertActive(); links.set(value) },
     setOverlays(value) { assertActive(); const next = checkedOverlays(value); scene.eraserPreview.set(next); overlays.set(next) },
     setReduceMotion(value) { assertActive(); if (typeof value !== 'boolean') throw new Error('减少动画偏好需要布尔值。'); scene.reduceMotion.set(value) },
     hitTest(point) { assertActive(); return hitTestCanvas(store.getStoreSnapshot(), point, view.get(), scene.pageId) },

@@ -49,3 +49,6 @@ html, body { margin: var(--spacing-none); overflow: hidden; background: var(--co
 .embed-dialog p { width: 100%; color: var(--color-secondary); }
 .embed-dialog :disabled { color: var(--color-secondary); cursor: default; }
 #navigation .embed-dialog button[type='submit']:not(:disabled) { background: var(--color-on-surface); color: var(--color-surface); }
+.shape-link-dialog form { display: grid; gap: var(--spacing-sm); }
+.shape-link-dialog input { width: 100%; box-sizing: border-box; }
+.shape-link-dialog [aria-invalid="true"] { outline: var(--spacing-overlay-selection-stroke) solid var(--color-error); }
