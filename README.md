@@ -67,6 +67,18 @@ export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
 幻灯片子页只发前后方向，父页定页码，每次加载更新通道，同页突发只接受一次有效翻页；交互判定保留应用与旧 Play.html 各自的规则。离线播放器使用 opaque 沙箱，脚本、表单、弹窗和外部网络权限与应用相同，字体、ESM和媒体继续遵守浏览器CORS。离线指无需 hiCanvas 服务，外部在线引用原样保留，并通过返回值 `externalResources` 和既有导出按钮提示列出。打包只读取本画板授权的静态标签、CSS及模块引用；不枚举运行时拼接的地址，缺失、越界、循环或超限依赖在写文件前明确失败。每页HTML最多5 MiB，整套最多200页、20 MiB原始HTML；资源集合及最终展开页各限32 MiB，下载使用base64保持在既有请求上限内。固定 `offline-slides.js` 源码与桌面预打包保持逐字节一致。 模块依赖识别复用已锁定的 Babel parser，其 [MIT 许可原文](licenses/babel-parser-MIT.txt) 随桌面资源分发。
 
 
+## 书签网页信息接口
+
+本机客户端可向 `POST /api/bookmark/metadata` 发送 `application/json` 的 `{"url":"https://…"}`，带现有 `x-hicanvas-client: 1` 头，并遵守父服务的本机 Host、同源 Origin 和跨站检查。只接受 url 字段，不需要画板参数；接口不读取或修改画板和设置。成功返回且只返回 `{title, description, url}` 三个字符串，响应不缓存；url 是最终响应或其同源 canonical，空标题和描述也属于有效结果。自动补齐、刷新按钮和写回画板另由 #221 接入。
+
+只抓取公开 HTTP/HTTPS 默认端口。每跳完整检查 DNS 并固定连接 IP，最多三次跳转，禁止 HTTPS 降级；固定发送不含个人或机器信息的 `User-Agent: Mozilla/5.0 (compatible; hiCanvas-bookmark)`，不带 Cookie、登录身份、来源或代理配置，不加载脚本、图片、图标和子资源。任务总限时5秒，整个跳转链最多1MiB，头部扫描最多128KiB；宿主最多同时4个任务、滚动60秒最多接受20个任务，没有等待队列或自动重试。客户端断开或服务关闭会取消任务。
+
+错误体是 `{error:{code,message}}`：400/413/415 表示请求无效、过大或类型不符；422 表示目标地址、跳转、响应大小、类型、压缩或 HTML 不符合规则；429/503 表示次数或并发额度不足（带 Retry-After）；502/504 表示读取失败或超时。原有父服务的403门禁格式保持不变。错误不回传网址查询参数、响应正文、解析地址或内部连接细节。
+
+已知限制：仅支持不压缩的 HTML 响应；即使请求 identity，网站仍返回压缩数据时也失败。只提取真实头部内的标题和描述；依赖登录、客户端脚本、非默认端口、TextDecoder不识别或字节无效的字符集、过大头部或连接异常中断的页面无法补齐。正常HTTP结束即使省略head闭合也保留字段；noscript/template内容不提供元数据。常见 fake-ip 代理把域名解析成 `198.18.0.0/15`，该段照常拒绝；需要 HTTP 代理才能上网的网络同样不可用，不绕过检查。独立 `dns.Resolver` 不读取 `/etc/hosts`，在 macOS 上取得的 DNS 服务器也可能与系统设置不同。本轮使用合成 DNS/套接字响应验证，真实网站在线兼容性尚未验收。
+
+定向回归：`node --test server/bookmark-address.test.mjs server/bookmark-head.test.mjs server/bookmark-fetch.test.mjs server/bookmark-routes.test.mjs`（Node24）。测试只替换 DNS、底层套接字及时间，保留生产地址策略和真实 HTTP 解析器；检查拒绝地址零目标连接、固定IP/Host/SNI、跳转、超时与取消、限流、HTML 解析及原父服务门禁。完整检查仍用下方统一入口；交付前还须独立运行 `npm run renderer:smoke`。
+
 ## 画板保存在哪里
 
 默认在 `~/Documents/hiCanvas/canvas/`。画板索引在 `conversations/index.json`，各画板的 `state.json` 一起保存画板文档与版本；图片、选择项、视角也归各自画板。保存锁由 Node 24 内置 SQLite 管理，进程异常退出后自动释放，不需安装数据库；画板内容仍保存在 JSON。备份时复制整个 `canvas/` 文件夹。
