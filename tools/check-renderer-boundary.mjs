@@ -11,7 +11,7 @@ const textPackages = /^(?:fontkit|linebreak|unicode-segmenter)(?:\/|$)/
 const reactPackages = /^(?:react|react-dom)(?:\/|$)/
 const captureImports={
   'film-video-frames.js':['mediabunny'],
-  'capture-render.js':['html2canvas/dist/lib/dom/document-cloner.js'],
+  'capture-render.js':['html2canvas/dist/lib/dom/document-cloner.js','html2canvas/dist/lib/render/font-metrics.js'],
   'capture-clip-fix.js':['html2canvas/dist/lib/index.js','html2canvas/dist/lib/render/stacking-context.js','html2canvas/dist/lib/render/effects.js','html2canvas/dist/lib/render/bound-curves.js','html2canvas/dist/lib/render/path.js'],
 }
 const textViewPackages = /^@tiptap\/(?:core|starter-kit|extension-highlight|extension-code|pm)(?:\/|$)/

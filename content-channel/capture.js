@@ -1,5 +1,5 @@
 import {renderHtmlDraftDocument} from './capture-render.js'
-import {createCaptureRealm} from './capture-realm.js'
+import {createCaptureRealm,waitForCaptureFonts} from './capture-realm.js'
 import {captureSize} from './capture-protocol.js'
 
 // This module is loaded again only inside the child-owned, same-origin neutral
@@ -23,7 +23,7 @@ export async function captureDocument(host,options,signal,{film=false,videoFrame
   try{
     aborted()
     if(!film){
-      const assets=[doc.fonts?.ready]
+      const assets=[waitForCaptureFonts(doc,signal)]
       for(const image of Array.from(doc.images||[])){
         if(image.complete){assets.push(image.decode?.().catch(()=>{}));continue}
         assets.push(new Promise(resolve=>{
@@ -52,7 +52,7 @@ export async function captureDocument(host,options,signal,{film=false,videoFrame
     aborted()
     // html2canvas cannot stop its clone/render pass. Retain the single capture
     // slot until it finishes, then discard pixels on cancel without transferring.
-    canvas=await realm.render(doc,{...options,freezeAtCurrentFrame:film,videoFrames})
+    canvas=await realm.render(doc,{...options,freezeAtCurrentFrame:film,videoFrames,captureSignal:signal})
     aborted()
     const result={width:canvas.width,height:canvas.height,pixels:canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data.buffer}
     return result

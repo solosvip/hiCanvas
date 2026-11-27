@@ -30,6 +30,9 @@ export async function createContentEditController(host,{instanceId,parentOrigin,
   let editor=null,offeredRevision=null
   function serialize(document){
     const html=serializeCowartHtmlDraftDocument(document,root=>{
+      // Capturing and editing can overlap; never persist capture-only nodes.
+      // Ordinary data-html2canvas-ignore content belongs to the generated page.
+      root.querySelectorAll('[data-hicanvas-capture-realm]').forEach(node=>node.remove())
       // Only the known injected bridge is removed. Other forbidden runtime
       // remnants fail validation rather than silently becoming saved content.
       for(const script of root.querySelectorAll('script[src]')){

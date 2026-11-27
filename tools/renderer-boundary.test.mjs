@@ -63,6 +63,18 @@ test('共用通道只经公开入口使用，内部不得反向依赖旧界面�
       await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
     }
     await writeFile(join(root,'content-channel/film-video-frames.js'),'export const video=1')
+    for(const [file,dependency]of [
+      ['protocol.js','html2canvas/dist/lib/render/font-metrics.js'],
+      ['capture-clip-fix.js','html2canvas/dist/lib/render/font-metrics.js'],
+      ['capture-render.js','html2canvas/dist/lib/render/other.js'],
+      ['capture-render.js','html2canvas/dist/lib/render/canvas/canvas-renderer.js'],
+    ]){
+      await writeFile(join(root,'content-channel',file),`import ${JSON.stringify(dependency)}`)
+      await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
+      await writeFile(join(root,'content-channel',file),'export const clean=1')
+    }
+    await writeFile(join(root,'content-channel/capture-render.js'),"import 'html2canvas/dist/lib/render/font-metrics.js'")
+    await checkRendererBoundary({root})
     await mkdir(join(root,'content-channel/nested'))
     await writeFile(join(root,'content-channel/nested/hidden.js'),"import 'react'")
     await assert.rejects(checkRendererBoundary({root}),/内容通道越界/)
