@@ -35,6 +35,8 @@ import { getShapeTextLayout, createConnectionContext } from '../../renderer/geom
 import { createPreviewClipboard } from './clipboard.js'
 import { observeEditorTarget } from '../perf/editor-observation.js'
 import { createExternalClipboardProbe } from './external-clipboard-probe.js'
+import { attachEmbedsUi } from './embeds-ui.js'
+import { createEmbedsFixture } from './embeds-fixture.js'
 
 let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0, dismissedRuntimeError = null
 const visibleRuntimeError = () => { const error = session?.state.get().lastError; return error !== dismissedRuntimeError ? error : null }
@@ -51,6 +53,8 @@ const getState = () => {
     snappingPreferences: state?.snappingPreferences && { ...state.snappingPreferences },
     textEditing: state?.textEditing && structuredClone(state.textEditing),
     imageAltEditing: state?.imageAltEditing && structuredClone(state.imageAltEditing),
+    embedEditing: state?.embedEditing && structuredClone(state.embedEditing),
+    ...(metadata?.embedsFixture && { embedRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'asset'].includes(record.typeName))) }),
     ...(metadata?.imageImportFixture && session && { imageRecords: structuredClone(session.store.allRecords().filter(r => ['shape', 'asset'].includes(r.typeName))) }),
     ...(metadata?.connectionEditingFixture && { connectionRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'binding'].includes(record.typeName))) }),
     ...(metadata?.noteEditingFixture && { noteRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'user'].includes(record.typeName))) }),
@@ -82,6 +86,7 @@ try {
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['videos', 'image-import'].includes(gallery)) { const response = await fetch(`/__renderer_fixture?gallery=${gallery}`); if (!response.ok) throw new Error('媒体夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
+  else if (gallery === 'embed-editing') metadata = createEmbedsFixture()
   else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
   else if (gallery === 'frame-interaction') metadata = createFrameFixture(params.get('frameCase') || 'drag')
@@ -154,6 +159,8 @@ try {
   if (creationUi) disposers.push(() => creationUi.dispose())
   const actionsUi = gallery === 'selection-actions' || metadata.clipboardFixture ? attachActionsUi(navigation.element, host, interaction, showError, metadata.clipboardFixture) : null
   if (actionsUi) disposers.push(() => actionsUi.dispose())
+  const embedsUi = attachEmbedsUi(navigation.element, host, interaction, showError, metadata.embedsFixture === true)
+  disposers.push(() => embedsUi.dispose())
   const textUi = metadata.textEditingFixture ? attachTextUi(creationUi.element, interaction, session.store, showError) : null
   if (textUi) disposers.push(() => textUi.dispose())
   const stop = react('preview interaction view', () => {
@@ -161,6 +168,7 @@ try {
     renderer.setCamera(state.camera); renderer.setOverlays(state.overlays); renderer.setTextEditing(state.textEditing); renderer.setVideoInteraction(state)
     navigation.update(state); videos?.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); actionsUi?.update(); controls?.wake()
     minimap.update(state)
+    embedsUi.update(state, session.state.get().isSubmitting)
     // File I/O feedback must survive the background refresh for the same save.
     const submitting = session.state.get().isSubmitting
     // A new clipboard action dismisses the previous save's message even when

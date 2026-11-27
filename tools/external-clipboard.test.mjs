@@ -18,7 +18,13 @@ test('宿主纯文本解析保留段落和字面HTML，先识别自有格式且�
   assert.throws(() => parseExternalClipboard({ 'text/html': '<div data-tldraw>legacy</div>', 'text/plain': 'fallback' }), /旧版/)
   const ordinary = 'The format is "excalidraw/clipboard".'
   assert.equal(parseExternalClipboard({ 'text/plain': ordinary }).content.shapes[0].props.richText.content[0].content[0].text, ordinary)
-  assert.throws(() => parseExternalClipboard({ 'text/plain': '<iframe src="https://example.invalid/embed"></iframe>' }), /#138/)
+  const frame = { nodeType: 1, localName: 'iframe', namespaceURI: 'http://www.w3.org/1999/xhtml', textContent: '', childNodes: [], getAttribute: key => key === 'src' ? 'https://example.invalid/embed' : null }
+  const document = { implementation: { createHTMLDocument: () => ({ defaultView: null, createElement: () => ({ content: { nodeType: 11, childNodes: [frame] } }) }) } }
+  const fallback = parseExternalClipboard({ 'text/plain': '<iframe src="https://example.invalid/embed"></iframe>' }, { document })
+  assert.equal(fallback.content.shapes[0].type, 'bookmark')
+  assert.deepEqual(fallback.notice.counts, { bookmarkFallbacks: 1 })
+  const preferred = { ...formats, 'text/plain': '<iframe src="https://example.invalid/embed"></iframe>' }
+  assert.deepEqual(parseExternalClipboard(preferred, { document }), preferred)
   assert.throws(() => parseExternalClipboard({ 'text/plain': '{"type":"hicanvas/clipboard","version":' }), /内部/)
   assert.throws(() => parseExternalClipboard({ 'text/plain': '{"version":1,"type":"hicanvas/clipboard","shapes":[' }), /内部/)
   assert.throws(() => parseExternalClipboard({ 'text/plain': '{"version":1,"ty\\u0070e":"hicanvas/clipboard","shapes":[' }), /内部/)

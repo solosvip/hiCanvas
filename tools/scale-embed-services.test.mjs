@@ -9,9 +9,18 @@ import { resolveExternalEmbed } from '../renderer/embed-content.js'
 import { externalSamples } from './renderer-preview/external-samples.js'
 
 const baseline = JSON.parse(readFileSync(new URL('./fixtures/embed-resolution-hashes.json', import.meta.url), 'utf8'))
-test('提取来源识别后全部旧版样本的完整嵌入结果逐字不变', () => {
+test('统一地址后旧版完整嵌入结果不变，仅Figma内层URL按审定正确编码', () => {
   assert.equal(baseline.length, externalSamples.length)
-  externalSamples.forEach((sample, i) => assert.equal(createHash('sha256').update(JSON.stringify(resolveExternalEmbed(sample.input))).digest('hex'), baseline[i], sample.input))
+  externalSamples.forEach((sample, i) => {
+    const result = resolveExternalEmbed(sample.input)
+    if (sample.id === 'G06' && result) {
+      const input = new URL(sample.input), expected = input.pathname === '/embed' ? input.searchParams.get('url') : sample.input
+      assert.equal(new URL(result.src).searchParams.get('url'), expected)
+      // Preserve the old whole-result hash after substituting only the one
+      // approved address difference; service metadata/permissions remain exact.
+      assert.equal(createHash('sha256').update(JSON.stringify({ ...result, src: sample.src })).digest('hex'), baseline[i], sample.input)
+    } else assert.equal(createHash('sha256').update(JSON.stringify(result)).digest('hex'), baseline[i], sample.input)
+  })
 })
 
 test('编辑和渲染共用只读来源约束，Scratch 不可缩放，影片来源默认锁比例', () => {

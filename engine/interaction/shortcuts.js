@@ -17,6 +17,7 @@ export const canvasShortcutBindings = Object.freeze([
   binding('pan-key-gate', [], { phase: 'both', keyPrefix: 'Arrow', aliasOf: 'pan-direction', when: state => state.temporaryTool === 'hand' }),
   binding('pan-direction', ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'], { phase: 'both', when: state => state.temporaryTool === 'hand' }),
   binding('history', ['z'], { mod: true }),
+  binding('embed-open', ['i'], { mod: true, alt: false, shift: false, repeat: false }),
   binding('style-white', ['t'], { ...plain, alt: true, codes: ['KeyT'], group: 'style', patch: Object.freeze({ color: 'white' }) }),
   binding('style-fill', ['f'], { ...plain, alt: true, codes: ['KeyF'], group: 'style', patch: Object.freeze({ fill: 'fill' }) }),
   binding('style-lined-fill', ['f'], { ...plain, alt: true, shift: true, codes: ['KeyF'], group: 'style', patch: Object.freeze({ fill: 'lined-fill' }) }),

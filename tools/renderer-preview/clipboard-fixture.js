@@ -19,9 +19,9 @@ export function externalClipboardCases(origin) {
   const execute = 'globalThis.top.__hicanvasExternalExecuted++'
   return [
     { name: 'plain-paragraphs', formats: { 'text/plain': 'Hello\n\n<literal>' }, count: 1, text: 'Hello\n\n<literal>' },
-    { name: 'plain-url-stays-text', formats: { 'text/plain': 'https://example.invalid/ordinary-text' }, count: 1, text: 'https://example.invalid/ordinary-text' },
+    { name: 'plain-url-bookmark', formats: { 'text/plain': 'https://example.invalid/ordinary-text' }, count: 1, shapeType: 'bookmark', url: 'https://example.invalid/ordinary-text', size: [300, 46], noExternal: true },
     { name: 'plain-format-mention', formats: { 'text/plain': 'The format is "excalidraw/clipboard".' }, count: 1, text: 'The format is "excalidraw/clipboard".' },
-    { name: 'plain-iframe-code', formats: { 'text/plain': '<iframe src="https://example.invalid/embed"></iframe>' }, rejected: '#138' },
+    { name: 'plain-iframe-code', formats: { 'text/plain': '<iframe src="https://example.invalid/embed"></iframe>' }, count: 1, shapeType: 'bookmark', url: 'https://example.invalid/embed', size: [300, 46], notice: true, noExternal: true },
     { name: 'html-marks', formats: html('<p>First <strong>B<em>I</em></strong><br>last</p><p>next</p>'), count: 1, text: 'First BI\nlast\nnext', marks: true },
     { name: 'html-source-whitespace', formats: html('<div>\n  <p>A\n <b> B </b><i> C</i> &nbsp;D<br>  E</p>\n  <p>F</p>\n</div>'), count: 1, text: 'A B C \u00a0D\nE\nF' },
     { name: 'html-unknown-wrapper', formats: html(`<unknown data-x="private"><p onclick="${execute}" style="color:red" class="private">First <b>B</b><i>I</i> tail</p></unknown>`), count: 1, text: 'First BI tail' },
@@ -30,8 +30,8 @@ export function externalClipboardCases(origin) {
     { name: 'html-foreign-namespaces', formats: html(`<p>SAFE</p><svg xmlns="http://www.w3.org/2000/svg" onload="${execute}"><image href="${trap('svg')}"></image><foreignObject><p>HIDDEN</p></foreignObject></svg><math xmlns="http://www.w3.org/1998/Math/MathML"><mtext>HIDDEN</mtext></math>`), count: 1, text: 'SAFE' },
     { name: 'html-dangerous-links', formats: html('<p><a href="javascript:alert(1)">JS</a><a href="jav&#x09;ascript:alert(1)">TAB</a><a href="data:text/html,x">DATA</a><a href="file:///not-read">FILE</a><a href="/relative">REL</a><a href="//example.invalid">PROTO</a></p>'), count: 1, text: 'JSTABDATAFILERELPROTO' },
     ...['https://example.invalid', 'http://example.invalid', 'mailto:synthetic@example.invalid'].map((href, i) => ({ name: `html-valid-link-${i}`, formats: html(`<p><a href="${href}">link</a></p>`), rejected: '#150' })),
-    { name: 'html-iframe-srcdoc', formats: html(`<iframe src="${trap('frame')}" srcdoc="&lt;script&gt;${execute}&lt;/script&gt;&lt;img src='${trap('srcdoc')}'&gt;"></iframe>`), rejected: '#138' },
-    { name: 'html-iframe-script-only', formats: html(`<iframe srcdoc="&lt;script&gt;${execute}&lt;/script&gt;"></iframe>`), rejected: '#138' },
+    { name: 'html-iframe-srcdoc', formats: html(`<iframe src="https://clipboard-frame.example.invalid/" srcdoc="&lt;script&gt;${execute}&lt;/script&gt;&lt;img src='${trap('srcdoc')}'&gt;"></iframe>`), count: 1, shapeType: 'bookmark', url: 'https://clipboard-frame.example.invalid/', size: [300, 46], notice: true, noExternal: true },
+    { name: 'html-iframe-script-only', formats: html(`<iframe srcdoc="&lt;script&gt;${execute}&lt;/script&gt;"></iframe>`), rejected: 'iframe src', noExternal: true },
     { name: 'html-heading', formats: html('<h1>Heading</h1>'), rejected: '#150' },
     { name: 'html-list', formats: html('<ul><li>List</li></ul>'), rejected: '#150' },
     { name: 'html-rtl', formats: html('<p dir="rtl">ABC</p>'), rejected: '#150' },

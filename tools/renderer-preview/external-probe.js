@@ -28,7 +28,13 @@ export async function runExternalProbe() {
     const identities = new Map(bases.map(sample => [sample.id, { node: iframe(sample.id), instance: instance(iframe(sample.id)) }]))
     for (const sample of bases) {
       const node = iframe(sample.id), attrs = sample.attributes
-      check(node.getAttribute('src') === sample.src, `实际src与旧版不同：${sample.id}`)
+      let expected = sample.src
+      if (sample.id === 'G06') {
+        const encoded = new URL('https://www.figma.com/embed')
+        encoded.searchParams.set('embed_host', 'share'); encoded.searchParams.set('url', sample.input)
+        expected = encoded.href
+      }
+      check(node.getAttribute('src') === expected, `实际src与获批规范地址不同：${sample.id}`)
       check(node.getAttribute('sandbox') === attrs.sandbox && node.getAttribute('referrerpolicy') === attrs.referrerpolicy && node.getAttribute('allow') === attrs.allow && node.hasAttribute('allowfullscreen') === (attrs.allowfullscreen !== null), `iframe 权限与旧版不同：${sample.id}`)
       check(node.width === String(sample.size[0]) && node.height === String(sample.size[1]), `嵌入尺寸不同：${sample.id}`)
     }

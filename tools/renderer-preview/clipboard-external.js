@@ -1,6 +1,7 @@
-import { createExternalClipboardContent, decodeClipboardContent, EXTERNAL_CLIPBOARD_LIMITS as limits } from '../../engine/index.js'
+import { createExternalClipboardContent, decodeClipboardContent, planUrlInsertion, EXTERNAL_CLIPBOARD_LIMITS as limits } from '../../engine/index.js'
 import { hasClipboardType, parseExcalidrawClipboard } from './clipboard-excalidraw.js'
 import { parseClipboardHtml } from './clipboard-html.js'
+import { parseClipboardUrl } from './clipboard-url.js'
 
 const byteLength = text => new TextEncoder().encode(text).length
 
@@ -16,9 +17,8 @@ export function parseExternalClipboard(formats, { document } = {}) {
   const excal = parseExcalidrawClipboard(plain)
   if (excal) return { kind: 'external-content', placement: 'viewport-page', content: createExternalClipboardContent(excal.data), notice: excal.notice }
   if (byteLength(plain) > limits.plainBytes) throw new Error('外部纯文本超过大小上限。')
-  // Recognition only: an independent embed code is not silently pasted as
-  // prose. Its provider/creation policy belongs to #138, never this parser.
-  if (!html && /^\s*<iframe(?:\s|>)[\s\S]*<\/iframe\s*>\s*$/i.test(plain)) throw new Error('网页嵌入的粘贴入口由 #138 提供。')
+  const address = parseClipboardUrl({ 'text/plain': plain, 'text/html': html }, { document })
+  if (address) return { kind: 'external-content', placement: 'viewport-page', content: createExternalClipboardContent(address), notice: planUrlInsertion(address.url, address).notice }
   const richText = html ? parseClipboardHtml(html, document) : { type: 'doc', content: plain.replace(/\r\n?/g, '\n').split('\n').map(line => ({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] })) }
   return { kind: 'external-content', placement: 'default', content: createExternalClipboardContent({ type: 'text', richText }), notice: null }
 }
