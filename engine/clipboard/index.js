@@ -1,4 +1,5 @@
 export { createClipboardContent } from './content.js'
+export { createExternalClipboardContent, EXTERNAL_CLIPBOARD_LIMITS } from './external-content.js'
 export { encodeClipboardContent, decodeClipboardContent } from './format.js'
 export { validateClipboardContent, MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_RECORDS } from './validate.js'
 export { planClipboardPaste } from './placement.js'

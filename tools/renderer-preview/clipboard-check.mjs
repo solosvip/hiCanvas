@@ -5,6 +5,7 @@ import { access, mkdir, mkdtemp, readFile, writeFile, readdir, rm } from 'node:f
 import { constants } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { startInteractionPreview } from './service.mjs'
 
@@ -13,6 +14,12 @@ const executable = process.env.HICANVAS_TEST_ELECTRON
 if (!executable) throw new Error('先设置HICANVAS_TEST_ELECTRON，复用已安装的Electron。')
 await access(executable, constants.X_OK); await mkdir(output, { recursive: true })
 const run = await mkdtemp(join(output, 'run-'))
+async function sourceFingerprint() {
+  const hash = createHash('sha256')
+  for (const path of ['engine/index.js', 'engine/interaction/index.js', 'engine/interaction/clipboard.js', 'engine/clipboard/external-content.js', 'engine/clipboard/placement.js', 'tools/renderer-preview/main.js', ...['clipboard.js', 'clipboard-check.mjs', 'clipboard-smoke.mjs', 'clipboard-fixture.js', 'clipboard-external.js', 'clipboard-html.js', 'clipboard-excalidraw.js', 'external-clipboard-probe.js'].map(name => `tools/renderer-preview/${name}`)]) hash.update(path).update(await readFile(join(root, path)))
+  return hash.digest('hex')
+}
+const fingerprint = await sourceFingerprint()
 let preview, child, childClosed, closing
 const stop = new AbortController(), assertRunning = () => stop.signal.throwIfAborted()
 async function cleanup() {
@@ -52,8 +59,9 @@ try {
   await writeFile(join(output, 'host-denials.json'), JSON.stringify({ denied, unchanged: true }, null, 2))
   for (const mode of ['main-red', 'browser-red', 'frame-red', 'smoke']) {
     assertRunning()
+    assert.equal(await sourceFingerprint(), fingerprint, '平台证明和回归之间源码发生了变化。')
     const manifest = join(run, `${mode}.json`), result = join(run, `${mode}-result.json`)
-    await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(run, mode), output, result, mode }))
+    await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(run, mode), output, result, mode, fingerprint }))
     assertRunning()
     let childPid
     const code = await new Promise((yes, no) => {
@@ -69,12 +77,14 @@ try {
     const report = JSON.parse(await readFile(result, 'utf8'))
     await writeFile(join(output, `${mode}.json`), JSON.stringify(report, null, 2))
     assert.equal(report.pid, childPid); assert.equal(report.mode, mode)
+    assert.equal(report.fingerprint, fingerprint)
     if (mode === 'smoke') { assert.equal(code, 0); assert.equal(report.ok, true); assert.equal(report.violations.length, 0) }
     else {
       assert.notEqual(code, 0); assert.equal(report.ok, false)
       assert.deepEqual(report.violations, [{ 'main-red': 'electron.clipboard.readText', 'browser-red': 'browser.clipboard', 'frame-red': 'browser.execCommand' }[mode]])
     }
   }
+  assert.equal(await sourceFingerprint(), fingerprint, '验证结束时源码指纹变化。')
   assertRunning()
   console.log('剪贴板：三红一绿边界证明、宿主拒绝守卫及合成事件原生回归通过。')
 } finally { await cleanup() }

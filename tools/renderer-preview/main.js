@@ -33,8 +33,10 @@ import { memoryTransport, previewTransport } from './transport.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
 import { createPreviewClipboard } from './clipboard.js'
 import { observeEditorTarget } from '../perf/editor-observation.js'
+import { createExternalClipboardProbe } from './external-clipboard-probe.js'
 
-let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0
+let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0, dismissedRuntimeError = null
+const visibleRuntimeError = () => { const error = session?.state.get().lastError; return error !== dismissedRuntimeError ? error : null }
 const disposers = []
 const cleanup = () => { clearTimeout(cameraTimer); for (const dispose of disposers.splice(0).reverse()) { try { dispose() } catch { /* Continue releasing remaining preview resources. */ } } }
 const host = document.querySelector('#canvas'), status = document.querySelector('#status')
@@ -60,7 +62,7 @@ const getState = () => {
     ...(metadata?.frameInteractionFixture && { frameRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
     ...(metadata?.eraserFixture && { erasingIds: [...state.erasingIds], eraser: state.eraser && structuredClone(state.eraser), eraserRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, parentId: r.parentId, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, props: structuredClone(r.props), meta: structuredClone(r.meta), ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
-    revision: session?.state.get().revision, commitCalls: transport?.getCommitCount?.() ?? null, submitting: session?.state.get().isSubmitting || false, pasteAtCursor: state?.pasteAtCursor, clipboardBusy: state?.clipboardBusy || false, privateClipboard: clipboardAdapter?.inspect(), lastError: state?.lastError || session?.state.get().lastError || null,
+    revision: session?.state.get().revision, commitCalls: transport?.getCommitCount?.() ?? null, submitting: session?.state.get().isSubmitting || false, pasteAtCursor: state?.pasteAtCursor, clipboardBusy: state?.clipboardBusy || false, privateClipboard: clipboardAdapter?.inspect(), lastError: state?.lastError || visibleRuntimeError() || null, lastNotice: state?.lastNotice || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
     overlays: state ? structuredClone(state.overlays) : [], snapshotReads, renderedShapes: host.querySelectorAll('[data-shape-id]').length, imageCount: host.querySelectorAll('img').length, decodedImages })
 }
@@ -110,7 +112,7 @@ try {
   const actor = sessionStorage.getItem(actorKey) || `preview:${crypto.randomUUID()}`
   sessionStorage.setItem(actorKey, actor)
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
-  let hostError = null, wasSubmitting = false
+  let hostError = null, wasSubmitting = false, wasClipboardBusy = false
   const showError = error => { hostError = error; status.textContent = `操作失败：${error.message}` }
   clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true, onError: showError })
   session = await createEditorSession({ transport, actor })
@@ -120,6 +122,7 @@ try {
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
   interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), toolIds: metadata.eraserFixture ? (params.get('limited') === '1' ? ['select'] : ['select', 'hand', 'draw', 'highlight', 'eraser']) : gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  if (metadata.clipboardFixture) Object.defineProperty(window, '__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__', { value: createExternalClipboardProbe({ session, interaction, document, onError: showError }) })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), textEditing: {
     onChange: (content, selection) => interaction.editText({ type: 'update', content, selection }),
@@ -155,10 +158,14 @@ try {
     minimap.update(state)
     // File I/O feedback must survive the background refresh for the same save.
     const submitting = session.state.get().isSubmitting
-    if (submitting && !wasSubmitting) hostError = null
-    wasSubmitting = submitting
-    const error = state.lastError || session.state.get().lastError || hostError
-    const message = error ? `操作失败：${error.message}` : ready ? instructions : status.textContent
+    // A new clipboard action dismisses the previous save's message even when
+    // it needs no transaction (copy / all skipped). A new runtime error has a
+    // different identity and remains visible; runtime state itself is intact.
+    if (state.clipboardBusy && !wasClipboardBusy) dismissedRuntimeError = session.state.get().lastError
+    if (submitting && !wasSubmitting || state.clipboardBusy && !wasClipboardBusy) hostError = null
+    wasSubmitting = submitting; wasClipboardBusy = state.clipboardBusy
+    const error = state.lastError || visibleRuntimeError() || hostError
+    const message = error ? `操作失败：${error.message}` : state.lastNotice?.message || (ready ? instructions : status.textContent)
     if (status.textContent !== message) status.textContent = message
     clearTimeout(cameraTimer)
     if (metadata.persistent) cameraTimer = setTimeout(() => { void transport.saveCamera({ ...metadata.viewState, camera: state.camera }).catch(showError) }, 200)
