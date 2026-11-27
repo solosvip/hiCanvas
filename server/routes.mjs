@@ -12,12 +12,14 @@ import { createCanvasMedia } from './canvas-media.mjs'
 import { createAgentRequests } from './agent-requests.mjs'
 import { saveExport } from './exports.mjs'
 import { createContentRoutes } from './content-routes.mjs'
+import { createClipboardAssets } from './clipboard-assets.mjs'
 
 export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir } = {}) {
   const events = getCanvasEvents(workspace)
   const media = createCanvasMedia(workspace)
   const requests = createAgentRequests(workspace, agentOptions)
   const content = createContentRoutes(workspace)
+  const clipboard = createClipboardAssets(workspace)
   const middleware = async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost')
     const path = url.pathname
@@ -63,6 +65,12 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       }
       const id = url.searchParams.get('conversation')
       await workspace.requireConversation(id)
+      if (['/api/canvas/clipboard/copy', '/api/canvas/clipboard/paste'].includes(path) && req.method === 'POST') {
+        const body = { ...await jsonBody(req), parentOrigin: `http://${req.headers.host}` }
+        const result = await (path.endsWith('/copy') ? clipboard.copy(id, body) : clipboard.paste(id, body, actor))
+        if (path.endsWith('/paste')) events.broadcast(result)
+        return sendJson(res, 200, result)
+      }
       if (path === '/api/exports/file' && req.method === 'POST') return sendJson(res, 200, await saveExport(join(workspace.root, 'conversations', id), await jsonBody(req)))
       if (path === '/api/agent/connect' && req.method === 'POST') return sendJson(res, 200, await requests.connect(id, (await jsonBody(req)).receiver))
       if (path === '/api/agent/requests' && req.method === 'POST') return sendJson(res, 202, { request: await requests.submit(id, await jsonBody(req)) })

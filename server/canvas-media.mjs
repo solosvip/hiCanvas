@@ -8,13 +8,17 @@ import { httpError } from './file-lock.mjs'
 import { decodeVideoUpload } from './video-upload.mjs'
 
 export function createCanvasMedia(workspace) {
-  async function saveAsset(id, bytes, name) {
+  async function assetDestination(id, name) {
     const dir = await workspace.assetsDir(id)
-    await mkdir(dir, { recursive: true })
     const fileName = `${randomUUID()}-${basename(name || 'asset').replace(/[^\p{L}\p{N}._-]/gu, '-').slice(-100)}`
     const assetPath = join(dir, fileName)
-    await writeFile(assetPath, bytes, { flag: 'wx', mode: 0o600 })
     return { fileName, assetPath, assetUrl: `/c/${id}/assets/${encodeURIComponent(fileName)}` }
+  }
+  async function saveAsset(id, bytes, name) {
+    const saved = await assetDestination(id, name)
+    await mkdir(await workspace.assetsDir(id), { recursive: true })
+    await writeFile(saved.assetPath, bytes, { flag: 'wx', mode: 0o600 })
+    return saved
   }
   async function readAsset(id, assetUrl) {
     await workspace.requireConversation(id)
@@ -72,5 +76,5 @@ export function createCanvasMedia(workspace) {
     const { changes: _changes, results, ...result } = await workspace.submitCommands(id, args.expectedRevision, actor, createCommands)
     return { ...result, ...results[0], ...saved, snapshot: undefined }
   }
-  return { saveAsset, readAsset, reference, insertHtml, insertImage }
+  return { assetDestination, saveAsset, readAsset, reference, insertHtml, insertImage }
 }

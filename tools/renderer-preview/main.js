@@ -28,8 +28,9 @@ import { createActionsGallery } from './actions-fixture.js'
 import { attachActionsUi } from './actions-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
+import { createPreviewClipboard } from './clipboard.js'
 
-let ready = false, renderer, controls, metadata, interaction, session, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0
+let ready = false, renderer, controls, metadata, interaction, session, clipboardAdapter, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0
 const disposers = []
 const cleanup = () => { clearTimeout(cameraTimer); for (const dispose of disposers.splice(0).reverse()) { try { dispose() } catch { /* Continue releasing remaining preview resources. */ } } }
 const host = document.querySelector('#canvas'), status = document.querySelector('#status')
@@ -51,7 +52,7 @@ const getState = () => {
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
     ...(metadata?.selectionActions && { actionShapes: session.store.allRecords().filter(r => r.typeName === 'shape').map(r => structuredClone(r)), actions: interaction.getActions() }),
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, parentId: r.parentId, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, props: structuredClone(r.props), meta: structuredClone(r.meta), ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
-    revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, lastError: state?.lastError || session?.state.get().lastError || null,
+    revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, pasteAtCursor: state?.pasteAtCursor, clipboardBusy: state?.clipboardBusy || false, privateClipboard: clipboardAdapter?.inspect(), lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
     overlays: state ? structuredClone(state.overlays) : [], snapshotReads, renderedShapes: host.querySelectorAll('[data-shape-id]').length, imageCount: host.querySelectorAll('img').length, decodedImages })
 }
@@ -67,6 +68,7 @@ try {
   } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (gallery === 'videos') { const response = await fetch('/__renderer_fixture?gallery=videos'); if (!response.ok) throw new Error('视频夹具不可用。'); metadata = await response.json() }
+  else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
   else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
   else if (gallery === 'creation') metadata = createCreationFixture()
@@ -97,13 +99,15 @@ try {
   const actor = sessionStorage.getItem(actorKey) || `preview:${crypto.randomUUID()}`
   sessionStorage.setItem(actorKey, actor)
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
+  const showError = error => { status.textContent = `操作失败：${error.message}` }
+  clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true, onError: showError })
   session = await createEditorSession({ transport, actor })
   disposers.push(() => session.dispose())
   if (metadata.persistent) { const records = session.store.allRecords(); metadata.count = records.filter(r => r.typeName === 'shape').length; metadata.counts = records.filter(r => r.typeName === 'shape').reduce((counts, r) => ({ ...counts, [r.type]: (counts[r.type] || 0) + 1 }), {}); metadata.assetCount = records.filter(r => r.typeName === 'asset').length }
   // Observation counter proves pointer hit queries do not serialize the board.
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
-  interaction = createCanvasInteraction({ session, snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), toolIds: gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), toolIds: gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), textEditing: {
     onChange: (content, selection) => interaction.editText({ type: 'update', content, selection }),
@@ -113,11 +117,11 @@ try {
   } })
   disposers.push(() => renderer.unmount())
   const instructions = `${metadata.count} 个合成元素 · D/B/X 画笔 · ⇧D 荧光笔 · Shift 接直线 · Shift 点击增减／框选追加 · Ctrl 反转框选 · Alt 涂抹 · Shift 拖动锁轴 · Enter/Esc 组导航 · Tab 顺序选择 · 拖动移动 · 角点／边线缩放 · 角外旋转 · Shift 等比／15° · Alt 中心缩放 · H 手形／空格平移 · Z 缩放 · ⇧0/1/2 · ⌘/Ctrl Z 撤销 · Esc 取消${metadata.persistent ? ' · 松手保存' : ' · 临时预览，刷新还原'}`
-  const showError = error => { status.textContent = `操作失败：${error.message}` }
   const navigation = attachNavigationUi(host, interaction, showError, (...args) => controls.navigate(...args))
   disposers.push(() => navigation.dispose())
   controls = attachPreviewInput(host, interaction, { onError: showError })
   disposers.push(() => controls.dispose())
+  disposers.push(clipboardAdapter.attach(interaction))
   const minimap = attachMinimapUi(navigation.element, host, interaction, { store: session.store, pageId: metadata.viewState.currentPageId, dispatch: input => controls.dispatch(input), onError: showError })
   disposers.push(() => minimap.dispose())
   const videos = gallery === 'videos' ? attachVideoUi(host, interaction, session, metadata, showError) : null
@@ -126,7 +130,7 @@ try {
   if (images) disposers.push(() => images.dispose())
   const creationUi = gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? attachCreationUi(host, interaction, () => controls, showError) : null
   if (creationUi) disposers.push(() => creationUi.dispose())
-  const actionsUi = gallery === 'selection-actions' ? attachActionsUi(navigation.element, host, interaction, showError) : null
+  const actionsUi = gallery === 'selection-actions' || metadata.clipboardFixture ? attachActionsUi(navigation.element, host, interaction, showError, metadata.clipboardFixture) : null
   if (actionsUi) disposers.push(() => actionsUi.dispose())
   const textUi = metadata.textEditingFixture ? attachTextUi(creationUi.element, interaction, session.store, showError) : null
   if (textUi) disposers.push(() => textUi.dispose())

@@ -14,7 +14,7 @@ import { MAX_REPLAYS, emptyChanges, changedIds, changesToCommands, netChanges, a
  * 可选 undo / redo({expectedRevision,actor}) 与 commit 返回相同格式；调用时才检查支持。
  * 会话应使用随机生成的标识。撤销历史由宿主保管，不在窗口中另存。
  * 广播只需通知有变化，运行时再读服务端；冲突抛 code='conflict'。
- * store 供渲染层只读挂载，所有本地写入都通过手势方法。
+ * store 供渲染层只读挂载。手势走 preview + commitGesture；离散语义命令走 commitCommands。
  */
 export async function createEditorSession({ transport, actor }) {
   if (typeof actor !== 'string' || !actor.trim() || !transport || ['read', 'commit', 'subscribe'].some(key => typeof transport[key] !== 'function')) throw new CanvasEditError('运行时需要非空操作者和读取、提交、订阅接口。')
@@ -146,6 +146,32 @@ export async function createEditorSession({ transport, actor }) {
     status({ isSubmitting: true })
     return schedule(submit)
   }
+  function commitCommands(commands, { expectedRevision = confirmed.revision } = {}) {
+    idle()
+    if (gesture) throw new CanvasEditError('请先结束当前手势，再提交命令。', 'busy')
+    if (expectedRevision !== confirmed.revision) throw new CanvasEditError('画板版本已变化。', 'conflict')
+    if (!Array.isArray(commands) || !commands.length || commands.length > MAX_TRANSACTION_COMMANDS) throw new CanvasEditError('命令数量无效或超过上限。', 'limit')
+    const input = structuredClone(commands)
+    status({ isSubmitting: true, lastError: null })
+    return schedule(async () => {
+      try {
+        if (expectedRevision !== confirmed.revision) throw new CanvasEditError('画板版本已变化。', 'conflict')
+        const reply = await transport.commit({ expectedRevision, commands: input, actor })
+        open()
+        const snapshot = reply.snapshot || executeCanvasTransaction(confirmed.snapshot, changesToCommands(reply.changes)).snapshot
+        receive({ snapshot, revision: reply.revision })
+        status({ lastError: null })
+        return structuredClone(reply)
+      } catch (error) {
+        if (!closed) {
+          // 离散命令可能已保存；只刷新并报告，不重发，也不绕过版本检查。
+          try { await refreshNow() } catch { /* 保留最后确认副本，报告原错误。 */ }
+          if (!closed) status({ lastError: errorData(error) })
+        }
+        throw error
+      } finally { if (!closed) status({ isSubmitting: false }) }
+    })
+  }
   async function moveHistory(direction) {
     idle()
     if (gesture) throw new CanvasEditError('请先结束当前手势，再撤销或重做。', 'busy')
@@ -184,5 +210,5 @@ export async function createEditorSession({ transport, actor }) {
     unsubscribe = transport.subscribe(() => { void refresh().catch(() => {}) })
     await refresh()
   } catch (error) { dispose(); throw error }
-  return { store, state, beginGesture, preview, cancelGesture, commitGesture, undo: () => moveHistory('undo'), redo: () => moveHistory('redo'), refresh, dispose }
+  return { store, state, beginGesture, preview, cancelGesture, commitGesture, commitCommands, undo: () => moveHistory('undo'), redo: () => moveHistory('redo'), refresh, dispose }
 }

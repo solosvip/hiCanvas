@@ -7,7 +7,7 @@ const unavailable = reason => ({ status: 'unavailable', reason })
 
 // The only action-to-runtime adapter. Menus and keyboard use the same planner
 // and preview/commit path; held arrow keys merely extend this same transaction.
-export function createSelectionActions({ session, targets, selection, duplicates, snapping, read, change, report, pageId }) {
+export function createSelectionActions({ session, targets, selection, duplicates, snapping, clipboard, read, change, report, pageId }) {
   let held = null, disposed = false
   function context() {
     const state = read()
@@ -40,6 +40,7 @@ export function createSelectionActions({ session, targets, selection, duplicates
     if (blocked) return unavailable(blocked)
     const plan = planAction(id, options)
     if (!plan.available) return unavailable(plan.reason)
+    if (plan.clipboard) return clipboard.run(plan.clipboard, plan.selectedIds)
     const previous = [...read().selectedIds]
     try {
       session.beginGesture()
@@ -91,9 +92,14 @@ export function createSelectionActions({ session, targets, selection, duplicates
     run, cancel,
     describe() {
       const blocked = reason(), value = context()
-      return canvasActions.map(({ id, label }) => { const plan = blocked ? { available: false, reason: blocked } : planCanvasAction(id, value); return { id, label, available: plan.available, reason: plan.reason || null } })
+      return canvasActions.map(({ id, label }) => {
+        const plan = blocked ? { available: false, reason: blocked } : planCanvasAction(id, value)
+        const reason = plan.reason || (plan.clipboard && clipboard.availability(plan.clipboard)) || null
+        return { id, label, available: plan.available && !reason, reason }
+      })
     },
     handle(input) {
+      clipboard.observe(input)
       if (input.type === 'pointer_down' || input.type === 'pointer_cancel') { cancel(); return { handled: false } }
       if (input.type === 'key_up' && held?.keys.has(input.key.toLowerCase())) return { handled: true, result: release(input) }
       if (held && input.type === 'key_down' && matchesCanvasShortcut('escape', input)) { cancel(); return { handled: true } }

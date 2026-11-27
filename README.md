@@ -330,3 +330,10 @@ npm run perf:baseline -- --renderer both --port 43326 --preview-port 43328 --loa
 安装与升级的隔离回归测试已接入 `npm run check`；只用临时目录和模拟选择器，不修改真实客户端配置，不调用收费模型。
 
 桌面隔离测试可同时设置 `HICANVAS_DESKTOP_CONFIG_DIR` 和 `HICANVAS_SKILL_HOME`，后者只在指定的模拟用户目录内发现 Skill，并忽略外部 `CODEX_HOME`。
+
+
+内部剪贴板验证使用 `/?gallery=clipboard&board=source` 与 `board=target` 两份隔离合成画板。Mod+C/X/V与复制／剪切／粘贴按钮共用编辑层动作；默认原位，完全离屏时居中；「粘贴至光标处」默认关闭，开启后把整体中心放在世界坐标指针处，Shift不改变本轮实测落点。偏好只在会话里，不进画板或撤销。复制包使用hiCanvas自有版本格式；外部文本、HTML、URL、iframe、Excalidraw及旧data-tldraw兼容另归#176。正式应用切换仍属后续工作。
+
+内容包最多10000条记录、JSON最多32 MiB；附件最多256份、每份20 MiB、合计24 MiB。编辑层和本机服务复用同一份限额。只打包来源画板明确引用的本机资源，包含生成HTML/CSS/静态模块的嵌套引用，不抓外网。目标随机文件名和新资源ID避免串图，共享资源只导入一次；新增记录同次撤销，物理文件撤销时保留。剪切先等写入成功，再带版本提交删除；失焦、组字、输入框、其他手势及提交中不读写画布剪贴板。
+
+原生守卫：按白板规则排队、登记专用端口并设置已有的 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_CLIPBOARD_PORT=43396 node tools/renderer-preview/clipboard-check.mjs`。入口显式关闭文件监听，先断言未由宿主建立或编造的画板被拒，再运行主进程／浏览器／子框三次预期报错和正常回归。复制粘贴使用合成ClipboardEvent及私有DataTransfer；离屏页面模拟文档焦点，再以原生指针、偏好按钮、表单点击和撤销重做检验输入归属，系统剪贴板所有入口被报错桩锁住。超时或中断会等待自己的Electron结束后再关闭宿主、清理隔离资料。材料在 `.scratch/clipboard-smoke/`；真实系统跨应用复制粘贴、权限和设备手感留用户集中验收。
