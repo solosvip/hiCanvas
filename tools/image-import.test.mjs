@@ -88,3 +88,20 @@ test('上传期间进入同一图片的裁剪或描述会话，拒绝导入且�
     } finally { interaction.dispose(); session.dispose() }
   }
 })
+test('SVG替换沿用公开图片事务，保留身份外框、镜像、描述及一次撤销', async () => {
+  const f = await setup()
+  try {
+    await f.media.begin({ point: { x: 550, y: 420 } }).commit([image])
+    const id = f.shapes()[0].id
+    f.session.beginGesture()
+    f.session.preview([{ type: 'flip_shapes', ids: [id], axis: 'x' }, { type: 'set_image_alt_text', id, altText: '保留这段描述' }])
+    await f.session.commitGesture()
+    const before = f.session.store.get(id); f.select([id])
+    await f.media.begin({ point: { x: 0, y: 0 }, replaceId: id }).commit([{ ...image, w: 160, h: 320, src: '/c/synthetic/assets/clean.svg', mimeType: 'image/svg+xml' }])
+    const after = f.session.store.get(id)
+    for (const key of ['id', 'x', 'y', 'rotation']) assert.equal(after[key], before[key])
+    for (const key of ['w', 'h', 'flipX', 'flipY', 'altText']) assert.equal(after.props[key], before.props[key])
+    assert.equal(f.session.store.get(after.props.assetId).props.mimeType, 'image/svg+xml')
+    await f.session.undo(); assert.deepEqual(f.session.store.get(id), before)
+  } finally { f.close() }
+})

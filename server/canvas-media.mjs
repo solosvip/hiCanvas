@@ -7,6 +7,7 @@ import { executeCanvasCommands, getMediaTarget } from '../engine/index.js'
 import { httpError } from './file-lock.mjs'
 import { decodeVideoUpload } from './video-upload.mjs'
 import { decodeImageUpload } from './image-upload.mjs'
+import { decodeSvgUpload } from './svg-sanitize.mjs'
 
 export function createCanvasMedia(workspace) {
   async function assetDestination(id, name) {
@@ -38,10 +39,14 @@ export function createCanvasMedia(workspace) {
     return { bytes, mimeType, assetPath: join(directory, name) }
   }
   async function reference(id, args) {
-    if (args.purpose !== undefined && args.purpose !== 'file-import') throw httpError('未知资源上传用途。')
-    const image = args.purpose === 'file-import' ? decodeImageUpload(args.dataUrl) : typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:video/') ? decodeVideoUpload(args.dataUrl) : decodeReference(args.dataUrl)
+    if (args.purpose !== undefined && !['file-import', 'file-import-prepare'].includes(args.purpose)) throw httpError('未知资源上传用途。')
+    if (args.purpose === 'file-import-prepare') {
+      const image = decodeSvgUpload(args.dataUrl)
+      return { dataUrl: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`, mimeType: image.mimeType, isAnimated: false, warnings: image.warnings }
+    }
+    const image = args.purpose === 'file-import' ? typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:image/svg+xml;') ? decodeSvgUpload(args.dataUrl) : decodeImageUpload(args.dataUrl) : typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:video/') ? decodeVideoUpload(args.dataUrl) : decodeReference(args.dataUrl)
     const saved = await saveAsset(id, image.bytes, `reference.${image.extension}`)
-    return { ...saved, src: saved.assetUrl, mimeType: image.mimeType, ...(args.purpose === 'file-import' && { w: image.w, h: image.h, isAnimated: image.isAnimated }) }
+    return { ...saved, src: saved.assetUrl, mimeType: image.mimeType, ...(args.purpose === 'file-import' && { w: image.w, h: image.h, isAnimated: image.isAnimated, ...(image.warnings && { warnings: image.warnings }) }) }
   }
   async function insertHtml(id, args, actor = 'http') {
     if (typeof args.htmlContent !== 'string' || !args.htmlContent.trim() || Buffer.byteLength(args.htmlContent) > 5 * 1024 * 1024) throw httpError('需要非空且小于 5 MB 的 HTML。')

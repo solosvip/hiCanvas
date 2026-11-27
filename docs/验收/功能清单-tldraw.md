@@ -590,7 +590,7 @@ H27 的全部 locale：`id, ms, ca, cs, da, de, en, es, tl, fr, gl, hr, it, hu, 
 | 条目 | 新底座行为 | 永久回归入口 |
 | --- | --- | --- |
 | TL-A12、TL-F07 | 图片选择器、拖入、文件粘贴共用`createMediaImport`；PNG/JPEG/WebP/GIF/APNG/AVIF保留自然尺寸和动画标志，整排无缝/顶部对齐/落点居中，重复落点不避障，大图视口90%适配。支持项失败整批不落形状；不支持类型提示后过滤。单批100、单文件20 MB、边长16384及64 Mi像素预算。 | `tools/image-import.test.mjs`、`tools/image-host.test.mjs`、`server/image-upload.test.mjs`、`tools/renderer-preview/image-smoke.mjs#imageImportSmoke` |
-| TL-F08 | SVG在本单提示暂不支持并过滤；净化器、运行依赖及SVG文件/文字入口独立在#189实现。 | 同上，SVG过滤与非栅格伪装拒绝 |
+| TL-F08 | #189已接SVG文件净化与两阶段导入，范围及原生验收见下节；SVG文本粘贴策略未变。 | `server/svg-sanitize.test.mjs`、`tools/image-host.test.mjs`；非栅格伪装拒绝沿用 |
 | TL-F12 | 文件选择器替换保留身份、外框、位置、镜像和描述；继续#139按新图居中裁剪。 | `tools/image-import.test.mjs`、既有裁剪命令回归、`imageImportSmoke` |
 | TL-F17 | `set_image_alt_text`与`interaction.imageAlt`；草稿仅会话持有，Enter或外点一次提交、一次撤销；Escape无记录，输入法组字不确认，冲突/锁定/选择变化/销毁不写回旧草稿。渲染层沿用alt描述。 | `tools/image-alt.test.mjs`、`imageImportSmoke` |
 
@@ -605,4 +605,26 @@ H27 的全部 locale：`id, ms, ca, cs, da, de, en, es, tl, fr, gl, hr, it, hu, 
 | 描述Enter/外点保存、Escape无记录、390宽不越界；替换保留身份/外框/镜像/描述，防属性丢失 | 真实输入法输入描述并用辅助技术读取 → 候选操作和读出正确；窄屏操作顺手 |
 | 损坏/503无半批、受控保存中错误不被刷新抹掉、刷新恢复，防误报成功或数据丢失 | 出错后重试 → 反馈易懂，重新导入及撤销行为清楚 |
 
-有意差异：替换继续按新图居中，具体旧版两组裁剪读数见上表F12；SVG拆单暂不支持。旧版图片先写data URL，故reference上传503拦截实际命中0次，不能当作上传失败验证；真实画板PUT 503命中3次、显示未保存/重试。本底座先上传后单次提交，读取/上传失败不落形状；上传后遇到事务冲突可能留下未引用文件，不自动删除资料。真实设备输入法/辅助技术读出与系统剪贴板权限仍需集中体验。
+有意差异：替换继续按新图居中，具体旧版两组裁剪读数见上表F12；SVG在#137后由#189补充，见下节。旧版图片先写data URL，故reference上传503拦截实际命中0次，不能当作上传失败验证；真实画板PUT 503命中3次、显示未保存/重试。本底座先上传后单次提交，读取/上传失败不落形状；上传后遇到事务冲突可能留下未引用文件，不自动删除资料。真实设备输入法/辅助技术读出与系统剪贴板权限仍需集中体验。
+
+## 新编辑底座SVG文件导入（#189）
+
+实现沿#137/#136的选择器、拖入与公共文件粘贴宿主，File和原始XML不进入编辑层。SVG先经不落盘的`file-import-prepare`净化，浏览器只解码规范dataUrl；未取消且自然尺寸合法才最终上传，服务端再净化一次，不信“已净化”标记。最终资源仍由既有响应沙箱和nosniff隔离；生成内容/历史SVG路径不改。只读图鉴缺少准备服务时明确拒绝SVG。SVG文本粘贴策略未扩展。
+
+| 行为与有意边界 | 永久回归入口 |
+| --- | --- |
+| 基础几何、Unicode文字、简单标签/class/id CSS、变换、线性/径向渐变、clip/mask、内部use、marker箭头及六格式内嵌栅格；保留尺寸单位/viewBox，由浏览器读取自然尺寸 | `server/svg-sanitize.test.mjs`、`server/svg-styles.test.mjs`、`tools/renderer-preview/svg-smoke.mjs` |
+| XML/CSS白名单重建；脚本/事件/foreignObject/外链/动画/xml:base等移除并有类别提示；DTD、自定义实体、坏编码/XML、循环/错类型/悬空引用拒绝，正常预定义和数字字符引用只解码一次 | 同上；27类攻击夹具在`svg-fixtures.js` |
+| 有意差异：旧版按图片原样显示filter/pattern/SVG字体，包括滤镜阴影；新底座不开放这些效果，移除并提示。复杂CSS选择器/@规则/外部字体及未知值不开放 | `svg-styles.test.mjs`、`svg-sanitize.test.mjs` |
+| 输入/输出2 MiB、单批8 MiB；10000节点/64层/单元素64及总100000属性；CSS 64 KiB/1000规则/10000声明；路径256 KiB/100000参数；直接引用10000/深32/展开25000节点；内嵌1 MiB/16张/16 Mi像素，复用及继承marker同时计开销 | 上述单位边界/加一测试；主机文件数及取消在`tools/image-host.test.mjs` |
+| 准备阶段零素材/版本变化；解码失败和取消不最终上传；混合SVG/PNG/WebM一次事务，坏第二项整批无形状；替换沿既有身份/外框/镜像/描述及撤销 | `server/svg-upload.test.mjs`、`tools/image-host.test.mjs`、`tools/image-import.test.mjs`、`svg-smoke.mjs` |
+| 桌面格式专用bundle在无源码依赖的新进程完成准备/保存；按实际metafile核对xmldom、PostCSS、nanoid、picocolors、source-map-js及原文许可，五份文件随桌面licenses目录分发 | `tools/svg-pack.test.mjs`；证据`.scratch/svg-observation/bundle-metafile.json`、`bundle-licenses.json` |
+
+原生入口`node tools/renderer-preview/image-check.mjs --port 43397`已通过，保留全部六栅格及既有图片断言。SVG选择器/CDP拖入成功，坏XML不留形状；六组自然尺寸依次为320×180、267×150（viewBox、偏移viewBox及百分比）、192×96（物理单位）、300×150（缺省）。真实渲染截图核对use绿色、线性渐变和marker蓝色箭头；安全图片解码后的像素核对clip/mask透明区域、径向渐变及内嵌PNG。SVG+PNG+WebM私有DataTransfer粘贴只有一次提交，整批撤销重做；坏第二项不落半批，系统剪贴板API调用及未捕获错误为零。视频原生回归也已通过。
+
+同隔离响应的原始恶意SVG阳性对照实测出现1次脚本标记、3次子资源请求尝试（含1次同源），两次外部请求被阻断、fetch失败如实记录；随后27类样本中14类明确拒绝，另外13类最终再净化后直接导航，脚本执行、子资源请求尝试和错误均为零。探针只排除预期顶层导航，在网络阻断前计数。结果和像素图在`.scratch/image-check/svg-native.json`、`svg-security.json`及`svg-renderer-pixels.png`；这些是合成材料的验证，不代表任意SVG均已穷举。
+
+| AI已自测层次及防止的问题 | 需用户集中体验（操作 → 期望） |
+| --- | --- |
+| 单位/真实HTTP/独立打包：拒绝坏XML、越权资源和引用爆炸，准备零写入；取消/失败无半批，SVG替换保留属性 | 正式宿主接入后选择/拖入常用设计或流程图SVG → 支持的渐变、文字、箭头和尺寸正确，不支持效果有清楚提示 |
+| 原生尺寸/像素/箭头、同边界阳性对照与27类恶意样本、混合文件一次撤销及视频回归，防空白导入、箭头丢失、探针失效和危险资源请求 | 从日常应用复制SVG文件再粘贴 → 系统权限正常、只出现一次；一次撤销整批消失。日常字体替代和设备手感一并体验 |

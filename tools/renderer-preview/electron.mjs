@@ -28,6 +28,7 @@ import { noteSmoke } from './note-smoke.mjs'
 import { duplicateSmoke } from './duplicate-smoke.mjs'
 import { snappingSmoke } from './snapping-smoke.mjs'
 import { frameSmoke } from './frame-smoke.mjs'
+import { svgImportSmoke, svgSecuritySmoke } from './svg-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -88,7 +89,7 @@ async function cameraLayoutProbe(selected = false) {
     return { selected, cameraLayouts: layouts }
   } finally { contents.debugger.detach() }
 }
-function createWindow(key) {
+function createWindow(key, audit = null) {
   const target = new BrowserWindow({ show: false, width: 1280, height: 800, useContentSize: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, partition: `renderer-${process.pid}-${key}` } })
   target.webContents.session.webRequest.onBeforeRequest((details, callback) => {
     const service = fakeSources.get(details.url)
@@ -97,11 +98,12 @@ function createWindow(key) {
       callback({ redirectURL: `${origin}/tools/renderer-preview/fake-embed.html?service=${service}` }); return
     }
     const url = new URL(details.url), contentAllowed = (manifest.scriptUrl && url.origin === new URL(manifest.scriptUrl).origin || /^[a-f0-9]{48}\.localhost$/.test(url.hostname) && Number(url.port) === contentPort), allowed = contentAllowed || url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
-    if (!allowed) blocked.push(details.url)
+    if (audit && ['http:', 'https:', 'file:', 'ws:', 'wss:'].includes(url.protocol) && !(details.resourceType === 'mainFrame' && details.url === audit.expectedDocument)) audit.requests.push(details.url)
+    if (!allowed) (audit?.blocked || blocked).push(details.url)
     callback({ cancel: !allowed })
   })
   target.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-  target.webContents.on('console-message', detail => { if (detail.level === 'error') errors.push(detail.message.slice(0, 500)) })
+  target.webContents.on('console-message', detail => { if (audit && detail.message.includes('HICANVAS_SVG_EXEC')) audit.executions.push(detail.message); if (detail.level === 'error') (audit?.errors || errors).push(detail.message.slice(0, 500)) })
   target.webContents.on('render-process-gone', (_event, detail) => errors.push(`renderer gone: ${detail.reason}`))
   return target
 }
@@ -129,6 +131,7 @@ async function run() {
       await window.loadURL(`${manifest.url}/?gallery=image-import&edgeScrolling=0`)
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
       samples.push({ images: await imageImportSmoke(window, manifest.output, manifest.imageFiles) })
+      samples.push({ svg: await svgImportSmoke(window, manifest.output, manifest.imageFiles), svgSecurity: await svgSecuritySmoke(createWindow, origin, manifest.svgSecurity, manifest.output) })
       check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }

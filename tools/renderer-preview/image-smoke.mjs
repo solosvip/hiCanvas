@@ -272,9 +272,10 @@ export async function imageImportSmoke(window, output, files) {
   await until(async () => shapes(await state()).length === ids.size + 1 && (await state()).camera.z === .28125, '4096宽图视角适配')
   check(shapes(await state()).find(r => !ids.has(r.id)).props.w === 4096, '大图被缩成512宽')
   await resetCamera(); const count = shapes(await state()).length
-  await drop([files.svg]); await until(() => evaluate("document.querySelector('#status').textContent.includes('暂不支持')"), 'SVG暂不支持反馈')
-  check(shapes(await state()).length === count, 'SVG被本单误放开')
-  await drop([files.png, files.text]); await until(async () => shapes(await state()).length === count + 1, '有效文件与TXT混合过滤')
+  await chooser([files.svg]); await until(async () => shapes(await state()).length === count + 1, 'SVG选择器净化后导入')
+  await drop([files['svg-bad-xml']]); await until(() => evaluate("document.querySelector('#status').textContent.includes('SVG')"), '坏SVG明确失败反馈')
+  check(shapes(await state()).length === count + 1, '坏SVG留下了形状')
+  await drop([files.png, files.text]); await until(async () => shapes(await state()).length === count + 2, '有效文件与TXT混合过滤')
   await until(() => evaluate("document.querySelector('#status').textContent.includes('已过滤')"), '混合格式提示被成功状态吞掉')
   const failedCount = shapes(await state()).length
   await drop([files.png, files.bad]); await until(() => evaluate("document.querySelector('#status').textContent.includes('损坏')"), '损坏文件提示')
@@ -292,5 +293,5 @@ export async function imageImportSmoke(window, output, files) {
   await until(async () => (await state())?.ready, '刷新恢复')
   check(JSON.stringify((await state()).imageRecords.sort((a, b) => a.id.localeCompare(b.id))) === JSON.stringify(final.imageRecords.sort((a, b) => a.id.localeCompare(b.id))), '刷新丢失形状/资产/描述')
   await record('reloaded')
-  return { chooser: true, nativeFileDrop: true, privateFilePaste: true, mixedImageWebmPaste: true, fileOverHtml: true, formAndCompositionUntouched: true, formats: Object.keys(pixels), coloredPixels: pixels, altEnterEscapeOutside: true, altNarrow: true, errorDuringSave: true, replacementIdentityCropAndUndo: true, batchAndUndo: true, largeCamera: true, filteredSvg: true, corruptBatchRollback: true, uploadBatchRollback: true, reload: true, audit }
+  return { chooser: true, nativeFileDrop: true, privateFilePaste: true, mixedImageWebmPaste: true, fileOverHtml: true, formAndCompositionUntouched: true, formats: Object.keys(pixels), coloredPixels: pixels, altEnterEscapeOutside: true, altNarrow: true, errorDuringSave: true, replacementIdentityCropAndUndo: true, batchAndUndo: true, largeCamera: true, sanitizedSvg: true, corruptSvgRejected: true, corruptBatchRollback: true, uploadBatchRollback: true, reload: true, audit }
 }
