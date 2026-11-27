@@ -26,7 +26,7 @@
 | C02 | 创建 AI 网页框 | 界面：工具栏「AI 网页」点击或拖出 | 创建带网页标记的占位框，作为随后生成 HTML 的目标。 | [holderCreation.jsx](../../src/editor/holderCreation.jsx) `createAiDraftHolderShape`；`cowartUiOverrides.tools` | 无：创建界面；部分 T01 验证占位框写回。 |
 | C03 | 创建 AI 影片框 | 界面：工具栏「AI 影片」点击或拖出 | 创建影片框，保存风格、时长和静音元数据，后续写回仍识别为影片。 | [holderCreation.jsx](../../src/editor/holderCreation.jsx) `createAiFilmHolderShape` | 部分 T01：服务端识别影片和保留时长；无创建界面回归。 |
 | C04 | 创建 AI 幻灯片 | 界面：工具栏「AI 幻灯片」点击或拖出 | 创建一套 Slides 容器，容纳多张图片或 HTML 页面；不是画板内部页面管理。 | [holderCreation.jsx](../../src/editor/holderCreation.jsx) `createAiSlidesShape` | 无：创建界面；部分 T01 验证页面归属容器。 |
-| C05 | AI 框宽高、比例与比例锁 | 界面：AI 框尺寸设置（可见路径未核实） | 源码提供 W/H 输入、比例预设、锁定比例；修改一边时按锁定比例计算另一边。`CowartStylePanel` 在选择工具下返回空，实际如何进入该面板须实机核实。 | [StylePanel.jsx](../../src/editor/StylePanel.jsx) `CowartStylePanel`、`CowartAiImageStyleControls`；[holderMeta.jsx](../../src/editor/holderMeta.jsx) `isAiImageAspectLocked` | 无；入口实际可达性标「未核实」，不能作为已可用结论。 |
+| C05 | AI 框宽高、比例与比例锁 | 旧版单AI框合成板：Mod+A保留选择，再R显示面板 | 图片、网页、影片框七档预设和锁写入同一文档meta；影片同时有draft/film标记。旧版手输已收到真实输入/确认事件但未改记录，不据此推断联动规则。新版接口和产品规则见下方#195。 | [StylePanel.jsx](../../src/editor/StylePanel.jsx) `CowartStylePanel`、`CowartAiImageStyleControls`；[holderMeta.jsx](../../src/editor/holderMeta.jsx) `isAiImageAspectLocked` | 隔离原生观察确认预设/锁/刷新持久性；手输未生效，正式新版面板未接入。 |
 | C06 | 各生成面板的提示词与参考图 | 界面：选择空图片/网页/影片/幻灯片框，输入文字、选择文件或粘贴图片 | 显示参考图缩略图、逐张移除、限制数量，发送中防重复；输入快捷键由统一处理函数管理。参考图随请求保存或附带。 | [ImageGenerationPanel.jsx](../../src/editor/ImageGenerationPanel.jsx) `CowartAiImageGenerationPanel`；[DraftGenerationPanel.jsx](../../src/editor/DraftGenerationPanel.jsx) `CowartAiDraftGenerationPanel`；[SlidesGenerationPanel.jsx](../../src/editor/SlidesGenerationPanel.jsx) `CowartAiSlidesGenerationPanel`；[generationPrompts.jsx](../../src/editor/generationPrompts.jsx) `handleGenerationPromptKeyDown` | 无：上传、粘贴、移除和快捷键界面；T07/T08 只覆盖模型请求携带参考图。 |
 | C07 | 文生图与参考图改图（适配） | 界面：图片框选择模型后「发送生成请求」 | 保存画板后提交本机后台任务，目标及框比例进入请求；结果替换目标为普通图片。hiCanvas 使用用户配置模型，上游通过宿主图片能力处理。 | [generationRequests.jsx](../../src/editor/generationRequests.jsx) `sendAiImageGenerationRequest`；[canvasImages.js](../../src/image-models/canvasImages.js) `generateOnCanvas` | 部分 T06/T07/T08/T10：接口与占位回填；无面板到模型的点击回归。 |
 | C08 | 手绘箭头与文字标注 | 界面：标注工具、快捷键 C，拖出箭头后输入文字 | 创建带标注元数据的弯箭头，完成即编辑标签；过短拖动及取消撤销本次创建。 | [annotationTools.jsx](../../src/editor/annotationTools.jsx) `CowartAnnotationTool`、`CowartAnnotationPointing`；[annotationEditing.jsx](../../src/editor/annotationEditing.jsx) `startEditingAnnotationArrowLabel` | 无。 |
@@ -205,7 +205,7 @@
 
 没有自动测试直接覆盖的主要区域：Cowart 创作界面、所有生成面板、标注绘制与截图、网页/影片文字的浏览器编辑、HTML/PNG/MP4 的真实渲染导出、Slides 拖放/演示/播放器、主工具栏拖动、重命名界面、冲突备份恢复、语言与设置浮层、接入指令剪贴板与原生菜单。T01/T02 的服务端写回和文件落盘不能替代这些界面断言。M02/M10/M11/M14/M17 没有经对应 MCP 名称完整调用的专门回归；M13 的 dryRun/htmlPath 也没有完整分支回归。
 
-未核实：C05 的尺寸面板实际可达路径；真实供应商协议差异与生图质量；影片在具体 Chromium/系统上的 H.264/AAC 能力、音画同步、内嵌视频捕获和 MP4 成片；导出 HTML/Slides 在外部浏览器的运行结果；所有外部 AI 宿主的真实配置接入。读取到代码入口的置信度高；这些端到端运行结果为未知。
+未核实：真实供应商协议差异与生图质量；影片在具体 Chromium/系统上的 H.264/AAC 能力、音画同步、内嵌视频捕获和 MP4 成片；导出 HTML/Slides 在外部浏览器的运行结果；所有外部 AI 宿主的真实配置接入。C05预设/锁的隔离原生观察置信度高，手输未生效；这些外部端到端运行结果为未知。
 
 另有 [desktop-app.md](desktop-app.md)、[通信桥验收.md](通信桥验收.md) 和 [tools/smoke-desktop.mjs](../../tools/smoke-desktop.mjs) 的历史/专项步骤；本单没有重跑真实桌面窗口或签名安装包，不将历史记录算作本次验证。SDK 许可入口在本基点隐藏，许可检查与许可证文件存在；恢复提示由工单 #16 处理，不是这里新增的功能。
 
@@ -254,3 +254,18 @@
 | --- | --- |
 | `tools/style-query.test.mjs`、`tools/style-session.test.mjs`：支持子集、全选项、组锁、混合、整批失败、空历史、一次撤销及独立默认 → 防误改无关字段与半成功默认。 | 以后接入面板后多选、改色/透明度、撤销 → 混合状态与作用范围清楚。 |
 | `tools/text-editing.test.mjs`、`tools/keyboard-context.test.mjs`：正文/样式/光标共同事务、取消/冲突、键盘归属和IME协议保护 → 防编辑中断与抢输入。原生、新构建、完整检查及真实钩子待本单白板。 | 真实IME/物理Option/辅助技术及编辑手感 → 不抢文字输入，两项历史/透明度差异可接受。 |
+
+## 新编辑底座AI框尺寸接口（#195，CH-C05）
+
+本单范围：仅当前唯一选中且可编辑的AI图片、网页、影片frame；多选、group本体、普通frame/image/video及Slides不提供该动作，可从查询读取不可用原因。对象或祖先锁、隐藏、其他手势/提交、文字编辑和裁剪均拒绝；比例锁与对象锁是两件事。影片时长不在本单，留后续工单。正式尺寸面板尚未接入，本次改动在正式界面上没有体现。
+
+`getAiFrameSize()`返回不可变的`available/reason/presets`及支持目标的`id/kind/w/h/locked/ratio/editing`。`editAiFrameSize(action)`接受`{type:'preset',preset:'4:3'}`、`{type:'lock',locked:true}`，以及手输的`start`、`update`（`w/h`）、`finish`、`cancel`。动作返回`status`（editing/applied/unchanged/cancelled），错误拒绝Promise并给出`lastError`。尺寸草稿只在查询和`state.aiFrameSizeEditing`中预览，不改Store、不保存；finish经既有`commitCommands`一次写回，冲突刷新但不自动重放。普通表单焦点保留草稿，切目标/工具、目标或祖先变更与销毁取消草稿；确认中不再接受其他尺寸动作。无变化零保存/零历史，不更新`styles.next`。
+
+与旧版一致：预设1:1、3:2、2:3、4:3、3:4、16:9、9:16分别写512×512、768×512、512×768、683×512、512×683、1024×576、512×910；`cowartAiAspectRatio`是这些整数宽高的实际比值。开锁取当前实际w/h写入`cowartAiAspectLocked/cowartAiAspectRatio`，关锁保留比值，再开重新取值；预设保留锁状态。只改本框宽高和必要meta，位置、旋转、父级、层级、子对象及其他meta（含影片时长）保持。
+
+**旧版输入未生效，新版按规则实现**：仅接受有限正number，先整份校验，再四舍五入并限制16..16384；空/非number/非正数整次拒绝。未锁双轴独立；锁下按存档比值联动，双轴输入以宽为准。算出的另一边超限时先定在边界，再反算输入边，保持双边范围及比例（整数舍入至多1像素）；如1:2输入宽16384得到8192×16384。存档比值无效或无可行尺寸则提示「先解除比例锁定再改尺寸」，零写回。Enter/失焦/Esc的路由留正式界面。
+
+| AI已自测及防的问题 | 留用户集中验证（操作 → 期望） |
+| --- | --- |
+| `tools/ai-frame-size.test.mjs`经公开接口断言三类×七预设、数值/锁边界、单次保存/撤销、取消/失败重试、远端父锁与删除不覆盖、只读不可变查询和重建运行时的存档值 → 防半次尺寸、空历史与默认污染。 | 正式面板接入后改单/双轴、锁比例并确认/取消 → 宽高联动及边界回收易懂，手输新规则符合预期。 |
+| 228项相关接口回归、39组frame原生旧链路及完整renderer:smoke（含creation）通过；后者33组样本errors/blocked均空，内容安全45条断言拒绝9次测试写入。完整检查183文件/1899项及构建/桌面bundle通过；提交前由真实钩子再次检查。接口与旧链路不当作尺寸面板验收。 | 真实键盘/IME、表单确认方式、辅助技术与设备手感 → 由正式界面及阶段5集中体验确认。 |
