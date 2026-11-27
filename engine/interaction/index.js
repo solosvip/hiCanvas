@@ -40,6 +40,7 @@ import { createNoteEditing } from './note-editing.js'
 import { createSnapping } from './snapping.js'
 import { createVideoInteraction } from './video.js'
 import { createImageAlt } from './image-alt.js'
+import { createStyleSession } from './style-session.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -119,8 +120,9 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   minimap = createMinimapInteraction({ session, read, change, content, navigation })
   context.navigation = navigation
   const prepareText = () => { cancelTool(); cropTool.cancel(); navigation.cancel() }
-  const textEditing = createTextEditing({ ...context, prepare: prepareText, inputContext: value => keyboard.context(value) })
+  const textEditing = createTextEditing({ ...context, prepare: prepareText, inputContext: value => keyboard.context(value), setStyles: (patch, ids) => styles.set(patch, ids), stylesCommitted: patch => styles.adopt(patch) })
   context.textEditing = textEditing
+  const styles = createStyleSession({ ...context, textEditing })
   noteEditing = createNoteEditing(context, textEditing)
   connectionEditing = createConnectionEditing(context)
   videoInput = createVideoInteraction({ ...context, prepare: prepareText })
@@ -182,6 +184,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (videoInput.handle(input)) { navigation.finishFrame(); return true }
     const edited = textInput.handle(input)
     if (edited.handled) { navigation.finishFrame(); return edited.result ?? true }
+    const styled = styles.handle(input)
+    if (styled.handled) { navigation.finishFrame(); return styled.result }
     const acted = actions.handle(input)
     if (acted.handled) { navigation.finishFrame(); return acted.result ?? true }
     // Native legacy: idle draw/highlight Escape leaves the tool and retains
@@ -224,6 +228,13 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     },
     runAction(id, options) { assertActive(); return actions.run(id, options) },
     getActions() { assertActive(); return actions.describe() },
+    // Immutable {source,next,selectionCount,styles}; Mixed/unsupported omit value.
+    // Group queries include locked descendants, so Mixed can remain after a set.
+    getStyles() { assertActive(); return styles.get() },
+    // Validate the whole patch; change editable leaves only, never group opacity.
+    // No selection edits session defaults only. Active text joins its existing
+    // transaction; defaults adopt on save, and document undo does not rewind them.
+    setStyles(patch) { assertActive(); return styles.set(patch) },
     getFilePasteTarget() { assertActive(); return clipboard.fileTarget() },
     setTool(id) { assertActive(); setTool(id) },
     setPenMode(enabled) { assertActive(); cancelTool(); change({ isPenMode: Boolean(enabled) }) },
@@ -264,6 +275,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return routed.input ? dispatchCore(routed.input) : routed.result ?? routed.handled
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; imageAlt.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; styles.dispose(); imageAlt.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); actions.dispose(); stop(); disposed = true },
   })
 }

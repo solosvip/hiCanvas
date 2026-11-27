@@ -67,6 +67,152 @@ test('字号字体及适用对齐经公开动作保存；编辑内改样式和�
   }
 })
 
+test('样式API在活动文字中保持草稿光标，不另开手势，成功后采纳默认且整次只撤销一次', async () => {
+  for (const shapeType of ['text', 'geo', 'note', 'arrow', 'frame']) {
+    const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:target', shapeType, text: shapeType === 'frame' ? undefined : 'original', props: shapeType === 'frame' ? { name: 'original' } : {} }] })
+    try {
+      const original = f.current()
+      f.interaction.editText({ type: 'begin', id: 'shape:target' })
+      const content = text => shapeType === 'frame' ? text : toRichText(text)
+      f.interaction.editText({ type: 'update', content: content('draft'), selection: { from: 2, to: 2 } })
+      const before = f.interaction.state.get().textEditing
+      const patch = shapeType === 'frame' ? { opacity: .25 } : { color: 'red', opacity: .25, font: 'mono', size: 'xl' }
+      assert.equal((await f.interaction.setStyles(patch)).status, 'preview')
+      const editing = f.interaction.state.get().textEditing
+      assert.equal(editing.epoch, before.epoch)
+      assert.deepEqual(editing.content, before.content)
+      assert.deepEqual(editing.selection, before.selection)
+      assert.equal(f.interaction.state.get().inputContext.owner, 'text-editing')
+      assert.equal(f.commits.length, 0)
+      assert.equal(f.interaction.getStyles().next.opacity, 1)
+      f.interaction.editText({ type: 'update', content: content('continued'), selection: { from: 3, to: 3 } })
+      await f.interaction.editText({ type: 'finish' })
+      const saved = f.current()
+      assert.equal(saved.store['shape:target'].opacity, .25)
+      if (shapeType !== 'frame') {
+        assert.equal(saved.store['shape:target'].props.color, 'red')
+        assert.equal(saved.store['shape:target'].props.font, 'mono')
+      }
+      assert.equal(f.interaction.getStyles().next.opacity, .25)
+      assert.equal(f.commits.length, 1)
+      await f.session.undo()
+      assert.deepEqual(f.current(), original)
+      assert.equal(f.interaction.getStyles().next.opacity, .25)
+      await f.session.redo()
+      assert.deepEqual(f.current(), saved)
+    } finally { f.close() }
+  }
+})
+
+test('取消文字与样式一起还原，不采纳默认；失败保留草稿直到成功保存', async () => {
+  let fail = true
+  const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:text', shapeType: 'text', text: 'original' }], beforeCommit: async () => { if (fail) throw new Error('synthetic style edit failure') } })
+  try {
+    const original = f.current()
+    f.interaction.editText({ type: 'begin', id: 'shape:text' })
+    f.interaction.editText({ type: 'update', content: toRichText('discarded') })
+    await f.interaction.setStyles({ color: 'red', font: 'mono' })
+    f.interaction.editText({ type: 'cancel' })
+    assert.deepEqual(f.current(), original)
+    assert.equal(f.session.store.get('shape:text').props.color, 'black')
+    assert.equal(f.interaction.getStyles().next.color, 'black')
+    assert.equal(f.commits.length, 0)
+    f.interaction.editText({ type: 'begin', id: 'shape:text' })
+    f.interaction.editText({ type: 'update', content: toRichText('kept') })
+    await f.interaction.setStyles({ color: 'red', font: 'mono' })
+    await assert.rejects(f.interaction.editText({ type: 'finish' }), /synthetic style edit failure/)
+    assert.equal(f.interaction.getStyles().next.color, 'black')
+    assert.equal(f.interaction.state.get().textEditing.content.content[0].content[0].text, 'kept')
+    fail = false
+    await f.interaction.editText({ type: 'finish' })
+    assert.equal(f.current().store['shape:text'].props.color, 'red')
+    assert.equal(f.current().store['shape:text'].props.font, 'mono')
+    assert.equal(f.interaction.getStyles().next.color, 'red')
+    await f.session.undo()
+    assert.deepEqual(f.current(), original)
+  } finally { f.close() }
+})
+
+test('按ID设置未选中文字的样式失败时，恢复原选择而非替换成动作目标', async () => {
+  const f = await creationFixture({ commands: [
+    { type: 'create_shape', id: 'shape:selected', shapeType: 'geo', x: 100, y: 100, props: { fill: 'solid' } },
+    { type: 'create_shape', id: 'shape:target', shapeType: 'text', text: 'Target', x: 600 },
+  ], beforeCommit: async () => { throw new Error('synthetic targeted style failure') } })
+  try {
+    await f.click(150, 150)
+    assert.deepEqual(f.interaction.state.get().selectedIds, ['shape:selected'])
+    await assert.rejects(f.interaction.editText({ type: 'style', id: 'shape:target', changes: { font: 'mono' } }), /synthetic targeted style failure/)
+    assert.deepEqual(f.interaction.state.get().selectedIds, ['shape:selected'])
+    assert.equal(f.current().store['shape:target'].props.font, 'sans')
+    assert.equal(f.interaction.getStyles().next.font, 'draw')
+  } finally { f.close() }
+})
+
+test('远端只改位置时重放文字与样式；改同一个样式字段则保留草稿并停止自动覆盖', async () => {
+  for (const kind of ['position', 'style']) {
+    const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:text', shapeType: 'text', text: 'original' }] })
+    try {
+      f.interaction.editText({ type: 'begin', id: 'shape:text' })
+      f.interaction.editText({ type: 'update', content: toRichText('local draft'), selection: { from: 3, to: 3 } })
+      await f.interaction.setStyles({ color: 'red', font: 'mono' })
+      await f.remote([{ type: 'update', id: 'shape:text', changes: kind === 'position' ? { x: 300 } : { props: { color: 'blue' } } }])
+      if (kind === 'position') {
+        await f.interaction.editText({ type: 'finish' })
+        assert.equal(f.current().store['shape:text'].x, 300)
+        assert.equal(f.current().store['shape:text'].props.color, 'red')
+        assert.equal(f.current().store['shape:text'].props.font, 'mono')
+        assert.equal(f.current().store['shape:text'].props.richText.content[0].content[0].text, 'local draft')
+        assert.equal(f.commits[0].expectedRevision, '1')
+      } else {
+        assert.equal(f.interaction.state.get().textEditing.conflict?.type, 'style')
+        assert.equal((await f.interaction.setStyles({ color: 'green' })).reason, 'conflict')
+        assert.equal(await f.interaction.editText({ type: 'finish' }), false)
+        assert.equal(f.current().store['shape:text'].props.color, 'blue')
+        assert.equal(f.interaction.state.get().textEditing.content.content[0].content[0].text, 'local draft')
+        assert.deepEqual(f.interaction.state.get().textEditing.selection, { from: 3, to: 3 })
+        assert.equal(f.interaction.getStyles().next.color, 'black')
+        assert.equal(f.commits.length, 0)
+      }
+    } finally { f.close() }
+  }
+})
+
+test('活动文字已预览样式后远端锁住自身或祖先，保留草稿而不重放到锁定目标', async () => {
+  for (const locked of ['shape:text', 'shape:parent']) {
+    const f = await creationFixture({ commands: [
+      { type: 'create_shape', id: 'shape:parent', shapeType: 'frame' },
+      { type: 'create_shape', id: 'shape:text', shapeType: 'text', parentId: 'shape:parent', text: 'original' },
+    ] })
+    try {
+      f.interaction.editText({ type: 'begin', id: 'shape:text' })
+      f.interaction.editText({ type: 'update', content: toRichText('local draft') })
+      await f.interaction.setStyles({ color: 'red' })
+      await f.remote([{ type: 'update', id: locked, changes: { isLocked: true } }])
+      assert.equal(await f.interaction.editText({ type: 'finish' }), false)
+      assert.equal(f.current().store['shape:text'].props.color, 'black')
+      assert.equal(f.current().store[locked].isLocked, true)
+      assert.equal(f.interaction.state.get().textEditing.content.content[0].content[0].text, 'local draft')
+      assert.equal(f.interaction.getStyles().next.color, 'black')
+      assert.equal(f.commits.length, 0)
+    } finally { f.close() }
+  }
+})
+
+test('活动编辑可把自己的透明度预览设0再恢复，不因此结束输入事务', async () => {
+  const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:text', shapeType: 'text', text: 'original' }] })
+  try {
+    f.interaction.editText({ type: 'begin', id: 'shape:text' })
+    await f.interaction.setStyles({ opacity: 0 })
+    assert.equal(f.session.store.get('shape:text').opacity, 0)
+    await f.interaction.setStyles({ opacity: .5 })
+    assert.equal(f.session.store.get('shape:text').opacity, .5)
+    f.interaction.editText({ type: 'update', content: toRichText('continued') })
+    await f.interaction.editText({ type: 'finish' })
+    assert.equal(f.commits.length, 1)
+    assert.equal(f.current().store['shape:text'].opacity, .5)
+  } finally { f.close() }
+})
+
 test('拒绝无效标题后仍能保存原草稿，保存中关闭不会访问已销毁的文字会话', async () => {
   const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:frame', shapeType: 'frame', props: { name: 'original' } }] })
   try {
