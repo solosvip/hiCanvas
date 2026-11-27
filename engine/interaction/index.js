@@ -66,8 +66,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage, initial)
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
-  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null, lastNotice: null }))
-  let disposed = false, tool, laserTool, switchingTool = false, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
+  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, interactingEmbedId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null, lastNotice: null }))
+  let disposed = false, tool, laserTool, switchingTool = false, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, embeds, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -86,6 +86,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (JSON.stringify(next.selectedIds) !== JSON.stringify(previous.selectedIds) && !Object.hasOwn(patch, 'selectionRotation')) next.selectionRotation = null
     if (next.hoveredId && !targets.isSelectable(next.hoveredId)) next.hoveredId = null
     if (next.interactingVideoId && (next.toolId !== 'select' || !next.selectedIds.includes(next.interactingVideoId) || !targets.isSelectable(next.interactingVideoId) || session.store.get(next.interactingVideoId)?.type !== 'video')) next.interactingVideoId = null
+    next.interactingEmbedId = embeds?.sync(next, patch) || null
+    if (next.interactingEmbedId) next.interactingVideoId = null
     if (next.imageAltEditing && (next.toolId !== 'select' || next.selectedIds.length !== 1 || next.selectedIds[0] !== next.imageAltEditing.id || !targets.isSelectable(next.imageAltEditing.id))) next.imageAltEditing = null
     next.camera = Object.freeze(checkedCamera(next.camera))
     next.contentOffscreen = content.offscreen(next.camera, next.viewport)
@@ -145,7 +147,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   connectionEditing = createConnectionEditing(context)
   videoInput = createVideoInteraction({ ...context, prepare: prepareText })
   imageAlt = createImageAlt({ ...context, prepare: prepareText })
-  const embeds = createEmbedEditing({ ...context, prepare: prepareText })
+  embeds = createEmbedEditing({ ...context, prepare: prepareText })
   const textInput = createTextInput({ ...context, prepare: prepareText, replay: dispatchCore, canCreate: () => toolIds.includes('text') }, textEditing)
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
@@ -164,7 +166,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const checkBasis = !session.state.get().isGestureActive && read().selectionRotation !== null
     const before = checkBasis && selection.expected(read().selectedIds)
     index.applyChanges(changes); targets.apply(changes); content.apply(changes); selection.apply(changes)
-    connectionEditing.applyChanges(changes); videoInput.applyChanges(changes); tool?.applyChanges?.(changes)
+    connectionEditing.applyChanges(changes); videoInput.applyChanges(changes); embeds.applyChanges(changes); tool?.applyChanges?.(changes)
     const after = checkBasis && selection.expected(read().selectedIds)
     const affected = checkBasis && [...Object.keys(changes.added), ...Object.keys(changes.updated), ...Object.keys(changes.removed)].some(id => before.has(id) || after.has(id))
     change(!session.state.get().isGestureActive && affected ? { selectionRotation: null } : {})
@@ -187,10 +189,10 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       if (input.type === 'frame') navigation.finishFrame()
       return
     }
-    if (embeds.handle(input)) return true
     // Count only input that reaches the canvas: a rejected click must not
     // prime a later double click (#139). The minimap keeps native dblclick.
     input = countClicks(input)
+    if (embeds.handle(input)) return true
     // Physical-pointer Escape cancels through tool.dispatch below; clear its
     // click sequence too, before a later ordinary click can become click #2.
     if (input.type === 'key_down' && matchesCanvasShortcut('escape', input)) countClicks = createClickCounter()

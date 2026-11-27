@@ -1,13 +1,29 @@
-import { EMBED_SERVICES } from '../../model/index.js'
+import { EMBED_SERVICES, resolveEmbedUrl } from '../../model/index.js'
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { planUrlInsertion, planUrlConversion } from '../embeds.js'
 import { CanvasEditError } from '../errors.js'
 import { matchesCanvasShortcut } from './shortcuts.js'
+import { canvasOwnsFocus } from './keyboard-input.js'
 
 // Dialog drafts are session state. Only submit crosses the command boundary;
 // opening, choosing a provider, typing, back and cancellation never write Store.
-export function createEmbedEditing({ session, pageId, targets, read, change, report, prepare }) {
-  let basis = null, pending = null, disposed = false
+export function createEmbedEditing({ session, pageId, index, targets, read, change, report, prepare }) {
+  let basis = null, pending = null, disposed = false, interactionBasis = null, press = null
+  const external = id => {
+    const shape = session.store.get(id)
+    return shape?.type === 'embed' && !shape.meta?.cowartHtmlDraft && !shape.meta?.cowartHtmlDraftAssetUrl && resolveEmbedUrl(shape.props.url) && targets.isSelectable(id)
+  }
+  function finish() { interactionBasis = null; if (read().interactingEmbedId) change({ interactingEmbedId: null }) }
+  function interact(id, click = false) {
+    const state = read(), runtime = session.state.get()
+    if (disposed || pending || runtime.isSubmitting || (!click && runtime.isGestureActive) || state.toolId !== 'select' || !['idle', ...(click ? ['pointing'] : [])].includes(state.mode) || state.temporaryTool || state.clipboardBusy || state.textEditing || state.imageAltEditing || state.croppingId || state.embedEditing || state.inputContext.isComposing || state.inputContext.owner === 'text-editing' || !external(id) || targets.target(id, state.focusedGroupId) !== id) return false
+    // Validate before releasing another owner. Preparation cancels only the
+    // pointing gesture, not video playback or the frame's own document state.
+    prepare()
+    interactionBasis = new Set(targets.lineage(id).map(record => record.id))
+    change({ interactingEmbedId: id, interactingVideoId: null, selectedIds: [id], mode: 'idle' })
+    return true
+  }
   function blocked() {
     const state = read(), runtime = session.state.get()
     return disposed || runtime.isSubmitting || runtime.isGestureActive || state.mode !== 'idle' || state.temporaryTool || state.clipboardBusy || state.textEditing || state.imageAltEditing || state.croppingId || state.inputContext.isComposing || state.inputContext.owner === 'text-editing'
@@ -54,8 +70,25 @@ export function createEmbedEditing({ session, pageId, targets, read, change, rep
   }
   const api = {
     cancel,
+    finish,
+    sync(next, patch) {
+      const id = next.interactingEmbedId
+      if (!id) return null
+      return patch.interactingVideoId || next.toolId !== 'select' || next.selectedIds.length !== 1 || next.selectedIds[0] !== id || targets.target(id, next.focusedGroupId) !== id || !external(id) || next.textEditing || next.imageAltEditing || next.croppingId || next.embedEditing || next.inputContext.owner === 'text-editing' ? null : id
+    },
+    applyChanges(changes) {
+      if (interactionBasis && [...Object.keys(changes.updated), ...Object.keys(changes.removed)].some(id => interactionBasis.has(id))) finish()
+    },
     available() { return !blocked() && !read().embedEditing },
     action(value) {
+      if (value.type === 'interact') return interact(value.id)
+      if (value.type === 'finish-interaction') { finish(); return true }
+      // Reports come from the current parent-owned iframe element. A stale
+      // source or an already detached node cannot end a newer interaction.
+      if (['frame-load', 'frame-error'].includes(value.type)) {
+        if (read().interactingEmbedId === value.id && session.store.get(value.id)?.props.url === value.url) finish()
+        return true
+      }
       if (value.type === 'conversion-intent') return conversionIntent(value.to)
       if (value.type === 'convert') return convert(value)
       if (value.type === 'cancel') { if (!pending) cancel(); return true }
@@ -80,6 +113,11 @@ export function createEmbedEditing({ session, pageId, targets, read, change, rep
       throw new CanvasEditError('未知嵌入操作。')
     },
     beforeKeyboard(input) {
+      const state = read()
+      if (state.interactingEmbedId) {
+        if (input.type === 'pointer_down' && input.button === 0 && !state.temporaryTool) finish()
+        if (input.type === 'key_down' && input.key === 'Escape' && canvasOwnsFocus(state.inputContext) && !state.inputContext.isComposing && !input.isComposing && input.keyCode !== 229) { finish(); return { handled: true } }
+      }
       if (!read().embedEditing || input.type !== 'key_down' || input.isComposing || input.keyCode === 229 || read().inputContext.isComposing) return { handled: false }
       if (input.key === 'Escape') { if (!pending) cancel(); return { handled: true } }
       // The host's native form owns Enter: it may activate Back or Cancel,
@@ -88,10 +126,22 @@ export function createEmbedEditing({ session, pageId, targets, read, change, rep
       return { handled: false }
     },
     handle(input) {
+      const state = read()
+      if (input.type === 'pointer_down') press = input.button === 0 ? { id: input.pointerId, point: input.point } : null
+      if (input.type === 'pointer_cancel') press = null
+      const released = input.type === 'pointer_up' ? press : null
+      if (input.type === 'pointer_up') press = null
+      // A coalesced final position can cross select's drag threshold without
+      // a move event. Let select process that release as an ordinary drag.
+      if (released && released.id === input.pointerId && Math.hypot(input.point.x - released.point.x, input.point.y - released.point.y) <= 4 && state.toolId === 'select' && state.mode === 'pointing' && input.type === 'pointer_up' && input.button === 0 && input.clickCount === 2 && !input.isComposing && input.keyCode !== 229) {
+        const raw = index.hitsAtPoint(screenToCanvas(input.point, state.camera), 4 / state.camera.z, { geoInterior: true }).find(targets.isSelectable)
+        const id = raw && targets.target(raw, targets.scopeFor(raw, state.focusedGroupId))
+        if (interact(id, true)) return true
+      }
       if (!matchesCanvasShortcut('embed-open', input) || blocked() || read().embedEditing) return false
       api.action({ type: 'open' }); return true
     },
-    dispose() { cancel(); disposed = true },
+    dispose() { finish(); cancel(); disposed = true },
   }
   return api
 }
