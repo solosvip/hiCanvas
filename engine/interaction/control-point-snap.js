@@ -16,7 +16,8 @@ function appendPath(candidates, page, outline, closed, visible) {
 // (non-neighbour) vertex; two-point adjacent vertices did not snap. Legacy
 // samples at (7,3) snapped to that vertex; (8,3) snapped to its segment.
 // Use an 8 CSS px radius within that observed 7.62–8.54 interval.
-// This is a local control-point policy, not the #128 global snapping system.
+// Local policy called only by the unified snapping entry; its independent
+// Control inversion and vertex priority preserve the #134 public contract.
 export function snapConnectionPoint(context, shape, point, excluded, input, movingId = null) {
   if (context.controlPointSnapping === Boolean(input.ctrlKey)) return { point, indicator: null }
   const radius = 8 / context.read().camera.z

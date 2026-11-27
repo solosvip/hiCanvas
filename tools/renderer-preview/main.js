@@ -13,6 +13,7 @@ import { createCreationFixture } from './creation-fixture.js'
 import { createTextEditingFixture } from './text-editing-fixture.js'
 import { createConnectionEditingFixture } from './connection-fixture.js'
 import { createNoteEditingFixture } from './note-editing-fixture.js'
+import { createSnappingFixture } from './snapping-fixture.js'
 import { attachCreationUi } from './creation-ui.js'
 import { attachTextUi } from './text-ui.js'
 import { attachPreviewInput } from './input.js'
@@ -37,6 +38,7 @@ const getState = () => {
   return Object.freeze({ ready, error: failure, count: metadata?.count || 0, counts: metadata ? Object.freeze({ ...metadata.counts }) : null, camera: state ? { ...state.camera } : null,
     focusedGroupId: state?.focusedGroupId, isWrapMode: state?.isWrapMode, selectedIds: state ? [...state.selectedIds] : [], hoveredId: state?.hoveredId || null, mode: state?.mode || 'idle', toolId: state?.toolId, temporaryTool: state?.temporaryTool, contentOffscreen: state?.contentOffscreen, needsFrame: state?.needsFrame, edgeScrolling: state?.edgeScrolling, shortcutsEnabled: state?.shortcutsEnabled, inputContext: state ? { ...state.inputContext } : null,
     creation: state?.creation && structuredClone(state.creation),
+    snappingPreferences: state?.snappingPreferences && { ...state.snappingPreferences },
     textEditing: state?.textEditing && structuredClone(state.textEditing),
     ...(metadata?.connectionEditingFixture && { connectionRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'binding'].includes(record.typeName))) }),
     ...(metadata?.noteEditingFixture && { noteRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'user'].includes(record.typeName))) }),
@@ -65,6 +67,7 @@ try {
   else if (gallery === 'creation') metadata = createCreationFixture()
   else if (gallery === 'connection-editing') metadata = createConnectionEditingFixture()
   else if (gallery === 'note-editing') metadata = createNoteEditingFixture()
+  else if (gallery === 'snapping') metadata = createSnappingFixture(params.get('snapCase'))
   else if (['text-editing', 'text-formatted'].includes(gallery)) metadata = createTextEditingFixture(gallery === 'text-formatted')
   else if (gallery === 'selection-semantics') metadata = createSelectionGallery()
   else if (['frame-performance', 'frame-performance-plain'].includes(gallery)) metadata = createFrameTitleFixture(await (await fetch('/__renderer_fixture?count=5000')).json(), gallery === 'frame-performance')
@@ -92,7 +95,7 @@ try {
   // Observation counter proves pointer hit queries do not serialize the board.
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
-  interaction = createCanvasInteraction({ session, displayName: params.get('displayName'), toolIds: gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  interaction = createCanvasInteraction({ session, snapping: { enabled: params.get('snapping') === '1' }, displayName: params.get('displayName'), toolIds: gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', textEditing: {
     onChange: (content, selection) => interaction.editText({ type: 'update', content, selection }),

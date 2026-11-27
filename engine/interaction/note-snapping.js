@@ -3,7 +3,8 @@ import { noteGeometry } from './note-geometry.js'
 // Native legacy translation samples with snap preference OFF: ideal right
 // origin510; x501/519 ->510, x500/520 unchanged. (6,6) ->ideal; (8,8) didn't.
 // Thus use Euclidean distance <10 CSS px. Ctrl/Meta applied AFTER down did
-// not disable this local note policy. Global preferences remain #128.
+// not disable this local note policy. The unified snapping entry gives it
+// priority and owns its indicator lifecycle alongside bounds and controls.
 export function createNoteSnapping(context) {
   let indicator = null
   function preview(starts, delta) {

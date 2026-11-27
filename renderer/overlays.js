@@ -3,6 +3,7 @@ import { useValue } from '@tldraw/state-react'
 import { StaticFrame } from './image.js'
 import { checkedScribble, ScribbleOverlay } from './scribble-overlay.js'
 import { checkedConnectionOverlay, ConnectionOverlay } from './connection-overlay.js'
+import { checkedSnapGuides, SnapGuides } from './snap-guides.js'
 const overlayStyle = Object.freeze({ position: 'absolute', inset: 'var(--spacing-none)', pointerEvents: 'none', transformOrigin: '0 0' })
 const itemStyle = Object.freeze({ position: 'absolute', left: 'var(--spacing-none)', top: 'var(--spacing-none)', transformOrigin: '0 0' })
 
@@ -10,6 +11,7 @@ export function checkedOverlays(value) {
   if (!Array.isArray(value)) throw new Error('覆盖层需要描述数组。')
   return Object.freeze(value.map(item => {
     if (item?.kind === 'scribble') return checkedScribble(item)
+    if (item?.kind === 'snap-guides') return checkedSnapGuides(item)
     if (['connection', 'snap', 'note'].includes(item?.kind)) return checkedConnectionOverlay(item)
     const b = item?.bounds
     if (!['selection', 'marquee', 'crop'].includes(item?.kind) || !b || ![b.x, b.y, b.w, b.h].every(Number.isFinite) || b.w < 0 || b.h < 0) throw new Error('覆盖层描述需要有效种类和画布外框。')
@@ -37,6 +39,7 @@ export function CanvasOverlays({ camera, overlays, reduceMotion }) {
   return h('div', { style: { ...overlayStyle, transform: `scale(${view.z}) translate3d(${view.x}px,${view.y}px,0)` }, 'data-canvas-overlays': '', 'aria-hidden': true },
     items.map((item, i) => {
       if (item.kind === 'scribble') return h(ScribbleOverlay, { key: `scribble:${i}`, item, zoom: view.z })
+      if (item.kind === 'snap-guides') return h(SnapGuides, { key: `snap-guides:${i}`, item, zoom: view.z })
       if (['connection', 'snap', 'note'].includes(item.kind)) return h(ConnectionOverlay, { key: `${item.kind}:${item.id || i}`, item, zoom: view.z })
       const brush = item.kind === 'marquee', stroke = `var(--spacing-overlay-${brush ? 'brush' : 'selection'}-stroke)`
       return h('div', { key: `${item.kind}:${item.id || i}`, 'data-overlay-kind': item.kind, 'data-overlay-id': item.id,

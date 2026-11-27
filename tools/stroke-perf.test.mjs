@@ -2,6 +2,7 @@ import './test-sandbox.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {strokeVerdict,assertStrokeBudget,strokeSummary,assertPairedFixtures,isFormalStrokeRun} from './perf/strokes-report.mjs'
+import {assertStrokeStart} from './perf/strokes-phase.mjs'
 
 const pair=(openRatio=1,frameRatio=1)=>({count:500,openRatio,panPaintRatio:frameRatio,zoomPaintRatio:frameRatio,dragPaintRatio:frameRatio})
 test('笔迹性能门禁接受110%打开与90%绘制帧率边界，拒绝缺项和无效测量',()=>{
@@ -41,4 +42,24 @@ test('正式报告只标记双生产宿主、完整三轮四组及完整时段�
   const complete={productionPreview:true,tracing:false,options:{renderer:'both',runs:3,sizes:[500,1000,2000,5000],durationMs:2500}}
   assert.equal(isFormalStrokeRun(complete),true)
   for(const patch of [{productionPreview:false},{tracing:true},{options:{...complete.options,runs:1}},{options:{...complete.options,sizes:[500]}},{options:{...complete.options,durationMs:500}}])assert.equal(isFormalStrokeRun({...complete,...patch}),false)
+})
+
+test('#128专用验收只判5000档开启吸附的拖动，仍要求双生产三轮完整时段',()=>{
+  const run={productionPreview:true,tracing:false,options:{renderer:'both',runs:3,sizes:[5000],durationMs:2500,snapping:true}}
+  assert.equal(isFormalStrokeRun(run),true)
+  assert.equal(isFormalStrokeRun({...run,options:{...run.options,snapping:false}}),false)
+  const comparison={...pair(2,.5),count:5000,dragPaintRatio:.9}
+  assert.equal(strokeVerdict(comparison,{dragOnly:true}).pass,true)
+  assert.equal(strokeVerdict({...comparison,dragPaintRatio:.8999},{dragOnly:true}).pass,false)
+})
+
+test('吸附报告不能接受偏好未开启或缺失读回证据的配对与拖动',()=>{
+  const legacy={renderer:'legacy',stage:'baseline',count:5000,repeat:1,snapping:true,snapshotHash:'a'.repeat(64),counts:{image:0},assetCount:0,ready:{snapping:true,camera:{x:0,y:0,z:.1},viewport:{width:1280,height:800,devicePixelRatio:2},renderedImages:0}}
+  const preview={...legacy,renderer:'preview'}
+  assert.doesNotThrow(()=>assertPairedFixtures([legacy,preview]))
+  for(const patch of [{snapping:false},{ready:{...legacy.ready,snapping:false}},{ready:{...legacy.ready,snapping:undefined}}])assert.throws(()=>assertPairedFixtures([legacy,{...preview,...patch}]),/吸附/)
+  const fixture={camera:legacy.ready.camera,targetId:'shape:target',snapping:true}
+  const state={camera:fixture.camera,selectedIds:[fixture.targetId],snapping:true}
+  assert.doesNotThrow(()=>assertStrokeStart(fixture,state))
+  assert.throws(()=>assertStrokeStart(fixture,{...state,snapping:false}),/没有开启吸附/)
 })

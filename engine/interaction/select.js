@@ -15,7 +15,7 @@ export function createSelectionTool(context) {
   const handles = createHandleGesture(context)
   let gesture = null
   function cancel() {
-    context.noteSnapping.clear()
+    context.snapping.clear()
     handles.cancel()
     if (!gesture) return
     const previous = gesture; gesture = null
@@ -46,7 +46,7 @@ export function createSelectionTool(context) {
     gesture.starts = selectedIds.filter(id => {
       for (let r = index.getRecord(index.getRecord(id)?.parentId); r?.typeName === 'shape'; r = index.getRecord(r.parentId)) if (selected.has(r.id)) return false
       return targets.isSelectable(id)
-    }).map(id => { const r = index.getRecord(id); return { id, x: r.x, y: r.y, page: connectionCoordinates(index, id).page({ x: 0, y: 0 }) } })
+    }).map(id => { const r = index.getRecord(id); return { id, x: r.x, y: r.y, bounds: index.getBounds(id), page: connectionCoordinates(index, id).page({ x: 0, y: 0 }) } })
     gesture.expected = captureRecords(gesture.starts)
     gesture.selectedIds = [...selectedIds]
     gesture.restoreDuplicate = context.duplicates.checkpoint()
@@ -80,7 +80,7 @@ export function createSelectionTool(context) {
     let delta = { x: point.x - gesture.start.x, y: point.y - gesture.start.y }
     // Legacy native Shift toggles live and can change dominant axis mid-drag.
     if (input.shiftKey) delta[Math.abs(delta.x) > Math.abs(delta.y) ? 'y' : 'x'] = 0
-    delta = context.noteSnapping.preview(gesture.starts, delta)
+    delta = context.snapping.move(gesture.starts, delta, input)
     gesture.lastInput = input
     // 2026-11-26 isolated legacy native drag: (50,30), Alt down restores the
     // originals and selects copies at that delta; release returns to moving
@@ -115,7 +115,7 @@ export function createSelectionTool(context) {
     // Pointerup can carry the last coalesced position even without a move frame.
     if (input.point) move(input)
     gesture = null
-    context.noteSnapping.clear()
+    context.snapping.clear()
     if (previous.kind === 'pointing' && previous.hit) {
       if (!previous.additive) change({ selectedIds: [previous.hit] })
       else if (previous.toggle) change({ selectedIds: read().selectedIds.filter(id => id !== previous.hit) })
@@ -132,7 +132,7 @@ export function createSelectionTool(context) {
       if (hit) change({ selectedIds: [hit] })
     }
   }
-  return { cancel, get needsFrame() { return Boolean(gesture?.stroke?.needsFrame) }, frame(time) { if (gesture?.stroke) { const scribble = gesture.stroke.age(time); change({ scribble, needsFrame: gesture.stroke.needsFrame }) } }, dispatch(input) {
+  return { cancel, refreshSnapping() { if(handles.active)handles.refreshSnapping();else if(gesture?.kind==='dragging')move(gesture.lastInput) }, get needsFrame() { return Boolean(gesture?.stroke?.needsFrame) }, frame(time) { if (gesture?.stroke) { const scribble = gesture.stroke.age(time); change({ scribble, needsFrame: gesture.stroke.needsFrame }) } }, dispatch(input) {
     if (handles.active) return handles.dispatch(input)
     if (gesture?.lastInput && matchesCanvasShortcut('selection-modifiers', input)) return move({ ...gesture.lastInput, ...input, type: 'pointer_move', point: gesture.lastInput.point, pointerId: gesture.pointerId })
     if (input.type === 'pointer_down') return down(input)

@@ -25,6 +25,7 @@ import { checkOpaqueBorderCut } from './clip-negative-guard.mjs'
 import { actionsSmoke } from './actions-smoke.mjs'
 import { noteSmoke } from './note-smoke.mjs'
 import { duplicateSmoke } from './duplicate-smoke.mjs'
+import { snappingSmoke } from './snapping-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -110,6 +111,14 @@ async function run() {
   if (!contentPort) { const health = await fetch(origin + '/api/health'); if (health.ok) contentPort = (await health.json()).contentHost?.port }
   try {
     app.dock?.hide()
+    if (manifest.snappingOnly) {
+      window = createWindow('snapping')
+      await window.loadURL(`${manifest.url}/?gallery=snapping&snapping=1&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ snapping: await snappingSmoke(window, manifest.output) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.notesOnly) {
       window = createWindow('note-editing')
       await window.loadURL(`${manifest.url}/?gallery=note-editing&edgeScrolling=0`)

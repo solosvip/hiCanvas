@@ -10,6 +10,7 @@ export async function selected(evaluate,fixture){
   throw new Error(`原生指针未选中笔迹：${fixture.targetId}`)
 }
 export function assertStrokeStart(fixture,state){
+  if(fixture.snapping&&!state.snapping)throw new Error('吸附专用拖动没有开启吸附，拒绝空测。')
   if(['x','y','z'].some(key=>Math.abs(state.camera[key]-fixture.camera[key])>1e-8))throw new Error('笔迹阶段起始视角不符。')
   if(state.selectedIds.length!==1||state.selectedIds[0]!==fixture.targetId)throw new Error('两版笔迹阶段必须仅选中同一目标。')
 }

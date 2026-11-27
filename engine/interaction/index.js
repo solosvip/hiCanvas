@@ -35,7 +35,7 @@ import { createArrowTool, createLineTool } from './create-connection.js'
 import { createConnectionEditing } from './connection-editing.js'
 import { createNoteTool } from './create-note.js'
 import { createNoteEditing } from './note-editing.js'
-import { createNoteSnapping } from './note-snapping.js'
+import { createSnapping } from './snapping.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -49,7 +49,7 @@ export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, h
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
 // Hosts may supply design tokens; the engine validates and copies the values.
-export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, displayName = null }) {
+export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null }) {
   if (!session?.store || !toolIds.length || toolIds.some(id => !Object.hasOwn(canvasToolRegistry, id))) throw new Error('交互模块需要运行时和已登记工具。')
   const metrics = checkedHandleMetrics(handleMetrics)
   if (typeof controlPointSnapping !== 'boolean') throw new Error('控制点吸附需要布尔值。')
@@ -59,11 +59,12 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
-  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, noteSnapping, selectionKeys, actions, lastTime = -Infinity
+  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, selectionKeys, actions, snaps, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
     const previous = read(), next = { ...previous, ...patch }
+    if (snaps) next.snappingPreferences = snaps.preferences()
     next.focusedGroupId = targets.validScope(next.focusedGroupId)
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))
     duplicates.selectionChanged(next.selectedIds)
@@ -80,10 +81,9 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const selected = next.textEditing ? null : next.croppingId ? cropTool?.describe(next) : describeSelection(selection, next.selectedIds, next.selectionRotation), overlays = selected ? [selected] : []
     const connection = !next.textEditing && !next.croppingId && connectionEditing?.describe(next)
     if (connection) overlays.push(connection)
-    if (connectionEditing?.indicator()) overlays.push(connectionEditing.indicator())
     const note = noteEditing?.describe(next)
     if (note) overlays.push(note)
-    if (noteSnapping?.indicator()) overlays.push(noteSnapping.indicator())
+    overlays.push(...(snaps?.describe() || []))
     if (next.marquee) overlays.push({ kind: 'marquee', bounds: next.marquee })
     if (next.scribble) overlays.push(next.scribble)
     next.overlays = Object.freeze(overlays.map(o => Object.freeze({ ...o, bounds: Object.freeze({ ...o.bounds }), ...(o.handles && { handles: Object.freeze(o.handles.map(h => Object.freeze(h))) }) })))
@@ -93,7 +93,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function cancelTool() {
     // Context loss cancels real and comma pointers together. Recreate the
     // shared counter so neither a previous click nor an unreleased press leaks.
-    countClicks = createClickCounter(); actions?.cancel(); selectionKeys?.cancel(); connectionEditing?.cancel(); noteEditing?.cancel(); noteSnapping?.clear(); tool?.cancel()
+    countClicks = createClickCounter(); actions?.cancel(); selectionKeys?.cancel(); connectionEditing?.cancel(); noteEditing?.cancel(); snaps?.clear(); tool?.cancel()
   }
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
@@ -101,8 +101,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     creation.toolChanged(id)
     return tool
   }
-  const context = { session, index, targets, selection, duplicates, handleMetrics: metrics, controlPointSnapping, displayName, read, change, report, measureFrameTitle, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
-  noteSnapping = createNoteSnapping(context); context.noteSnapping = noteSnapping
+  const context = { session, index, targets, selection, duplicates, handleMetrics: metrics, controlPointSnapping, snapModifier, displayName, read, change, report, measureFrameTitle, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
+  snaps = createSnapping(context, snapping); context.snapping = snaps
   const creation = createCreationControls({ read, change, switchTool: setTool, canUseTool: id => toolIds.includes(id) })
   context.creation = creation
   cropTool = createImageCrop(context)
@@ -198,6 +198,14 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   }
   return Object.freeze({
     state: Object.freeze({ get: read }),
+    getSnappingPreferences() { assertActive(); return snaps.preferences() },
+    setSnappingPreferences(patch) {
+      assertActive(); snaps.setPreferences(patch)
+      try {
+        if (!session.state.get().isSubmitting) { connectionEditing.refreshSnapping(); tool.refreshSnapping?.() }
+      } catch (error) { cancelTool(); report(error); throw error }
+      change()
+    },
     runAction(id, options) { assertActive(); return actions.run(id, options) },
     getActions() { assertActive(); return actions.describe() },
     setTool(id) { assertActive(); setTool(id) },

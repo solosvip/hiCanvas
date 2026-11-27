@@ -15,7 +15,8 @@ if(process.argv.includes('--help')){
   console.log(`Node24，先 npm ci --ignore-scripts 和 npm run build；先在白板登记两端口与全量检查，轮到再运行。
 HICANVAS_TEST_ELECTRON=<已有Electron> node tools/perf/strokes.mjs --port 43392 --preview-port 43393 --load-note '白板独占；其他系统负载说明'
 默认：500/2000/5000笔迹（画笔荧光各半、每笔129点），另加500底板+500笔迹；每板一条129点斜线作原生拖动目标，低缩放下避开手柄；新旧交替三轮，各阶段2500ms。
---sizes 500,2000,5000 --runs 3 --duration-ms 2500 --output .scratch/stroke-perf --load-note <说明>；混合样本始终包含。
+--sizes 500,2000,5000 --runs 3 --duration-ms 2500 --output .scratch/stroke-perf --load-note <说明>；默认包含混合样本。
+HICANVAS_STROKE_SNAPPING=1 加 --sizes 5000：#128 专用，两版吸附均开启，只判拖动paint不低于旧版90%；其余指标仍保留，失败补测规则不变。
 先各跑一份不计分预热；每次新窗口/内存session，打开到可选中、字体及全部图片解码、双rAF就绪。帧率取真实paint，另存rAF。
 任一项不达90%帧率/110%打开，则同进程立即补该规模的新旧各一轮，按《架构说明》第8节以补测为准；失败退出1。
 HICANVAS_STROKE_DIAG=1 可另跑含打开CPU采样、DOM/路径统计及阶段追踪的诊断；HICANVAS_PERF_TRACE=1 只追踪阶段，有追踪开销的样本不得作正式门槛。默认两版均生产构建（新预览不压缩以保留诊断函数名）；HICANVAS_STROKE_DEV=1 可单独复现开发宿主成本。
@@ -26,7 +27,10 @@ HICANVAS_STROKE_DIAG=1 HICANVAS_STROKE_ABLATION=1 增加5000条新版不透明�
 const options=parseOptions(['--renderer','both','--output','.scratch/stroke-perf',...process.argv.slice(2)])
 if(process.env.HICANVAS_STROKE_ABLATION==='1'&&process.env.HICANVAS_STROKE_DIAG!=='1')throw new Error('透明度消融只允许诊断运行。')
 if(options.renderer!=='both')throw new Error('笔迹对照需要新旧两版。')
-options.sizes=[...options.sizes,1000].sort((a,b)=>a-b)
+options.snapping=process.env.HICANVAS_STROKE_SNAPPING==='1'
+if(options.snapping){
+  if(options.sizes.length!==1||options.sizes[0]!==5000)throw new Error('吸附专用对照明确指定 --sizes 5000。')
+}else options.sizes=[...options.sizes,1000].sort((a,b)=>a-b)
 const executable=process.env.HICANVAS_TEST_ELECTRON
 if(!executable)throw new Error('指定已有 HICANVAS_TEST_ELECTRON；工具不下载运行时。')
 const outputParent=await scratchPath(join(repositoryRoot,options.output));await mkdir(outputParent,{recursive:true})
@@ -55,6 +59,7 @@ try{
     cancellation.signal.throwIfAborted()
     const key=`${stage}-${count}-${repeat}`,conversation=await workspace.open({createNew:true,title:'Synthetic strokes '+key}),current=await workspace.read(conversation.id)
     const fixture=createStrokeFixture(count,current.snapshot)
+    fixture.snapping=options.snapping
     await prepareFixture(workspace,conversation.id,current,fixture.snapshot)
     fixture.snapshot=(await workspace.read(conversation.id)).snapshot
     await workspace.sidecar(conversation.id,'view',fixture.viewState)
@@ -79,7 +84,7 @@ try{
   await writeFile(join(outputDir,'report.json'),JSON.stringify(report,null,2))
   console.table(report.comparisons.map(item=>({count:item.count,open:item.openRatio,pan:item.panPaintRatio,zoom:item.zoomPaintRatio,drag:item.dragPaintRatio,pass:item.pass,basis:item.basis})))
   console.log('笔迹证据：'+outputDir)
-  assertStrokeBudget(report,options.sizes)
+  assertStrokeBudget(report,options.sizes,options)
 }finally{
   service?.closeAllConnections()
   try{if(service)await new Promise(resolve=>service.close(resolve))}

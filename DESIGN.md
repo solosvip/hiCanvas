@@ -100,6 +100,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 
 ## Components
 
+对象吸附提示线复用 error（接近旧版截图的红色）与 overlay-brush-stroke 细线，叉形锚点和等间距中点刻度复用 xs 长度；线宽与标记尺寸固定为屏幕 CSS 像素，位置使用画布坐标。旧版精确颜色和线宽未取得可确认读数，本轮沿用这些既有令牌，作为功能清单中的有意差异。提示仅在变换手势中显示，松手、取消、切换工具和失焦时清除；不增加正式设置界面。
+
 便签四边中点显示相邻续建的「+」柄，屏幕尺寸固定，复用 overlay-handle-size、overlay-handle-stroke、overlay-rotate-radius、primary、surface、full 圆角令牌；十字由两条既有线宽和半径尺寸的主色短线组成。编辑时只隐藏纸面文字，保留纸面和署名；便签编辑区复用统一富文本视图、原字体、标签颜色和16px文档内边距，不新增应用浮栏。
 
 线条和连接箭头的选中态显示圆形端点与段间控制柄，复用 overlay-handle-size、overlay-handle-stroke、primary、surface 和 full 圆角令牌；尺寸及点击范围保持屏幕 CSS 像素。单选连接线使用这些控制柄，多选仍用共同选择框。控制点吸附的临时指示使用同尺寸主色圆点，松手或取消即消失，不写入画板。

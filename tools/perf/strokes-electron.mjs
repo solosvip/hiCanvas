@@ -9,6 +9,7 @@ import {startPhaseTrace} from './trace.mjs'
 import {measureStrokePhase,selected} from './strokes-phase.mjs'
 import * as probe from './strokes-probe.mjs'
 import {strokeSummary} from './strokes-report.mjs'
+import {enableStrokeSnapping} from './snapping-preference.mjs'
 import {startStrokeDiagnosis,strokeDomStats,setStrokeOpacity,strokeTraceLabel,strokeOpacityStats} from './strokes-diagnostics.mjs'
 
 const directories=await isolatedDirectories(),manifest=JSON.parse(await readFile(await scratchPath(process.argv.at(-1)),'utf8'))
@@ -39,9 +40,12 @@ async function sample(fixture,serial){
   await window.loadURL(fixture.url)
   const ready=await evaluate(probe.waitUntilReady,fixture)
   if(['x','y','z'].some(key=>Math.abs(ready.camera[key]-fixture.camera[key])>1e-6))throw new Error('两版起始视角与合成输入不一致，拒绝性能比较。')
+  const setupStart=performance.now()
+  if(fixture.snapping)ready.snapping=await enableStrokeSnapping(window.webContents)
+  const setupMs=performance.now()-setupStart
   for(const type of ['mouseMove','mouseDown','mouseUp'])window.webContents.sendInputEvent({type,x:Math.round(ready.point.x),y:Math.round(ready.point.y),button:'left',clickCount:1})
   await selected(evaluate,fixture)
-  const openMs=performance.now()-start
+  const openMs=performance.now()-start-setupMs
   let openingTrace,dom
   if(diagnose){openingTrace=await activeTrace();activeTrace=undefined;dom=await evaluate(strokeDomStats)}
   await window.webContents.executeJavaScript(cameraReaderScript(probe))
