@@ -10,6 +10,7 @@ import { createImageImportFixture } from './image-fixtures.js'
 import { createFixture } from '../perf/fixture.mjs'
 import { prepareFixture } from '../perf/prepare.mjs'
 import { createClipboardFixture } from './clipboard-fixture.js'
+import { createSlidesFixture, slidesFixtureCases } from './slides-fixture.js'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 // Separate development host: production service and user data are never used.
@@ -33,14 +34,14 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
     queues.set(id, next.catch(() => {})); return next
   }
   async function fixture(count) {
-    if (![500, 2000, 5000, 'videos', 'image-import'].includes(count)) throw new Error('合成规模无效。')
+    if (![500, 2000, 5000, 'videos', 'image-import', ...slidesFixtureCases.map(name => `slides-${name}`)].includes(count)) throw new Error('合成规模无效。')
     if (!boards.has(count)) boards.set(count, (async () => {
       const title = `交互合成 ${count}`, existing = (await workspace.list()).find(b => b.title === title)
       const board = existing || await workspace.open({ createNew: true, title })
       let current = await workspace.read(board.id)
-      const data = count === 'videos' ? createVideoFixture(current.snapshot) : count === 'image-import' ? createImageImportFixture(current.snapshot) : createFixture(count, current.snapshot)
+      const data = String(count).startsWith('slides-') ? createSlidesFixture(current.snapshot, count.slice(7)) : count === 'videos' ? createVideoFixture(current.snapshot) : count === 'image-import' ? createImageImportFixture(current.snapshot) : createFixture(count, current.snapshot)
       if (!existing) current = await prepareFixture(workspace, board.id, current, data.snapshot)
-      return { count: data.count || count, ...(data.videoFixture && { videoFixture: true }), ...(data.imageImportFixture && { imageImportFixture: true }), counts: data.counts, assetCount: data.assetCount, targetId: data.targetId, viewState: data.viewState, conversationId: board.id, persistent: true }
+      return { count: data.count || count, ...(data.videoFixture && { videoFixture: true }), ...(data.imageImportFixture && { imageImportFixture: true }), ...(data.slidesFixture && { slidesFixture: true, fixtureCase: data.fixtureCase }), counts: data.counts, assetCount: data.assetCount, targetId: data.targetId, viewState: data.viewState, conversationId: board.id, persistent: true }
     })())
     return boards.get(count)
   }
@@ -87,8 +88,8 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
       }
       if (path === '/__renderer_fixture') {
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
-        const gallery = url.searchParams.get('gallery'), count = ['videos', 'image-import'].includes(gallery) ? gallery : Number(url.searchParams.get('count'))
-        if (![500, 2000, 5000, 'videos', 'image-import'].includes(count)) { res.writeHead(400); res.end(); return }
+        const gallery = url.searchParams.get('gallery'), count = gallery === 'slides' ? `slides-${url.searchParams.get('case') || 'base'}` : ['videos', 'image-import'].includes(gallery) ? gallery : Number(url.searchParams.get('count'))
+        if (![500, 2000, 5000, 'videos', 'image-import', ...slidesFixtureCases.map(name => `slides-${name}`)].includes(count)) { res.writeHead(400); res.end(); return }
         return sendJson(res, 200, await fixture(count))
       }
       if (path.startsWith('/__interaction/')) {

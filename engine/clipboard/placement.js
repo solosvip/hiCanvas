@@ -1,6 +1,7 @@
 import { CanvasEditError } from '../errors.js'
 import { createConnectionContext, getShapePageBounds, getShapeBounds, hitTestCanvas, shapeToPagePoint, pageToShapePoint } from '../../renderer/geometry.js'
 import { validateClipboardContent } from './validate.js'
+import { isSlidesContainer, isSlidesPage } from '../slides-layout.js'
 
 function boundsOf(content) {
   const records = [...content.shapes, ...content.bindings, ...content.assets]
@@ -60,7 +61,13 @@ export function planClipboardPaste(snapshot, input, { viewport, point, atCursor 
   // with cursor preference, an enclosing frame or a focused group (#176).
   if (strategy === 'viewport-page') return { parentId: page.id, offset: { x: viewport.x + viewport.w / 2 - center.x, y: viewport.y + viewport.h / 2 - center.y } }
   if (atCursor && (!point || ![point.x, point.y].every(Number.isFinite))) throw new CanvasEditError('光标粘贴需要有效的世界坐标。')
-  let parent = usableParent(snapshot, focusedGroupId, page.id)
+  const selected = selectedIds.length === 1 && snapshot.store[selectedIds[0]]
+  const slides = isSlidesContainer(selected) ? selected : isSlidesPage(selected) && snapshot.store[selected.parentId]
+  // Container copies retain the existing root strategy; only leaf roots use
+  // the explicit selected-deck destination. Descendants are never flattened.
+  const copyHasContainerRoot = content.rootIds.some(id => ['frame', 'group'].includes(content.shapes.find(r => r.id === id)?.type))
+  const selectedSlides = !copyHasContainerRoot && isSlidesContainer(slides) && usableParent(snapshot, slides.id, page.id)
+  let parent = selectedSlides || usableParent(snapshot, focusedGroupId, page.id)
   if (!parent && atCursor) parent = frameAtPoint(snapshot, point, page.id)
   if (!parent && boardId && boardId === content.origin.boardId) {
     const parents = new Set(content.rootIds.map(id => content.origin.parents[id]))
@@ -71,7 +78,7 @@ export function planClipboardPaste(snapshot, input, { viewport, point, atCursor 
   if (atCursor) destination = point
   else if (bounds.x + bounds.w < viewport.x || bounds.y + bounds.h < viewport.y || bounds.x > viewport.x + viewport.w || bounds.y > viewport.y + viewport.h) {
     destination = { x: viewport.x + viewport.w / 2, y: viewport.y + viewport.h / 2 }
-  } else if (parent.type === 'frame' && content.rootIds.some(id => selectedIds.includes(id))) {
+  } else if (parent.type === 'frame' && (selectedSlides || content.rootIds.some(id => selectedIds.includes(id)))) {
     const box = getShapeBounds(parent, snapshot)
     destination = shapeToPagePoint(snapshot, parent.id, { x: box.x + box.w / 2, y: box.y + box.h / 2 })
   }

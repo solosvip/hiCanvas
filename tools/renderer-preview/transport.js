@@ -1,5 +1,7 @@
 import { executeCanvasCommands, recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction } from '../../engine/index.js'
 
+const editorReasonCodes = new Set(['slides-layout-locked'])
+
 // Used only by the original fixture/gallery preview. Persistent editing uses
 // the same interaction/runtime through the isolated HTTP host below.
 export function memoryTransport(snapshot) {
@@ -32,7 +34,7 @@ export function previewTransport(conversationId) {
   async function request(path, method = 'GET', body, actor) {
     const response = await fetch(path + query, { method, headers: { 'x-hicanvas-client': '1', 'content-type': 'application/json', ...(actor && { 'x-hicanvas-actor': actor }) }, body: body === undefined ? undefined : JSON.stringify(body) })
     const value = await response.json()
-    if (!response.ok) throw Object.assign(new Error(value.error || '隔离服务请求失败。'), { code: response.status === 409 ? 'conflict' : 'transport' })
+    if (!response.ok) throw Object.assign(new Error(value.error || '隔离服务请求失败。'), { code: editorReasonCodes.has(value.code) ? value.code : response.status === 409 ? 'conflict' : 'transport' })
     return value
   }
   return {

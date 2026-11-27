@@ -4,6 +4,7 @@ import { getMediaTarget } from './media-target.js'
 import { createShape } from './commands/create-shape.js'
 import { deleteRecords } from './commands/delete.js'
 import { updateRecord } from './commands/update.js'
+import { getSlidesPages, getSlidesSpacing } from './slides-layout.js'
 
 function adjacent(records, anchor, parentId, w, h, args) {
   const gap = Math.max(0, args.margin ?? 40)
@@ -37,11 +38,10 @@ export function placeMedia(store, args, { type, props, meta = {} }) {
   const parentId = slides || fill ? anchor.id : anchor?.parentId || pageId
   let xy = replace || update ? { x: anchor.x, y: anchor.y } : fill ? { x: 0, y: 0 } : adjacent(records, anchor, parentId, w, h, args)
   if (slides) {
-    const padding = anchor.meta.cowartAiSlidesPadding ?? 12
-    const gap = anchor.meta.cowartAiSlidesGap ?? 32
-    const children = Object.values(records).filter(record => record.typeName === 'shape' && record.parentId === anchor.id)
-    xy = { x: children.reduce((x, record) => Math.max(x, record.x + record.props.w + gap), padding), y: padding }
-    updateRecord(store, { id: anchor.id, changes: { props: { w: Math.max(anchor.props.w, xy.x + w + padding), h: Math.max(anchor.props.h, h + padding * 2) } } })
+    const pages = getSlidesPages(anchor, Object.values(records)), last = pages.at(-1)
+    const { padding, gap } = getSlidesSpacing(anchor, [...pages, { props: { w } }])
+    const x = last ? last.x + Math.max(1, last.props.w) + gap : padding
+    xy = { x, y: padding }
     meta = { ...meta, cowartAiSlidesParentShapeId: anchor.id }
   }
   const id = update ? anchor.id : `shape:${globalThis.crypto.randomUUID()}`

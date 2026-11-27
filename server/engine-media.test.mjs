@@ -88,7 +88,7 @@ test('幻灯片按同一事务中的已有子页横排，并撑大外框', () =>
   const args = { draftShapeId: 'shape:slides', displayWidth: 300, displayHeight: 150 }
   const result = executeCanvasCommands(initial, [{ type: 'insert_html', args, html }, { type: 'insert_html', args, html }])
   assert.deepEqual(result.results.map(receipt => receipt.bounds), [{ x: 10, y: 10, w: 300, h: 150 }, { x: 330, y: 10, w: 300, h: 150 }])
-  assert.deepEqual([result.snapshot.store['shape:slides'].props.w, result.snapshot.store['shape:slides'].props.h], [640, 170])
+  assert.deepEqual([result.snapshot.store['shape:slides'].props.w, result.snapshot.store['shape:slides'].props.h], [1048, 600])
   for (const receipt of result.results) {
     assert.equal(receipt.shapeRecord.parentId, 'shape:slides')
     assert.equal(receipt.shapeRecord.meta.cowartAiSlidesParentShapeId, 'shape:slides')

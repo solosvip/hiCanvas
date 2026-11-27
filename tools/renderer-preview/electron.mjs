@@ -35,6 +35,7 @@ import { laserSmoke } from './laser-smoke.mjs'
 import { embedsSmoke, prepareEmbedsProbe } from './embeds-smoke.mjs'
 import { resolveEmbedUrl } from '../../model/index.js'
 import { focusSmoke } from './focus-smoke.mjs'
+import { prepareSlidesProbe, slidesSmoke } from './slides-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -146,6 +147,15 @@ async function run() {
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
       samples.push({ focus: await focusSmoke(window, manifest.output) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions, sourceHash: manifest.sourceHash }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if (manifest.slidesOnly) {
+      window = createWindow('slides')
+      const guard = await prepareSlidesProbe(window, clipboard)
+      await window.loadURL(`${manifest.url}/?gallery=slides&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ slides: await slidesSmoke(window, manifest.output), guards: guard.negative })
+      check(!errors.length && !blocked.length && !guard.calls.length, JSON.stringify({ errors, blocked, calls: guard.calls }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions, sourceHash: manifest.sourceHash }, null, 2)); window.destroy(); app.exit(0); return
     }
     if (manifest.framesOnly) {

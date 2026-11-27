@@ -3,6 +3,7 @@ import {readFile,writeFile} from 'node:fs/promises'
 import {join} from 'node:path'
 import {setTimeout as delay} from 'node:timers/promises'
 import {slideClickCases,syntheticCdnUrl} from './slides-cases.js'
+import {verifySlidesPngOrder} from './slides-container-order.mjs'
 
 const manifest=JSON.parse(await readFile(process.argv.at(-1),'utf8'))
 const target=new URL(manifest.url),offline=target.protocol==='file:'
@@ -52,7 +53,9 @@ async function run(){
     throw new Error('没有当前演示子页')
   }
   async function child(code){return frameEvaluate(await childFrame(),code)}
-  async function ready(){await until(async()=>{try{const number=Number((await count()).split(' / ')[0]);return await child('window.slideLoaded===true&&window.slideNumber==='+number)}catch{return false}});await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');if(manifest.localAssets&&await count()==='2 / 3'){
+  const pageOrder=manifest.pageOrder||[1,2,3],total=pageOrder.length,firstCount=`1 / ${total}`,secondCount=`2 / ${total}`,lastCount=`${total} / ${total}`
+  const actualNumber=number=>pageOrder[number-1]
+  async function ready(){await until(async()=>{try{const number=Number((await count()).split(' / ')[0]);return await child('window.slideLoaded===true&&window.slideNumber==='+actualNumber(number))}catch{return false}});await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');if(manifest.localAssets&&actualNumber(Number((await count()).split(' / ')[0]))===2){
     await until(async()=>{const state=await child('({script:window.syntheticLocalReady===true,color:getComputedStyle(document.querySelector(".local-resource")).color,image:document.getElementById("local-image").naturalWidth,audio:document.getElementById("local-audio").readyState,font:[...document.fonts].some(font=>font.family==="SlidesFixture"&&font.status==="loaded")})');observations.localResources=state;return state.script&&state.color==='rgb(12, 34, 56)'&&state.image===2&&state.audio>=1&&state.font})
   }}
   async function debug(){if(!contents.debugger.isAttached())contents.debugger.attach('1.3')}
@@ -67,7 +70,7 @@ async function run(){
     const point=await evaluate(`(()=>{const root=${offline?'document':'document.querySelector(".cowart-slides-viewer")'},el=[...root.querySelectorAll('button')].find(item=>item.getAttribute('aria-label')===${JSON.stringify(label)}||item.textContent.trim()===${JSON.stringify(label)});if(!el||el.disabled)throw new Error('按钮不可用 '+${JSON.stringify(label)});const r=el.getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`)
     inputSession=undefined;await click(point)
   }
-  async function first(){while(await count()!=='1 / 3'){await button('上一页');await ready()}}
+  async function first(){while(await count()!==firstCount){await button('上一页');await ready()}}
   async function clickCase(item){
     const local=await child(`(()=>{const box=document.querySelector('[data-case="'+${JSON.stringify(item.id)}+'"]'),el=box.firstElementChild;el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2,width:innerWidth,height:innerHeight}})()`)
     const outer=await evaluate('(()=>{const r='+frameExpression+'.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()')
@@ -89,52 +92,81 @@ async function run(){
     await contents.debugger.sendCommand('Runtime.enable')
     await window.loadURL(manifest.url)
     if(!offline){await until(()=>evaluate('!!window.__cowartEditor&&!!window.slidesProbe'));await evaluate('window.slidesProbe.setup('+JSON.stringify(manifest.slidesId)+')');await button('播放');await until(()=>evaluate('window.slidesProbe.state().presenting'))}
-    await ready();check('三页演示从第一页开始',await count()==='1 / 3')
+    await ready();check(total+'页演示从第一页开始',await count()===firstCount)
+    observations.pageOrder=[]
+    for(let i=0;i<total;i++){
+      await ready();observations.pageOrder.push(await child('({number:window.slideNumber,title:document.title})'))
+      if(i<total-1)await button('下一页')
+    }
+    check('实际播放器按容器页序显示内容',JSON.stringify(observations.pageOrder.map(page=>page.number))===JSON.stringify(pageOrder)&&observations.pageOrder.every((page,i)=>page.title==='合成幻灯片 '+pageOrder[i]));await first()
+    if(!manifest.orderOnly){
     for(const item of slideClickCases){
       await first();const inputStart=observations.nativeInputs.length;await clickCase(item)
-      const after=await count(),advance=after==='2 / 3',expected=offline?item.offline:item.app
+      const after=await count(),advance=after===secondCount,expected=offline?item.offline:item.app
       const events=observations.nativeInputs.slice(inputStart)
-      observations.clicks.push({id:item.id,before:'1 / 3',after,advance,predicted:expected,events})
+      observations.clicks.push({id:item.id,before:firstCount,after,advance,predicted:expected,events})
       if(!['disabled','select','audio','video'].includes(item.id))check('实际点击命中 '+item.id,events.some(event=>event.case===item.id&&event.trusted))
       reading((offline?'离线':'应用内')+'点击 '+item.id,advance===expected)
     }
     for(const [label,keyValue,inside,input] of [['父页右键','ArrowRight',false,false],['父页空格',' ',false,false],['子页右键','ArrowRight',true,false],['子页空格',' ',true,false],['子页输入框右键','ArrowRight',true,true]]){
       await first();await ready();await key(keyValue,inside,input)
       const after=await count(),expected=!inside||offline
-      observations.keys.push({label,after,advance:after==='2 / 3',predicted:expected})
-      reading(label,(after==='2 / 3')===expected)
+      observations.keys.push({label,after,advance:after===secondCount,predicted:expected})
+      reading(label,(after===secondCount)===expected)
     }
     {
       await first();await ready();await until(()=>child('!!window.syntheticConnection'))
       await child('(()=>{const c=window.syntheticConnection,d=c.data;c.port.postMessage(d.protocol?{protocol:d.protocol,instance:d.instance,generation:d.generation,type:"slide-nav",value:"previous"}:{version:1,generation:d.generation,type:"slide-nav",value:"previous"});return true})()')
-      await delay(100);check('边界意图不改变页码，随后仍能有效翻页',await count()==='1 / 3')
-      await child('window.syntheticSendSlideFlood(true)');await delay(100);check('无效消息也消耗普通额度，紧随的合法意图被丢弃',await count()==='1 / 3');await delay(1000)
+      await delay(100);check('边界意图不改变页码，随后仍能有效翻页',await count()===firstCount)
+      await child('window.syntheticSendSlideFlood(true)');await delay(100);check('无效消息也消耗普通额度，紧随的合法意图被丢弃',await count()===firstCount);await delay(1000)
       check('原生页实际发送千条突发意图',await child('window.syntheticSendSlideFlood()')===1000)
-      await delay(200);check('同代千条意图只翻一页',await count()==='2 / 3');await ready()
+      await delay(200);check('同代千条意图只翻一页',await count()===secondCount);await ready()
     }
-    await first();await button('下一页');await ready();await key('ArrowLeft',true);await ready();check('子页左键保持原路径语义',await count()===(offline?'1 / 3':'2 / 3'))
+    await first();await button('下一页');await ready();await key('ArrowLeft',true);await ready();check('子页左键保持原路径语义',await count()===(offline?firstCount:secondCount))
     {
       await first();await button('下一页');await ready();await until(()=>child('!!window.syntheticConnection'))
       // Return the automation evaluation before its message destroys this
       // document. Otherwise Electron can await the retired JS context forever.
       await child('(()=>{const c=window.syntheticConnection,d=c.data;setTimeout(()=>c.port.postMessage(d.protocol?{protocol:d.protocol,instance:d.instance,generation:d.generation,type:"slide-nav",value:"previous"}:{version:1,generation:d.generation,type:"slide-nav",value:"previous"}),50);return true})()')
-      await until(async()=>await count()==='1 / 3');await ready();check('父页按上一页意图决定页码',await count()==='1 / 3')
+      await until(async()=>await count()===firstCount);await ready();check('父页按上一页意图决定页码',await count()===firstCount)
     }
-    await first();await key('ArrowLeft');await ready();check('第一页向前保持边界',await count()==='1 / 3')
-    await button('下一页');await ready();await button('下一页');await ready();await key('ArrowRight');await ready();check('最后一页向后保持边界',await count()==='3 / 3')
+    await first();await key('ArrowLeft');await ready();check('第一页向前保持边界',await count()===firstCount)
+    await button('下一页');await ready();await button('下一页');await ready();await key('ArrowRight');await ready();check('最后一页向后保持边界',await count()===lastCount)
+    }
     // The driver cuts the synthetic CDN before DNS/network access. Author code
     // and ordinary navigation must remain usable when only that resource fails.
-    await until(()=>Promise.resolve(blocked.includes(syntheticCdnUrl)))
-    check('外网切断后仅外部部件缺失',await child('window.syntheticCdnLoaded!==true'))
+    if(pageOrder.includes(3)){
+      await until(()=>Promise.resolve(blocked.includes(syntheticCdnUrl)))
+      check('外网切断后仅外部部件缺失',await child('window.syntheticCdnLoaded!==true'))
+    }else check('删掉外部资源所在页后不再请求该资源',!blocked.includes(syntheticCdnUrl))
     await first();await ready()
     await evaluate('window.__slidesPlayerSecret="synthetic-only"')
     observations.security=await child('(()=>{const denied=fn=>{try{fn();return false}catch{return true}};return{parentDocument:denied(()=>parent.document.body),parentGlobal:denied(()=>parent.__slidesPlayerSecret),parentWrite:denied(()=>{parent.__slidesPlayerSecret="changed"}),topDocument:denied(()=>top.document.body),openerNull:opener===null}})()')
     check('子页读写父窗口和top均被隔离',Object.values(observations.security).every(Boolean))
     if(manifest.localAssets)check('本地CSS、脚本、字体、SVG与音轨已完整加载',!!observations.localResources)
-    if(!offline){observations.export=await evaluate('window.slidesProbe.export()');{observations.exportFailure=await evaluate('window.slidesProbe.exportFailure()');check('后页缺资源时整套导出预检失败',observations.exportFailure.failed)}}
-    await writeFile(join(manifest.output,(offline?'offline':'app')+'-'+'isolated'+'.png'),(await contents.capturePage()).toPNG())
     if(!offline){
+      observations.export=await evaluate('window.slidesProbe.export()')
+      // The actual PNG action belongs to the canvas toolbar. Keep the complete
+      // presentation baseline above, then expose all source pages for capture.
       await button('退出播放');await button('关闭演示页')
+      await evaluate('window.__cowartEditor.setCamera({x:0,y:0,z:0.3});true')
+      await delay(200)
+      observations.pngActivation='canvas after presentation closes; all three source pages in view'
+      const pngTask=evaluate('window.slidesProbe.exportImages()').then(value=>({value}),error=>({error}))
+      await delay(2500)
+      observations.captureFrames=await Promise.all(contents.mainFrame.frames.map(async frame=>({url:frame.url,value:await frameEvaluate(frame,'({visibility:document.visibilityState,images:[...document.images].map(i=>({complete:i.complete,width:i.naturalWidth})),frames:[...document.querySelectorAll("iframe")].map(f=>({realm:f.hasAttribute("data-hicanvas-capture-realm"),src:f.src,loaded:f.contentDocument?.readyState}))})').catch(error=>({error:error.message}))})))
+      const pngResult=await pngTask
+      if(pngResult.error)throw pngResult.error
+      observations.pngExport=pngResult.value
+      // Canvas exposes standard RGBA, avoiding NativeImage's platform-dependent
+      // raw bitmap layout. These are pixels decoded from the exported PNG files.
+      const decodeImage=buffer=>evaluate(`(async()=>{const image=new Image();image.src=${JSON.stringify('data:image/png;base64,'+buffer.toString('base64'))};await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const context=canvas.getContext('2d');context.drawImage(image,0,0);return{width:canvas.width,height:canvas.height,rgba:[...context.getImageData(8,8,1,1).data]}})()`)
+      observations.pngOrder=await verifySlidesPngOrder(observations.pngExport,pageOrder,decodeImage)
+      check('实际逐页PNG的名称和像素颜色按容器排序',observations.pngOrder.length===total)
+      if(!manifest.orderOnly){observations.exportFailure=await evaluate('window.slidesProbe.exportFailure()');check('后页缺资源时整套导出预检失败',observations.exportFailure.failed)}
+    }
+    await writeFile(join(manifest.output,(offline?'offline':'app')+'-'+'isolated'+'.png'),(await contents.capturePage()).toPNG())
+    if(!offline&&!manifest.orderOnly){
       await evaluate('(()=>{const editor=window.__cowartEditor;editor.select('+JSON.stringify(manifest.slidesId)+');editor.setCamera({x:100,y:500,z:0.3});editor.focus();return true})()')
       const trigger='[data-testid="tool.cowart-export-slides-'+manifest.slidesId+'"]'
       // The inherited contextual toolbar stays parked offscreen in this hidden

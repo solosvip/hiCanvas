@@ -1,5 +1,6 @@
 export { executeCanvasCommands } from './execute.js'
 export { CanvasEditError } from './errors.js'
+export { isSlidesContainer, isSlidesPage, getSlidesPages, planSlidesLayout } from './slides-layout.js'
 export { recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction } from './undo.js'
 export { pageFor, getMediaTarget } from './media-target.js'
 export { createEditorSession } from './runtime/index.js'
