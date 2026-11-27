@@ -1,5 +1,6 @@
 import './test-sandbox.mjs'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { mkdtemp, mkdir, readdir, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -73,6 +74,20 @@ test('isolation refuses outside paths and symlinked ancestors before mkdir', asy
   await symlink('/tmp', join(root, 'redirect'))
   await assert.rejects(isolatedDirectories({ ...env, HICANVAS_SETTINGS_DIR: join(root, 'redirect/not-created') }), /符号链接/)
   assert.deepEqual(await readdir(root), ['redirect'])
+})
+
+test('独立预览与新建服务画板生成同一图鉴，层序键也必须逐字相同', async t => {
+  const dir = await mkdtemp(join(repositoryRoot, '.scratch/perf-identical-test-'))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  const workspace = createConversations(dir), board = await workspace.open({ createNew: true, title: 'synthetic identity' })
+  const current = await workspace.read(board.id)
+  const legacy = createFixture(500, current.snapshot), preview = createFixture(500)
+  const identity = fixture => createHash('sha256').update(JSON.stringify(Object.entries(fixture.snapshot.store).filter(([, record]) => ['shape', 'asset'].includes(record.typeName)).sort(([a], [b]) => a.localeCompare(b)))).digest('hex')
+  assert.equal(identity(legacy), identity(preview), '两版合成记录不能只保证顺序相同而层序键随机')
+  const indices = Object.values(preview.snapshot.store).filter(record => record.typeName === 'shape').map(record => record.index)
+  assert.equal(new Set(indices).size, 500)
+  assert.deepEqual(indices, [...indices].sort())
+  assert.deepEqual(sanitizeCanvasSnapshot(preview.snapshot).skippedRecords, [])
 })
 
 test('three benchmark scales are valid mixed snapshots with local raster assets', () => {
@@ -158,7 +173,7 @@ test('comparison summarizes each renderer separately and never treats unsupporte
 })
 
 test('preview readiness requires every decoded image and propagates public hook errors', async () => {
-  const observer = pageObserver('preview')
+  const observer = pageObserver('preview', 'renderer')
   let clock = 0, frames = 0, decodes = 0
   const state = { ready: true, count: 500, renderedShapes: 500, imageCount: 100, decodedImages: 99, camera: { x: 10, y: 20, z: .5 } }
   const context = {

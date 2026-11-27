@@ -29,8 +29,9 @@ import { attachActionsUi } from './actions-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
 import { createPreviewClipboard } from './clipboard.js'
+import { observeEditorTarget } from '../perf/editor-observation.js'
 
-let ready = false, renderer, controls, metadata, interaction, session, clipboardAdapter, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0
+let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0
 const disposers = []
 const cleanup = () => { clearTimeout(cameraTimer); for (const dispose of disposers.splice(0).reverse()) { try { dispose() } catch { /* Continue releasing remaining preview resources. */ } } }
 const host = document.querySelector('#canvas'), status = document.querySelector('#status')
@@ -52,13 +53,14 @@ const getState = () => {
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
     ...(metadata?.selectionActions && { actionShapes: session.store.allRecords().filter(r => r.typeName === 'shape').map(r => structuredClone(r)), actions: interaction.getActions() }),
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, parentId: r.parentId, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, props: structuredClone(r.props), meta: structuredClone(r.meta), ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
-    revision: session?.state.get().revision, submitting: session?.state.get().isSubmitting || false, pasteAtCursor: state?.pasteAtCursor, clipboardBusy: state?.clipboardBusy || false, privateClipboard: clipboardAdapter?.inspect(), lastError: state?.lastError || session?.state.get().lastError || null,
+    revision: session?.state.get().revision, commitCalls: transport?.getCommitCount?.() ?? null, submitting: session?.state.get().isSubmitting || false, pasteAtCursor: state?.pasteAtCursor, clipboardBusy: state?.clipboardBusy || false, privateClipboard: clipboardAdapter?.inspect(), lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
     overlays: state ? structuredClone(state.overlays) : [], snapshotReads, renderedShapes: host.querySelectorAll('[data-shape-id]').length, imageCount: host.querySelectorAll('img').length, decodedImages })
 }
-Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.freeze({ getState, getCamera: () => controls?.getCamera() || null, resetCamera: camera => {
+Object.defineProperty(window, '__HICANVAS_RENDERER_PREVIEW__', { value: Object.freeze({ getState, inspectTarget: id => observeEditorTarget(session, interaction, transport, id, snapshotReads), getCamera: () => controls?.getCamera() || null, resetCamera: (camera, { clearSelection = false } = {}) => {
   if (!controls) throw new Error('预览尚未挂载。')
   controls.resetCamera(camera)
+  if (clearSelection) interaction.select('clear')
 } }), writable: false, configurable: false })
 
 try {
@@ -90,7 +92,7 @@ try {
   }
   if (params.get('videos') === '3') metadata = addVideoLoad(metadata)
   if (gallery === 'videos') metadata.videoGallery = true
-  const transport = metadata.persistent ? previewTransport(metadata.conversationId) : memoryTransport(metadata.snapshot)
+  transport = metadata.persistent ? previewTransport(metadata.conversationId) : memoryTransport(metadata.snapshot)
   if (metadata.textEditingFixture && params.get('slowTextSave') === '1') {
     const commit = transport.commit
     transport.commit = async request => { await new Promise(resolve => setTimeout(resolve, 400)); return commit(request) }

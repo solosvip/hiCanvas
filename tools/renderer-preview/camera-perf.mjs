@@ -9,7 +9,7 @@ import { summarizeFrames } from '../perf/config.mjs'
 // center. Archived #64 FPS is context, not an acceptance baseline. One wheel
 // stream avoids Chromium coalescing interleaved plain/Ctrl modifier streams.
 export async function measureCameraNavigation(target, { camera, renderer, durationMs = 2500 }) {
-  const contents = target.webContents, observer = pageObserver(renderer)
+  const contents = target.webContents, observer = pageObserver(renderer, 'renderer')
   const evaluate = async (fn, arg) => contents.executeJavaScript(`(${fn.toString()})(${JSON.stringify(arg)})`)
   const input = event => contents.sendInputEvent(event)
   const paints = [], onPaint = () => paints.push(performance.now())

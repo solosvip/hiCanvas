@@ -1,4 +1,5 @@
-import { spawn, execFileSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import os from 'node:os'
@@ -6,7 +7,8 @@ import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { benchmarkViewport, isolatedDirectories, parseOptions, repositoryRoot, scratchPath, makeDirectories, measurementPlan } from './perf/config.mjs'
 import { prepareFixture } from './perf/prepare.mjs'
-import { summarizeSamples } from './perf/report.mjs'
+import { comparisonSummary, isFormalComparison } from './perf/comparison.mjs'
+import { runStrokeProcess as runBrowserProcess } from './perf/strokes-process.mjs'
 
 // No application module may be loaded before this guard: some modules resolve
 // default storage paths at import time, even if a caller later supplies options.
@@ -22,8 +24,9 @@ await isolatedDirectories()
 
 const baseUrl = `http://127.0.0.1:${options.port}`
 const resultPath = join(outputDir, 'samples.json')
-let child, service, preview, wasInterrupted = false
-const interrupted = () => { wasInterrupted = true; child?.kill('SIGTERM') }
+let service, preview, wasInterrupted = false
+const controller = new AbortController()
+const interrupted = () => { wasInterrupted = true; controller.abort(new Error('性能对照已中断。')) }
 process.once('SIGINT', interrupted)
 process.once('SIGTERM', interrupted)
 const command = (program, args) => { try { return execFileSync(program, args, { encoding: 'utf8' }).trim() } catch { return 'unknown' } }
@@ -50,7 +53,8 @@ try {
     }
   }
   const cases = []
-  for (const { renderer, repeat, count } of measurementPlan(options)) {
+  const plan = [...measurementPlan(options).map(row => ({ ...row, stage: 'baseline' })), ...measurementPlan({ ...options, runs: 1 }).map(row => ({ ...row, stage: 'retest' }))]
+  for (const { renderer, repeat, count, stage } of plan) {
     if (wasInterrupted) throw new Error('测量已中断。')
     let fixture = createFixture(count, undefined, undefined, { dash: options.dash })
     let url = `${preview?.url}/?count=${count}&dash=${options.dash}`
@@ -64,33 +68,36 @@ try {
       url = `${baseUrl}/?conversation=${conversation.id}`
     }
     const { snapshot: _snapshot, viewState: _viewState, ...description } = fixture
-    cases.push({ ...description, camera: fixture.viewState.camera, renderer, repeat, url })
+    const snapshotHash = createHash('sha256').update(JSON.stringify(Object.entries(fixture.snapshot.store).filter(([, record]) => ['shape', 'asset'].includes(record.typeName)).sort(([a], [b]) => a.localeCompare(b)))).digest('hex')
+    cases.push({ ...description, snapshotHash, camera: fixture.viewState.camera, renderer, repeat, stage, url })
   }
   if (wasInterrupted) throw new Error('测量已中断。')
-  const metadata = { diagnosticTracing: process.env.HICANVAS_PERF_TRACE === '1', timestamp: new Date().toISOString(), revision: command('git', ['-C', repositoryRoot, 'rev-parse', 'HEAD']), dirty: Boolean(command('git', ['-C', repositoryRoot, 'status', '--porcelain'])), platform: os.platform(), release: os.release(), architecture: os.arch(), hardwareModel: command('/usr/sbin/sysctl', ['-n', 'hw.model']), cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length, memoryGiB: os.totalmem() / 2 ** 30, loadBefore: os.loadavg(), loadNote: options.loadNote, viewport: benchmarkViewport, mode: 'Electron offscreen, 60 Hz cap, GPU defaults; unthrottled background renderer', cache: 'Fresh in-memory session per sample; browser/GPU process and OS file cache warm; synthetic fixtures prepared before navigation', opening: 'Navigation start through shape count, fonts, rendered-image decode and two rAFs; legacy additionally waits for native pointer selection; excludes process/service startup', hosts: { legacy: 'production dist', preview: 'Vite development preview' }, knownDifferences: ['Preview has no editing; drag is not applicable', 'Preview text uses estimated monospace layout'], options }
-  const manifest = { cases, baseUrl, origins: [...new Set(cases.map(fixture => new URL(fixture.url).origin))], durationMs: options.durationMs, outputDir, resultPath }
+  const formal = isFormalComparison(options, process.env.HICANVAS_PERF_TRACE === '1')
+  const metadata = { formal, diagnosticTracing: process.env.HICANVAS_PERF_TRACE === '1', timestamp: new Date().toISOString(), revision: command('git', ['-C', repositoryRoot, 'rev-parse', 'HEAD']), dirty: Boolean(command('git', ['-C', repositoryRoot, 'status', '--porcelain'])), platform: os.platform(), release: os.release(), architecture: os.arch(), hardwareModel: command('/usr/sbin/sysctl', ['-n', 'hw.model']), cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length, memoryGiB: os.totalmem() / 2 ** 30, loadBefore: os.loadavg(), loadNote: options.loadNote, viewport: benchmarkViewport, mode: 'Electron offscreen, 60 Hz cap, GPU defaults; unthrottled background renderer', cache: 'Fresh in-memory session per sample; browser/GPU process and OS file cache warm; synthetic fixtures prepared before navigation', opening: 'Navigation start through shape count, fonts, rendered-image decode and two rAFs; canvas editing observers additionally wait for native pointer selection; handles select once after installing their shared zoom; excludes process/service startup', hosts: { legacy: 'production dist', preview: 'Vite development preview' }, knownDifferences: ['Preview uses the real editing session and in-memory transport; legacy uses its isolated HTTP board', 'Compatibility renderer observer skips selection/drag; full image decoding remains required', 'Drag clocks stop before release/commit in both versions; raw still-held and released state are recorded'], options }
+  const manifest = { cases: cases.filter(row => row.stage === 'baseline'), retests: cases.filter(row => row.stage === 'retest'), options, formal, baseUrl, origins: [...new Set(cases.map(fixture => new URL(fixture.url).origin))], durationMs: options.durationMs, outputDir, resultPath }
   const manifestPath = join(outputDir, 'manifest.json')
   await writeFile(manifestPath, JSON.stringify(manifest))
   const require = createRequire(import.meta.url)
-  const electron = require('electron')
+  const electron = process.env.HICANVAS_TEST_ELECTRON || require('electron')
   const env = { ...process.env }
   delete env.ELECTRON_RUN_AS_NODE
   const logs = []
-  await new Promise((yes, no) => {
-    child = spawn(electron, [fileURLToPath(new URL('./perf/electron.mjs', import.meta.url)), manifestPath], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: cases.length * 90000 + 30000 })
-    child.stdout.on('data', bytes => { logs.push(bytes); process.stdout.write(bytes) })
-    child.stderr.on('data', bytes => { logs.push(bytes); process.stderr.write(bytes) })
-    child.once('error', no)
-    child.once('exit', (code, signal) => code === 0 ? yes() : no(new Error(`Electron 失败：${code ?? signal}；证据在 ${outputDir}`)))
+  await runBrowserProcess({ command: electron, args: [fileURLToPath(new URL('./perf/electron.mjs', import.meta.url)), manifestPath], env, signal: controller.signal,
+    timeoutMs: cases.length * 90000 + 30000,
+    onStdout: bytes => { logs.push(bytes); process.stdout.write(bytes) },
+    onStderr: bytes => { logs.push(bytes); process.stderr.write(bytes) },
   }).finally(() => writeFile(join(outputDir, 'electron.log'), Buffer.concat(logs)))
   const measured = JSON.parse(await readFile(resultPath, 'utf8'))
-  const { summary, comparison } = summarizeSamples(measured.samples, options)
-  const report = { metadata: { ...metadata, finishedAt: new Date().toISOString(), loadAfter: os.loadavg() }, ...measured, summary, comparison }
+  if (measured.error || measured.consoleErrors.length || measured.blockedHosts.length) throw new Error('浏览器报告不完整或存在错误。')
+  const result = comparisonSummary(measured.samples, { ...options, requireRetests: formal })
+  const { summary, comparison } = result.baseline
+  const report = { metadata: { ...metadata, finishedAt: new Date().toISOString(), loadAfter: os.loadavg() }, ...measured, measurementComplete: true, summary, comparison, ...result }
   await writeFile(join(outputDir, 'report.json'), JSON.stringify(report, null, 2))
-  console.table(summary.map(s => ({ renderer: s.renderer, elements: s.count, openMs: Math.round(s.medianOpenMs), panPaintFps: s.phases.pan.paint.medianFps.toFixed(1), zoomPaintFps: s.phases.zoom.paint.medianFps.toFixed(1), dragPaintFps: s.phases.drag.applicable === false ? '不适用' : s.phases.drag.paint.medianFps.toFixed(1) })))
+  console.table(summary.map(s => ({ renderer: s.renderer, elements: s.count, openMs: Math.round(s.medianOpenMs),
+    ...Object.fromEntries(Object.entries(s.phases).map(([name, phase]) => [name + 'PaintFps', phase.applicable === false ? '不适用' : phase.paint.medianFps.toFixed(1)])) })))
+  if (formal && result.acceptancePassed === false) process.exitCode = 1
   console.log(`原始样本、画面与环境记录：${outputDir}`)
 } finally {
-  child?.kill('SIGTERM')
   service?.closeAllConnections()
   if (service) await new Promise(resolve => service.close(resolve))
   await preview?.close()
