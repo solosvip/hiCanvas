@@ -52,10 +52,11 @@ const BackgroundChildren = memo(function BackgroundChildren({ scene, drawings, t
 
 const BackgroundShape = memo(function BackgroundShape({ scene, drawings, tree, id }) {
   const record = useValue('background record', () => scene.store.get(id), [scene, id])
+  const erasing = useValue('background erase preview', () => scene.eraserPreview?.read(id) || false, [scene, id])
   if (!record || record.opacity === 0) return null
   const Drawing = drawings[record.type]?.background
   // Shared ancestors retain the normal tree's opacity-compositing boundary.
-  return h('div', { 'data-renderer-background': id, style: { position: 'absolute', left: 0, top: 0, transform: `translate(${record.x}px, ${record.y}px) rotate(${record.rotation || 0}rad)`, transformOrigin: '0 0', opacity: record.opacity ?? 1 } },
+  return h('div', { 'data-renderer-background': id, ...(erasing && { 'data-erasing': '' }), style: { position: 'absolute', left: 0, top: 0, transform: `translate(${record.x}px, ${record.y}px) rotate(${record.rotation || 0}rad)`, transformOrigin: '0 0', opacity: scene.eraserPreview.opacity(id, record.opacity ?? 1) } },
     Drawing ? h(Drawing, { shape: record, background: true }) : null,
     h(BackgroundChildren, { scene, drawings, tree, parentId: id }))
 })

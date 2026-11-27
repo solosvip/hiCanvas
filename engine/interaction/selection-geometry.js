@@ -27,10 +27,18 @@ function project(p, a, b) {
   return at(a, b, length ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length)) : 0)
 }
 const at = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
+function inside(point, points) {
+  let hit = false
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j]
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) hit = !hit
+  }
+  return hit
+}
 
 // Test the entire input segment, never just sampled pointer endpoints. A fast
 // cross-board move must hit a small object without work proportional to distance.
-export function segmentHitsShape(id, from, to, targets) {
+export function segmentHitsShape(id, from, to, targets, tolerance = 0) {
   const chain = targets.lineage(id), record = chain[0]
   if (!record) return false
   let a = from, b = to
@@ -42,7 +50,7 @@ export function segmentHitsShape(id, from, to, targets) {
   }
   a = localPoint(a, chain); b = localPoint(b, chain)
   const context = targets.records
-  if (record.type !== 'frame' && (pointInShape(record, a, 0, context) || pointInShape(record, b, 0, context))) return true
+  if (record.type !== 'frame' && (pointInShape(record, a, tolerance, context) || pointInShape(record, b, tolerance, context))) return true
   const contour = getShapeContour(record, context)
   if (!contour) return false
   let paths
@@ -50,6 +58,7 @@ export function segmentHitsShape(id, from, to, targets) {
     // The public connection contour is a bounding contour. Keep independent
     // paths separate, so a head/label never creates a fictitious closing edge.
     const geometry = getConnectionGeometry(record, context)
+    if (tolerance > 0 && record.props.fill !== 'none' && geometry.heads.some(head => head.closed && (inside(a, head.points) || inside(b, head.points)))) return true
     paths = [{ points: geometry.path.points, closed: false }, ...geometry.heads.map(head => ({ points: head.points, closed: head.closed }))]
     if (geometry.label) {
       const r = geometry.label.bounds
@@ -62,13 +71,17 @@ export function segmentHitsShape(id, from, to, targets) {
       if (!i && !closed) continue
       const p = points[i], previous = points[(i + points.length - 1) % points.length]
       if (intersects(a, b, previous, p)) return true
-      if (['geo', 'line', 'arrow'].includes(record.type)) for (const endpoint of [previous, p]) {
+      if (tolerance > 0 || ['geo', 'line', 'arrow'].includes(record.type)) for (const endpoint of [previous, p]) {
         const point = project(endpoint, a, b), d = (endpoint.x - point.x) ** 2 + (endpoint.y - point.y) ** 2
+        if (d < distance) { nearest = point; distance = d }
+      }
+      if (tolerance > 0) for (const point of [a, b]) {
+        const edge = project(point, previous, p), d = (edge.x - point.x) ** 2 + (edge.y - point.y) ** 2
         if (d < distance) { nearest = point; distance = d }
       }
     }
     // One shared hit test per path includes the actual stroke width without
     // rebuilding a large draw/connection contour once for every vertex.
-    return nearest && pointInShape(record, nearest, 0, context)
+    return nearest && (tolerance > 0 && distance <= tolerance ** 2 || record.type !== 'frame' && pointInShape(record, nearest, tolerance, context))
   })
 }

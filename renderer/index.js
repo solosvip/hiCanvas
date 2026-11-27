@@ -3,6 +3,9 @@
 // setOverlays takes selection/marquee/crop/connection/snap-guides/grid descriptions
 // in canvas units; guide points/ticks are rendered with constant CSS thickness.
 // A grid has positive spacing in canvas units and paints below the shape world.
+// An eraser has shape ids, 0..256 tail points and tailScale (0..1). Preview
+// masks both shape passes without editing opacity records; point queries can
+// opt into includeTransparent, retaining frame clipping and default visibility.
 // Overlay descriptions and camera are copied; mounting/drawing never edits Store.
 export { canvasToScreen, screenToCanvas, hitTestCanvas } from './geometry.js'
 export { mountCanvasRenderer } from './mount.js'

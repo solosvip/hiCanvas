@@ -27,6 +27,7 @@ const Children = memo(function Children({ scene, parentId, camera }) {
 const Shape = memo(function Shape({ scene, id, camera }) {
   const shape = useValue('shape record', () => scene.store.get(id), [scene, id])
   const editingText = useValue('shape text editing', () => scene.editingId?.get() === id, [scene, id])
+  const erasing = useValue('shape erase preview', () => scene.eraserPreview?.read(id) || false, [scene, id])
   if (!shape || shape.opacity === 0) return null
   const props = shape.props
   let body = null
@@ -43,7 +44,7 @@ const Shape = memo(function Shape({ scene, id, camera }) {
     body = [body, h(Children, { scene, parentId: id, camera, key: 'children' })]
     if (shape.type === 'geo') body.push(h(GeoLabel, { key: 'label', props }))
   }
-  return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, ...(editingText && { 'data-shape-editing-text': '' }), style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: shape.opacity ?? 1 } }, body)
+  return h('div', { 'data-shape-id': id, 'data-shape-type': shape.type, ...(editingText && { 'data-shape-editing-text': '' }), ...(erasing && { 'data-erasing': '' }), style: { position: 'absolute', left: 0, top: 0, transform: `translate(${shape.x}px, ${shape.y}px) rotate(${shape.rotation || 0}rad)`, transformOrigin: '0 0', opacity: scene.eraserPreview.opacity(id, shape.opacity ?? 1) } }, body)
 })
 
 export function CanvasWorld({ scene, camera }) {

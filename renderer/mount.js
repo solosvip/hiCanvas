@@ -9,6 +9,7 @@ import { CanvasOverlays, checkedOverlays } from './overlays.js'
 import { CanvasGrid } from './grid.js'
 import { createTextEditingView } from './text-editing-view.js'
 import { textEditingStyle } from './text-editing-style.js'
+import { createEraserPreview } from './eraser-preview.js'
 
 // The caller owns the Store and input events. Coordinates are CSS pixels
 // relative to element's upper-left corner. This mount never writes to the Store.
@@ -16,6 +17,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   if (!element?.ownerDocument || !store?.getStoreSnapshot) throw new Error('渲染器需要页面元素和模型 Store。')
   if (typeof reduceMotion !== 'boolean') throw new Error('减少动画偏好需要布尔值。')
   const view = atom('renderer camera', checkedCamera(camera)), overlays = atom('renderer overlays', checkedOverlays([]))
+  const eraserPreview = createEraserPreview(store, element.ownerDocument.defaultView.getComputedStyle(element).getPropertyValue('--color-overlay-eraser-preview'))
   const host = element.ownerDocument.createElement('div')
   Object.assign(host.style, { position: 'relative', width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none', textSpacingTrim: 'space-all', textAutospace: 'no-autospace' })
   host.dataset.canvasRenderer = ''
@@ -24,6 +26,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   scene.editingId = atom('renderer editing text', null)
   scene.videoState = atom('renderer video state', null)
   scene.onVideoInput = onVideoInput
+  scene.eraserPreview = eraserPreview
   const textView = createTextEditingView(element, store, textEditing)
   scene.loadGeneratedFrame = loadGeneratedFrame
   scene.reduceMotion = atom('renderer image motion', reduceMotion)
@@ -32,7 +35,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
     if (!active) return
     active = false
     try { textView.dispose() }
-    finally { try { flushSync(() => root.unmount()) } finally { try { scene.dispose() } finally { host.remove() } } }
+    finally { try { flushSync(() => root.unmount()) } finally { try { scene.eraserPreview.dispose(); scene.dispose() } finally { host.remove() } } }
   }
   try { flushSync(() => root.render(createElement(Fragment, null,
     createElement('style', null, textEditingStyle),
@@ -52,7 +55,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
       textView.update(description, view.get())
     },
     setVideoInteraction(value) { assertActive(); scene.videoState.set(value) },
-    setOverlays(value) { assertActive(); overlays.set(checkedOverlays(value)) },
+    setOverlays(value) { assertActive(); const next = checkedOverlays(value); scene.eraserPreview.set(next); overlays.set(next) },
     setReduceMotion(value) { assertActive(); if (typeof value !== 'boolean') throw new Error('减少动画偏好需要布尔值。'); scene.reduceMotion.set(value) },
     hitTest(point) { assertActive(); return hitTestCanvas(store.getStoreSnapshot(), point, view.get(), scene.pageId) },
     unmount

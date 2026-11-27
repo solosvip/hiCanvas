@@ -21,6 +21,7 @@ import { createImageCrop } from './image-crop.js'
 import { createClickCounter } from './click-count.js'
 import { createDrawTool, createHighlightTool } from './draw.js'
 import { createDrawShortcuts } from './draw-shortcuts.js'
+import { createEraserTool } from './eraser.js'
 import { createGeoTool } from './create-geo.js'
 import { createFrameTool } from './create-frame.js'
 import { createCreationControls } from './creation-controls.js'
@@ -47,7 +48,7 @@ import { createImageAlt } from './image-alt.js'
 // setter on focus/composition changes. Only canvas-owned keys reach tools.
 // Products choose allowed tools from this registry; tool state never enters the
 // document Store. Future tools get the same normalized input and context.
-export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, note: createNoteTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
+export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, note: createNoteTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, eraser: createEraserTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
 
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
@@ -67,6 +68,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function change(patch = {}) {
     if (disposed) return
     const previous = read(), next = { ...previous, ...patch }
+    next.erasingIds = Object.freeze([...(next.erasingIds || [])])
+    next.eraser = next.eraser ? Object.freeze({ ...next.eraser, ids: Object.freeze([...next.eraser.ids]), points: Object.freeze(next.eraser.points.map(p => Object.freeze({ ...p }))), bounds: Object.freeze({ ...next.eraser.bounds }) }) : null
     if (snaps) next.snappingPreferences = snaps.preferences()
     next.focusedGroupId = targets.validScope(next.focusedGroupId)
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))
@@ -91,6 +94,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     overlays.push(...(snaps?.describe() || []))
     if (next.marquee) overlays.push({ kind: 'marquee', bounds: next.marquee })
     if (next.scribble) overlays.push(next.scribble)
+    if (next.eraser) overlays.push(next.eraser)
     next.overlays = Object.freeze(overlays.map(o => Object.freeze({ ...o, bounds: Object.freeze({ ...o.bounds }), ...(o.handles && { handles: Object.freeze(o.handles.map(h => Object.freeze(h))) }) })))
     if (JSON.stringify(next) !== JSON.stringify(previous)) state.set(Object.freeze(next))
   }
@@ -189,8 +193,10 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     // Idle Escape still belongs to the active creation tool (leave it), while
     // select's idle Escape clears selection. Active Escape cancels the gesture.
     const creationEscape = input.type === 'key_down' && matchesCanvasShortcut('escape', input) && creationToolIds.includes(read().toolId)
-    if (!creationEscape && selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
+    const eraserEscape = matchesCanvasShortcut('escape', input) && read().toolId === 'eraser'
+    if (!creationEscape && !eraserEscape && selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
     if (drawKeys.handle(input)) { navigation.finishFrame(); return true }
+    if (toolIds.includes('eraser') && matchesCanvasShortcut('tool-eraser', input)) { setTool('eraser'); navigation.finishFrame(); return true }
     // Keyboard ownership, history/busy rejection and click counting have all
     // run before tool shortcuts. Mod+A belongs to selection; bare A to creation.
     const created = creation.handle(input)

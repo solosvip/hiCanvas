@@ -56,3 +56,18 @@ test('旋转画框外被完全裁掉的子项不进入框选', () => {
   const index = createSpatialIndex(Object.values(snapshot.store))
   assert.ok(!index.query({ x: 65, y: 90, w: 1, h: 1 }).includes('shape:c'))
 })
+
+test('擦除可显式包含透明对象，默认查询仍隐藏它且两种查询都裁掉框外部分', () => {
+  const snapshot = executeCanvasCommands(fixture(), [
+    { type: 'create_shape', id: 'shape:f', shapeType: 'frame', x: 200, y: 200, props: { w: 100, h: 100 } },
+    { type: 'create_shape', id: 'shape:c', shapeType: 'geo', parentId: 'shape:f', x: 80, y: 10, props: { w: 100, h: 50, fill: 'solid' } },
+  ]).snapshot
+  snapshot.store['shape:f'].opacity = 0
+  const index = createSpatialIndex(Object.values(snapshot.store))
+  assert.deepEqual(index.hitsAtPoint({ x: 290, y: 220 }), [])
+  assert.ok(index.hitsAtPoint({ x: 290, y: 220 }, 0, { includeTransparent: true }).includes('shape:c'))
+  assert.ok(!index.hitsAtPoint({ x: 330, y: 220 }, 0, { includeTransparent: true }).includes('shape:c'))
+  assert.deepEqual(index.query({ x: 280, y: 210, w: 5, h: 5 }), [])
+  assert.ok(index.query({ x: 280, y: 210, w: 5, h: 5 }, { includeTransparent: true }).includes('shape:c'))
+  assert.ok(!index.query({ x: 330, y: 220, w: 5, h: 5 }, { includeTransparent: true }).includes('shape:c'))
+})

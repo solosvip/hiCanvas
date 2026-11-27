@@ -41,9 +41,11 @@ export async function runConnectionProbe() {
   let subscriptions = 0
   const intercept = store.addHistoryInterceptor.bind(store)
   store.addHistoryInterceptor = fn => { subscriptions++; const stop = intercept(fn); return () => { subscriptions--; stop() } }
-  // Every mounted renderer also owns one text-editing view observer (#132);
-  // connections on one Store must still share a single observer between them.
-  const shared = mounted => subscriptions - mounted
+  // Every mounted renderer also owns one text-editing view observer (#132) and
+  // one eraser-preview observer (#130); connections on one Store must still
+  // share a single observer between them.
+  const perRenderer = 2
+  const shared = mounted => subscriptions - perRenderer * mounted
   const host = document.createElement('div'); document.body.append(host)
   const renderers = [], hosts = [host], observers = [], changes = [0, 0, 0, 0]
   const mount = (element, options) => { const renderer = mountCanvasRenderer(element, options); renderers.push(renderer); return renderer }
