@@ -6,6 +6,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   const captured = new Set()
   let lastTime = 0, animation = null, disposed = false, composing = false
   const owner = target => {
+    if (target?.closest?.('[data-canvas-input-owner="video"]')) return 'form'
     if (target?.closest?.('[data-canvas-input-owner="text-editing"]')) return 'text-editing'
     // Canvas-owned controls outside the canvas element (the minimap) keep keys on the canvas.
     if (target?.closest?.('[data-canvas-input-owner="canvas"]')) return 'canvas'
@@ -31,7 +32,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
     return result
   }
   const pointer = type => event => {
-    if (event.target?.closest?.('[data-canvas-input-owner="text-editing"]')) return
+    if (event.target?.closest?.('[data-canvas-input-owner="text-editing"], [data-canvas-input-owner="video"]')) return
     if (type === 'pointer_down') {
       if (![0, 1].includes(event.button) || event.pointerType !== 'touch' && captured.size && !captured.has(event.pointerId)) return
       host.focus?.({ preventScroll: true }); host.setPointerCapture?.(event.pointerId); captured.add(event.pointerId)

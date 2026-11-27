@@ -4,6 +4,7 @@ import { createServer as createHttpServer } from 'node:http'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readFile } from 'node:fs/promises'
+import { createVideoFixture } from './renderer-preview/video-fixtures.js'
 import { createFixture } from './perf/fixture.mjs'
 import {createContentRoutes} from '../server/content-routes.mjs'
 import { appendFile, mkdir } from 'node:fs/promises'
@@ -56,6 +57,7 @@ export async function startRendererPreview({ port = 0, geometryFixtures = false,
       if (url.pathname === '/') request.url = `/tools/renderer-preview/index.html${url.search}`
       if (url.pathname !== '/__renderer_fixture') return next()
       if (request.method !== 'GET') { response.writeHead(405); response.end(); return }
+      if (url.searchParams.get('gallery') === 'videos') { response.setHeader('content-type', 'application/json'); response.end(JSON.stringify(createVideoFixture())); return }
       const count = Number(url.searchParams.get('count'))
       if (![500, 2000, 5000].includes(count)) { response.writeHead(400); response.end('Invalid synthetic size'); return }
       const dash = url.searchParams.get('dash') || 'solid', key = `${count}:${dash}`

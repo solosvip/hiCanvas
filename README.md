@@ -219,6 +219,11 @@ git config core.hooksPath .githooks
 
 新渲染层的合成开发预览单独启动，不加载真实资料。原 `npm run renderer:preview` 仅在内存里临时编辑，刷新还原。先登记专用端口，再运行：
 
+视频图鉴使用 `?gallery=videos`；文件选择、拖入与文件粘贴在隔离交互服务上验证。专项入口为 `node tools/renderer-preview/video-check.mjs --port 43397`，5000元素、0/3视频交替三轮对照为 `node tools/renderer-preview/video-perf.mjs --port 43397`（先登记空闲端口）。两者复用已安装 Electron，结果在 `.scratch/video-check/` 与 `.scratch/video-performance/`；也可用 `HICANVAS_TEST_ELECTRON` 指定已有可执行文件。完整 `renderer:smoke` 包含只读视频播放守卫。
+
+新视频接受 MP4、WebM、QuickTime/MOV，单文件上限37MiB：现有50MiB JSON请求体扣除base64约4/3膨胀及封装余量，客户端与服务端共用 `maxVideoBytes`。浏览器先验证尺寸和可解码性，服务端独立检查文件头；新资源随机命名并保存在画板资料内，旧data URL仍可显示。本机视频支持单段Range，非法范围416，HEAD无正文。宿主须在上传前调用 `createMediaImport(...).begin(...)`，上传后提交准备好的媒体项，编辑层统一检查版本/选择及一次事务；当前预览适配是临时宿主，正式宿主及最终剪贴板复用归#137/#143/#176。
+
+
 ```sh
 npm run renderer:preview -- --port 43330
 # 打开 http://127.0.0.1:43330/?count=500，count 也支持 2000、5000

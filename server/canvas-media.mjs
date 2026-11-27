@@ -5,6 +5,7 @@ import { decodeReference } from './image-provider.mjs'
 import { imageDimensions } from './image-dimensions.mjs'
 import { executeCanvasCommands, getMediaTarget } from '../engine/index.js'
 import { httpError } from './file-lock.mjs'
+import { decodeVideoUpload } from './video-upload.mjs'
 
 export function createCanvasMedia(workspace) {
   async function saveAsset(id, bytes, name) {
@@ -32,7 +33,7 @@ export function createCanvasMedia(workspace) {
     return { bytes, mimeType, assetPath: join(directory, name) }
   }
   async function reference(id, args) {
-    const image = decodeReference(args.dataUrl)
+    const image = typeof args.dataUrl === 'string' && args.dataUrl.startsWith('data:video/') ? decodeVideoUpload(args.dataUrl) : decodeReference(args.dataUrl)
     const saved = await saveAsset(id, image.bytes, `reference.${image.extension}`)
     return { ...saved, src: saved.assetUrl, mimeType: image.mimeType }
   }

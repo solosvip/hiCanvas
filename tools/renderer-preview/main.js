@@ -21,6 +21,8 @@ import { attachNavigationUi } from './navigation-ui.js'
 import { attachMinimapUi } from './minimap-ui.js'
 import { createImageGallery } from './image-fixtures.js'
 import { attachImageUi } from './image-ui.js'
+import { addVideoLoad } from './video-fixtures.js'
+import { attachVideoUi } from './video-ui.js'
 import { createDrawGallery } from './draw-fixture.js'
 import { createActionsGallery } from './actions-fixture.js'
 import { attachActionsUi } from './actions-ui.js'
@@ -43,6 +45,8 @@ const getState = () => {
     ...(metadata?.connectionEditingFixture && { connectionRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'binding'].includes(record.typeName))) }),
     ...(metadata?.noteEditingFixture && { noteRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'user'].includes(record.typeName))) }),
     ...(textShapes && { textShapes: structuredClone(textShapes), textLayouts: Object.fromEntries(textShapes.filter(shape => shape.type !== 'frame').map(shape => [shape.id, getShapeTextLayout(shape, textContext)])) }),
+    interactingVideoId: state?.interactingVideoId || null, videoPlayback: state?.videoPlayback && structuredClone(state.videoPlayback),
+    ...(metadata?.videoFixture && metadata.videoGallery && session && { videoRecords: session.store.allRecords().filter(r => r.typeName === 'shape' || r.typeName === 'asset').map(r => structuredClone(r)) }),
     croppingId: state?.croppingId || null, cropZoom: state?.cropZoom || 0, isPenMode: state?.isPenMode || false,
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
     ...(metadata?.selectionActions && { actionShapes: session.store.allRecords().filter(r => r.typeName === 'shape').map(r => structuredClone(r)), actions: interaction.getActions() }),
@@ -62,7 +66,8 @@ try {
     if (!response.ok) throw new Error('本机校准日志写入失败。')
   } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
-  if (gallery === 'draw-input') metadata = createDrawGallery()
+  if (gallery === 'videos') { const response = await fetch('/__renderer_fixture?gallery=videos'); if (!response.ok) throw new Error('视频夹具不可用。'); metadata = await response.json() }
+  else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
   else if (gallery === 'creation') metadata = createCreationFixture()
   else if (gallery === 'connection-editing') metadata = createConnectionEditingFixture()
@@ -81,6 +86,8 @@ try {
     metadata = await response.json()
     if (params.get('strokes') === '500') metadata = addStrokeLoad(metadata)
   }
+  if (params.get('videos') === '3') metadata = addVideoLoad(metadata)
+  if (gallery === 'videos') metadata.videoGallery = true
   const transport = metadata.persistent ? previewTransport(metadata.conversationId) : memoryTransport(metadata.snapshot)
   if (metadata.textEditingFixture && params.get('slowTextSave') === '1') {
     const commit = transport.commit
@@ -92,12 +99,13 @@ try {
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
   session = await createEditorSession({ transport, actor })
   disposers.push(() => session.dispose())
+  if (metadata.persistent) { const records = session.store.allRecords(); metadata.count = records.filter(r => r.typeName === 'shape').length; metadata.counts = records.filter(r => r.typeName === 'shape').reduce((counts, r) => ({ ...counts, [r.type]: (counts[r.type] || 0) + 1 }), {}); metadata.assetCount = records.filter(r => r.typeName === 'asset').length }
   // Observation counter proves pointer hit queries do not serialize the board.
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
   interaction = createCanvasInteraction({ session, snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), toolIds: gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   disposers.push(() => interaction.dispose())
-  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', textEditing: {
+  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), textEditing: {
     onChange: (content, selection) => interaction.editText({ type: 'update', content, selection }),
     onSelection: selection => interaction.editText({ type: 'selection', selection }),
     onInputContext: value => interaction.setInputContext(value),
@@ -112,6 +120,8 @@ try {
   disposers.push(() => controls.dispose())
   const minimap = attachMinimapUi(navigation.element, host, interaction, { store: session.store, pageId: metadata.viewState.currentPageId, dispatch: input => controls.dispatch(input), onError: showError })
   disposers.push(() => minimap.dispose())
+  const videos = gallery === 'videos' ? attachVideoUi(host, interaction, session, metadata, showError) : null
+  if (videos) disposers.push(() => videos.dispose())
   const images = gallery === 'images' ? attachImageUi(host, interaction, session, renderer, showError, params.get('reduceMotion') === '1') : null
   if (images) disposers.push(() => images.dispose())
   const creationUi = gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? attachCreationUi(host, interaction, () => controls, showError) : null
@@ -122,8 +132,8 @@ try {
   if (textUi) disposers.push(() => textUi.dispose())
   const stop = react('preview interaction view', () => {
     const state = interaction.state.get()
-    renderer.setCamera(state.camera); renderer.setOverlays(state.overlays); renderer.setTextEditing(state.textEditing)
-    navigation.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); actionsUi?.update(); controls?.wake()
+    renderer.setCamera(state.camera); renderer.setOverlays(state.overlays); renderer.setTextEditing(state.textEditing); renderer.setVideoInteraction(state)
+    navigation.update(state); videos?.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); actionsUi?.update(); controls?.wake()
     minimap.update(state)
     const error = state.lastError || session.state.get().lastError
     const message = error ? `操作失败：${error.message}` : ready ? instructions : status.textContent
@@ -135,6 +145,16 @@ try {
   window.addEventListener('pagehide', cleanup, { once: true })
   await document.fonts.ready
   await Promise.all([...host.querySelectorAll('img')].map(async image => { await image.decode(); decodedImages++ }))
+  await Promise.all([...host.querySelectorAll('video')].map(video => video.readyState >= 1 || video.error ? null : new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('合成视频未就绪。')), 10000); const done = () => { clearTimeout(timer); video.removeEventListener('loadedmetadata', done); video.removeEventListener('error', done); resolve() }; video.addEventListener('loadedmetadata', done); video.addEventListener('error', done) })))
+  if (params.get('videos') === '3') {
+    const end = performance.now() + 10000
+    while (true) {
+      const videos = [...host.querySelectorAll('video')]
+      if (videos.length === 3 && videos.every(video => video.readyState >= 2 && !video.paused && video.currentTime > .05)) break
+      if (performance.now() >= end) throw new Error('性能夹具的三个视频没有实际播放，拒绝空转样本。')
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+  }
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   if (getState().renderedShapes !== metadata.count) throw new Error('渲染元素数量与合成快照不一致。')
   ready = true

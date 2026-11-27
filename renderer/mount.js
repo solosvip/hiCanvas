@@ -12,7 +12,7 @@ import { textEditingStyle } from './text-editing-style.js'
 
 // The caller owns the Store and input events. Coordinates are CSS pixels
 // relative to element's upper-left corner. This mount never writes to the Store.
-export function mountCanvasRenderer(element, { store, camera, pageId, loadGeneratedFrame, reduceMotion = false, textEditing } = {}) {
+export function mountCanvasRenderer(element, { store, camera, pageId, loadGeneratedFrame, reduceMotion = false, textEditing, onVideoInput } = {}) {
   if (!element?.ownerDocument || !store?.getStoreSnapshot) throw new Error('渲染器需要页面元素和模型 Store。')
   if (typeof reduceMotion !== 'boolean') throw new Error('减少动画偏好需要布尔值。')
   const view = atom('renderer camera', checkedCamera(camera)), overlays = atom('renderer overlays', checkedOverlays([]))
@@ -22,6 +22,8 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   element.append(host)
   const scene = createScene(store, pageId), root = createRoot(host)
   scene.editingId = atom('renderer editing text', null)
+  scene.videoState = atom('renderer video state', null)
+  scene.onVideoInput = onVideoInput
   const textView = createTextEditingView(element, store, textEditing)
   scene.loadGeneratedFrame = loadGeneratedFrame
   scene.reduceMotion = atom('renderer image motion', reduceMotion)
@@ -40,7 +42,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   const assertActive = () => { if (!active) throw new Error('渲染器已卸载。') }
   return Object.freeze({
     getCamera() { assertActive(); return { ...view.get() } },
-    setCamera(value) { assertActive(); view.set(checkedCamera(value)); if (editingDescription) textView.update(editingDescription, view.get()) },
+    setCamera(value) { assertActive(); const next = checkedCamera(value), previous = view.get(); if (next.x !== previous.x || next.y !== previous.y || next.z !== previous.z) view.set(next); if (editingDescription) textView.update(editingDescription, view.get()) },
     setTextEditing(value) {
       assertActive()
       if (value && typeof textEditing?.onChange !== 'function') throw new Error('文字视图需要宿主提供草稿回调。')
@@ -49,6 +51,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
       scene.editingId.set(description?.id || null)
       textView.update(description, view.get())
     },
+    setVideoInteraction(value) { assertActive(); scene.videoState.set(value) },
     setOverlays(value) { assertActive(); overlays.set(checkedOverlays(value)) },
     setReduceMotion(value) { assertActive(); if (typeof value !== 'boolean') throw new Error('减少动画偏好需要布尔值。'); scene.reduceMotion.set(value) },
     hitTest(point) { assertActive(); return hitTestCanvas(store.getStoreSnapshot(), point, view.get(), scene.pageId) },

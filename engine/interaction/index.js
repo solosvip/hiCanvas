@@ -36,6 +36,7 @@ import { createConnectionEditing } from './connection-editing.js'
 import { createNoteTool } from './create-note.js'
 import { createNoteEditing } from './note-editing.js'
 import { createSnapping } from './snapping.js'
+import { createVideoInteraction } from './video.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -58,8 +59,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage, initial)
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
-  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
-  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, selectionKeys, actions, snaps, lastTime = -Infinity
+  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
+  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, selectionKeys, actions, snaps, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -70,6 +71,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     duplicates.selectionChanged(next.selectedIds)
     if (JSON.stringify(next.selectedIds) !== JSON.stringify(previous.selectedIds) && !Object.hasOwn(patch, 'selectionRotation')) next.selectionRotation = null
     if (next.hoveredId && !targets.isSelectable(next.hoveredId)) next.hoveredId = null
+    if (next.interactingVideoId && (next.toolId !== 'select' || !next.selectedIds.includes(next.interactingVideoId) || !targets.isSelectable(next.interactingVideoId) || session.store.get(next.interactingVideoId)?.type !== 'video')) next.interactingVideoId = null
     next.camera = Object.freeze(checkedCamera(next.camera))
     next.contentOffscreen = content.offscreen(next.camera, next.viewport)
     next.minimap = minimap?.describe(next) || null
@@ -97,7 +99,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   }
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
-    keyboard?.cancel(); minimap?.cancel(); navigation?.cancel(); cropTool?.finish(); cancelTool(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
+    videoInput?.finish(); keyboard?.cancel(); minimap?.cancel(); navigation?.cancel(); cropTool?.finish(); cancelTool(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
     creation.toolChanged(id)
     return tool
   }
@@ -114,6 +116,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   context.textEditing = textEditing
   noteEditing = createNoteEditing(context, textEditing)
   connectionEditing = createConnectionEditing(context)
+  videoInput = createVideoInteraction({ ...context, prepare: prepareText })
   const textInput = createTextInput({ ...context, prepare: prepareText, replay: dispatchCore, canCreate: () => toolIds.includes('text') }, textEditing)
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
@@ -130,7 +133,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const checkBasis = !session.state.get().isGestureActive && read().selectionRotation !== null
     const before = checkBasis && selection.expected(read().selectedIds)
     index.applyChanges(changes); targets.apply(changes); content.apply(changes); selection.apply(changes)
-    connectionEditing.applyChanges(changes); tool?.applyChanges?.(changes)
+    connectionEditing.applyChanges(changes); videoInput.applyChanges(changes); tool?.applyChanges?.(changes)
     const after = checkBasis && selection.expected(read().selectedIds)
     const affected = checkBasis && [...Object.keys(changes.added), ...Object.keys(changes.updated), ...Object.keys(changes.removed)].some(id => before.has(id) || after.has(id))
     change(!session.state.get().isGestureActive && affected ? { selectionRotation: null } : {})
@@ -166,6 +169,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       const connected = routed.handled && !routed.replay && input.type !== 'frame' ? { handled: true } : connectionEditing.handle(routed.replay || input, connectionTarget)
       if (connected.handled) { navigation.finishFrame(); return connected.result ?? (input.type.startsWith('key_') ? true : undefined) }
     }
+    if (videoInput.handle(input)) { navigation.finishFrame(); return true }
     const edited = textInput.handle(input)
     if (edited.handled) { navigation.finishFrame(); return edited.result ?? true }
     const acted = actions.handle(input)
@@ -218,6 +222,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     setInputContext(value) { assertActive(); keyboard.context(value) },
     setShortcutsEnabled(enabled) { assertActive(); keyboard.shortcuts(enabled) },
     cropImage(action) { assertActive(); try { return cropTool.action(action) } catch (error) { cropTool.cancel(); report(error); throw error } },
+    videoInput(action) { assertActive(); return videoInput.input(action) },
     editText(action) { assertActive(); return textEditing.action(action) },
     setEdgeScrolling(enabled) { assertActive(); change({ edgeScrolling: Boolean(enabled) }); navigation.finishFrame() },
     setViewport(value) { assertActive(); minimap.cancel(); navigation.setViewport(value) },
@@ -234,6 +239,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       if (input.time < lastTime) throw new Error('输入时间必须单调递增。')
       lastTime = input.time
       try {
+        if (videoInput.beforeKeyboard(input)) return true
         const noted = noteEditing.beforeKeyboard(input)
         if (noted.handled) return noted.result ?? true
         const edited = textInput.beforeKeyboard(input)

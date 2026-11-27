@@ -31,11 +31,12 @@ export async function runScaleRenderProbe() {
       const node = host.querySelector(`[data-shape-id="${record.id}"]`)
       check(getShapeBounds(record)?.w === 100, `${record.type} 没有登记保存几何，守卫前置失败`)
       check(node, `${record.type} 没有挂载，守卫前置失败`)
-      check(node.childElementCount === 0, `${record.type} 没有绘制器却被画出了图形`)
+      if (record.type === 'video') check(node.querySelector('[data-video-state="missing"]') && !node.querySelector('video'), '视频缺资源时应显示占位')
+      else check(node.childElementCount === 0, `${record.type} 没有绘制器却被画出了图形`)
       check(index.query({ x: record.x + 20, y: 20, w: 1, h: 1 }).includes(record.id), `${record.type} 无法按范围查询`)
       check(view.hitTest({ x: record.x + 20, y: 20 }) === record.id, `${record.type} 空白外框无法点选`)
     }
     check(host.querySelector('[data-shape-id="shape:geo-probe"] [data-geo-outline]'), 'geo 绘制分派丢失')
-    return { videoBodyEmpty: true, geometryOnlyBodyEmpty: true, storedGeometryQueryable: true, blankBoundsSelectable: true, geoStillDraws: true }
+    return { videoPlaceholder: true, geometryOnlyBodyEmpty: true, storedGeometryQueryable: true, blankBoundsSelectable: true, geoStillDraws: true }
   } finally { try { view?.unmount() } finally { host.remove() } }
 }
