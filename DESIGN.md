@@ -12,6 +12,7 @@ colors:
   overlay-scribble-stroke: "#2f80ed52"
   overlay-eraser-preview: "#00000052"
   overlay-eraser-stroke: "#0000000a"
+  overlay-laser-stroke: "#ff0000b3"
   grid-dot: "#6e6e6e"
   secondary: "#596170"
   tertiary: "#0ea5e9"
@@ -37,6 +38,7 @@ spacing:
   overlay-brush-stroke: 1px
   overlay-scribble-stroke: 12px
   overlay-eraser-stroke: 12px
+  overlay-laser-stroke: 4px
   overlay-handle-size: 10px
   overlay-handle-stroke: 2px
   overlay-handle-hit: 12px
@@ -113,6 +115,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 保留 Cowart/tldraw 的圆角、图标与标注箭头。标注箭头的默认曲率、文本位置与连续标注交互保持不变。
 
 ## Components
+
+激光笔复用橡皮的有限世界点列校验、外框和圆头路径绘制；使用 overlay-laser-stroke 色彩与宽度令牌，线宽固定4屏幕CSS px。两个独立白底旧版截图的中心合成色为RGB(255,77,77)，黑底为RGB(178,0,0)，永久原生守卫逐通道容差3；中心色不代表整条轮廓逐像素相同。激光路径实际显示时才校验令牌，不增加画板记录订阅；只读展示宿主可以不加载编辑令牌。点列随相机投影，消退从起点向末端收短，期间宽度和alpha不变。准确缓动未知，按已审定的1200ms等待、每16.7ms一点评估及总收短500ms上限做确定性近似，简单圆头折线与旧版末端平滑/约16px滞后有意不同。
 
 网格点阵在作品下方，用 grid-dot 色和固定屏幕 grid-dot-radius 半径、grid-dot-offset 像素偏移。基础格距属于交互规则（10画布单位），显示基础格距的1/4/16/64倍四层。每层根据自己在屏幕上的格距单独淡入，透明度由对应 grid-l1/l4/l16/l64-fade-start/range 令牌算出并夹在0–1；最粗一层的起点是负数，为了镜头拉得很远时仍然留着粗格点。四层共用同一个线性公式，参数来自隔离旧版26个视角的公开DOM读数。点阵随相机平移缩放，在低视角淡出密层，不拦截输入；关闭会话网格偏好即移除。
 

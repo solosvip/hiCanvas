@@ -240,6 +240,10 @@ npm run renderer:smoke
 
 会话公开 `erasingIds` 和 `eraser`，后者经 `overlays` 输出 `{kind:'eraser',ids,points,tailScale,bounds}` 纯值；`setOverlays` 校验、复制冻结并按ID订阅，只淡化命中根的普通树和荧光背景树，不改Store；原记录opacity乘DESIGN淡化令牌的alpha，挂载时解析，令牌变更后需重新挂载。尾迹宽度来自DESIGN令牌并保持屏幕尺寸；有界点列和100ms收尾是有意近似，不能当成旧版的精确寿命/缓动。合成图鉴 `/?gallery=eraser`，另有 `eraseCase=group/frame/geometry/half/empty`；只在内存编辑，刷新还原。登记全量时段和专用端口、设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_ERASER_PORT=43390 node tools/renderer-preview/eraser-check.mjs`，原生输入与截图在 `.scratch/eraser-smoke/`。真实系统失焦、设备手感及功能清单中的差异留用户集中验收；正式界面尚未切换。
 
+激光笔（#131）：在 `toolIds` 开放 `laser` 后，K进入，重复K保持；主指针按住画临时红色轨迹，既不保存，也不占撤销或清空重做。V结束活动段并保留轨迹，切走后继续消退；闲置Esc保持工具，活动Esc清掉全部激光段。还在等待的旧段会随新段最后松手重新等1200ms，再从起点按先后收短；已经开始收短的旧段继续消退，不因新段暂停。每16.7ms收一点、整批最多500ms是确定性近似，最多32段、每段1024点，超限隔点降采样保留首尾。世界点列和固定4屏幕CSS px宽度经 `overlays` 输出 `{kind:'laser',id,points,bounds}`；第一次非空绘制才校验DESIGN令牌，不新增Store观察者。合成图鉴为 `/?gallery=laser`，`laserCase=scene`带已有作品；登记白板及专用端口并设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_LASER_PORT=43390 node tools/renderer-preview/laser-check.mjs`，证据在 `.scratch/laser-smoke/`。专项原生之外，交付前另跑 `npm run renderer:smoke`；普通 `npm run check`包含逻辑回归。正式界面尚未切换，曲线近似及设备手感留集中验收。
+
+宿主按钮的暂时差异：旧版L50中按钮聚焦后K仍切激光；新底座预览目前把未标归属的按钮算作表单，不切工具，由 #209 统一对齐。显式标为 `data-canvas-input-owner="canvas"` 的画布按钮可按K进入激光，本单原生检查只守这条既有契约，不把裸按钮差异固定成永久断言。
+
 文字合成图鉴用 `/?gallery=text-editing`，完整格式保留样本用 `/?gallery=text-formatted`：双击文字、几何、箭头标签或画框标题进入编辑，选中后 Enter 也可进入；双击空白直接写字，T 点击自动宽、长拖固定宽。Esc、Mod+Enter 和画布外部点击保存当前会话，画框标题也支持普通 Enter；组字期间不完成。清空普通文字会删除它，清空标签或标题只清字段；新空文字退出不留历史。一次编辑、样式切换和自动大小合为一次画板撤销；编辑内撤销由文本视图处理。保存等待期间只读，失败恢复草稿。这里的 Esc 保存与画笔 Esc 丢弃分别遵循各自事务。
 
 便签合成图鉴用 `/?gallery=note-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `note` 后，N 或工具栏创建固定纸面便签，双击编辑。选中便签四边的「+」在邻位创建并编辑；编辑时 Tab/Shift+Tab 横向续建（尊重 RTL），Mod+Enter/Mod+Shift+Enter 向下/上续建，已有邻居直接复用。源文与一次键盘续建合为一次提交/撤销；下一张便签的输入另算一次。拖动单张便签时，在同层、同角度、同比例便签的相邻位置局部吸附，半径严格小于10 CSS px，Esc 取消移动及指示；这项既有局部策略不受对象吸附偏好或 Ctrl/Meta 影响。

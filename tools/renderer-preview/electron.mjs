@@ -31,6 +31,7 @@ import { frameSmoke } from './frame-smoke.mjs'
 import { svgImportSmoke, svgSecuritySmoke } from './svg-smoke.mjs'
 import { eraserSmoke } from './eraser-smoke.mjs'
 import { mediaCleanupSmoke } from './media-cleanup-smoke.mjs'
+import { laserSmoke } from './laser-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -188,6 +189,14 @@ async function run() {
       samples.push({ duplicates: await duplicateSmoke(window, manifest.output) })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if (manifest.lasersOnly) {
+      window = createWindow('laser')
+      await window.loadURL(`${manifest.url}/?gallery=laser&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ laser: await laserSmoke(window, manifest.output) })
+      if (errors.length || blocked.length) throw new Error(JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions, sourceHash: manifest.sourceHash }, null, 2)); window.destroy(); app.exit(0); return
     }
     if (manifest.erasersOnly) {
       window = createWindow('eraser')

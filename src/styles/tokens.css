@@ -10,6 +10,7 @@
   --color-overlay-scribble-stroke: #2f80ed52;
   --color-overlay-eraser-preview: #00000052;
   --color-overlay-eraser-stroke: #0000000a;
+  --color-overlay-laser-stroke: #ff0000b3;
   --color-grid-dot: #6e6e6e;
   --color-secondary: #596170;
   --color-tertiary: #0ea5e9;
@@ -36,6 +37,7 @@
   --spacing-overlay-brush-stroke: 1px;
   --spacing-overlay-scribble-stroke: 12px;
   --spacing-overlay-eraser-stroke: 12px;
+  --spacing-overlay-laser-stroke: 4px;
   --spacing-overlay-handle-size: 10px;
   --spacing-overlay-handle-stroke: 2px;
   --spacing-overlay-handle-hit: 12px;

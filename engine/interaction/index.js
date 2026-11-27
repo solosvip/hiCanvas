@@ -22,6 +22,7 @@ import { createClickCounter } from './click-count.js'
 import { createDrawTool, createHighlightTool } from './draw.js'
 import { createDrawShortcuts } from './draw-shortcuts.js'
 import { createEraserTool } from './eraser.js'
+import { createLaserTool } from './laser.js'
 import { createGeoTool } from './create-geo.js'
 import { createFrameTool } from './create-frame.js'
 import { createCreationControls } from './creation-controls.js'
@@ -50,7 +51,7 @@ import { createAiFrameSize } from './ai-frame-size.js'
 // setter on focus/composition changes. Only canvas-owned keys reach tools.
 // Products choose allowed tools from this registry; tool state never enters the
 // document Store. Future tools get the same normalized input and context.
-export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, note: createNoteTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, eraser: createEraserTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
+export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, note: createNoteTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, eraser: createEraserTool, laser: createLaserTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
 
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
@@ -65,7 +66,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null, lastNotice: null }))
-  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
+  let disposed = false, tool, laserTool, switchingTool = false, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -74,6 +75,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     next.eraser = next.eraser ? Object.freeze({ ...next.eraser, ids: Object.freeze([...next.eraser.ids]), points: Object.freeze(next.eraser.points.map(p => Object.freeze({ ...p }))), bounds: Object.freeze({ ...next.eraser.bounds }) }) : null
     if (Object.hasOwn(patch, 'lastError')) next.lastNotice = null
     if (patch.lastNotice && !patch.lastError) { next.lastNotice = patch.lastNotice; next.lastError = null }
+    next.laserTrails = Object.freeze((next.laserTrails || []).map(s => Object.freeze({ ...s, points: Object.freeze(s.points.map(p => Object.freeze({ ...p }))), bounds: Object.freeze({ ...s.bounds }) })))
     if (snaps) next.snappingPreferences = snaps.preferences()
     next.focusedGroupId = targets.validScope(next.focusedGroupId)
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))
@@ -86,7 +88,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     next.camera = Object.freeze(checkedCamera(next.camera))
     next.contentOffscreen = content.offscreen(next.camera, next.viewport)
     next.minimap = minimap?.describe(next) || null
-    next.needsFrame = Boolean(next.needsFrame || tool?.needsFrame || connectionEditing?.needsFrame)
+    next.needsFrame = Boolean(next.needsFrame || tool?.needsFrame || laserTool?.needsFrame || connectionEditing?.needsFrame)
     next.scribble = next.scribble && Object.freeze({ ...next.scribble, bounds: Object.freeze({ ...next.scribble.bounds }), points: Object.freeze(next.scribble.points.map(p => Object.freeze({ ...p }))) })
     next.marquee = next.marquee && Object.freeze({ ...next.marquee })
     if (next.croppingId && !targets.isSelectable(next.croppingId)) { next.croppingId = null; next.mode = 'idle'; next.handleCursor = null }
@@ -100,6 +102,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (next.marquee) overlays.push({ kind: 'marquee', bounds: next.marquee })
     if (next.scribble) overlays.push(next.scribble)
     if (next.eraser) overlays.push(next.eraser)
+    overlays.push(...next.laserTrails)
     next.overlays = Object.freeze(overlays.map(o => Object.freeze({ ...o, bounds: Object.freeze({ ...o.bounds }), ...(o.handles && { handles: Object.freeze(o.handles.map(h => Object.freeze(h))) }) })))
     if (JSON.stringify(next) !== JSON.stringify(previous)) state.set(Object.freeze(next))
   }
@@ -107,11 +110,18 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function cancelTool() {
     // Context loss cancels real and comma pointers together. Recreate the
     // shared counter so neither a previous click nor an unreleased press leaks.
-    countClicks = createClickCounter(); clipboard?.cancel(); actions?.cancel(); selectionKeys?.cancel(); connectionEditing?.cancel(); noteEditing?.cancel(); snaps?.clear(); tool?.cancel()
+    countClicks = createClickCounter(); clipboard?.cancel(); actions?.cancel(); selectionKeys?.cancel(); connectionEditing?.cancel(); noteEditing?.cancel(); snaps?.clear()
+    if (switchingTool && tool === laserTool) laserTool.leave(Math.max(0, lastTime))
+    else tool?.cancel()
   }
+  const makeTool = id => id === 'laser' ? laserTool ||= canvasToolRegistry[id](context) : canvasToolRegistry[id](context)
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
-    aiFrameSize?.cancel(); imageAlt?.cancel(); videoInput?.finish(); keyboard?.cancel(); minimap?.cancel(); navigation?.cancel(); cropTool?.finish(); cancelTool(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
+    if (id === 'laser' && tool === laserTool) return tool
+    switchingTool = true
+    try {
+      aiFrameSize?.cancel(); imageAlt?.cancel(); videoInput?.finish(); keyboard?.cancel(); minimap?.cancel(); navigation?.cancel(); cropTool?.finish(); cancelTool(); tool = makeTool(id); change({ toolId: id, handleCursor: null })
+    } finally { switchingTool = false }
     creation.toolChanged(id)
     return tool
   }
@@ -140,7 +150,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   selectionKeys = createSelectionShortcuts(context)
   actions = createSelectionActions(context)
   const drawKeys = createDrawShortcuts({ toolIds, setTool })
-  tool = canvasToolRegistry[read().toolId](context)
+  tool = makeTool(read().toolId)
   creation.toolChanged(read().toolId)
   keyboard = createKeyboardInput({ read, change, releaseKeys: () => { cancelTool(); navigation.releaseKeys() },
     releaseKey: key => tool.releaseKey?.(key),
@@ -158,13 +168,21 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   change()
   function assertActive() { if (disposed) throw new Error('交互模块已关闭。') }
   function dispatchCore(input) {
+    // Laser tails own no editing gesture and continue while other tools save.
+    if (input.type === 'frame' && laserTool?.needsFrame) laserTool.frame(input.time)
     // History rejection must preserve the active editing gesture. Runtime
     // owns busy/conflict checks; never route its rejection through tool.cancel.
     if (matchesCanvasShortcut('history', input)) {
       const selected = [...read().selectedIds]
       return session[input.shiftKey ? 'redo' : 'undo']().then(result => { const ids = duplicates.followHistory(result.changes, selected); change({ lastError: null, ...(ids && { selectedIds: ids }) }); return result }).catch(error => { report(error); throw error })
     }
-    if (session.state.get().isSubmitting) return
+    if (session.state.get().isSubmitting) {
+      // Laser owns no document gesture: a pending undo must not swallow its
+      // physical release/cancel, leaving a permanently held session overlay.
+      if (tool === laserTool && (['pointer_up', 'pointer_cancel'].includes(input.type) || input.type === 'key_down' && matchesCanvasShortcut('escape', input))) return tool.dispatch(input)
+      if (input.type === 'frame') navigation.finishFrame()
+      return
+    }
     // Count only input that reaches the canvas: a rejected click must not
     // prime a later double click (#139). The minimap keeps native dblclick.
     input = countClicks(input)
@@ -202,15 +220,16 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     // Idle Escape still belongs to the active creation tool (leave it), while
     // select's idle Escape clears selection. Active Escape cancels the gesture.
     const creationEscape = input.type === 'key_down' && matchesCanvasShortcut('escape', input) && creationToolIds.includes(read().toolId)
-    const eraserEscape = matchesCanvasShortcut('escape', input) && read().toolId === 'eraser'
-    if (!creationEscape && !eraserEscape && selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
+    const trailEscape = matchesCanvasShortcut('escape', input) && ['eraser', 'laser'].includes(read().toolId)
+    if (!creationEscape && !trailEscape && selectionKeys.handle(input)) { navigation.cancel(); navigation.finishFrame(); return true }
     if (drawKeys.handle(input)) { navigation.finishFrame(); return true }
     if (toolIds.includes('eraser') && matchesCanvasShortcut('tool-eraser', input)) { setTool('eraser'); navigation.finishFrame(); return true }
+    if (toolIds.includes('laser') && matchesCanvasShortcut('tool-laser', input)) { if (read().toolId !== 'laser') setTool('laser'); navigation.finishFrame(); return true }
     // Keyboard ownership, history/busy rejection and click counting have all
     // run before tool shortcuts. Mod+A belongs to selection; bare A to creation.
     const created = creation.handle(input)
     if (created.handled) { navigation.finishFrame(); return created.result ?? true }
-    if (input.type === 'frame') tool.frame?.(input.time)
+    if (input.type === 'frame' && tool !== laserTool) tool.frame?.(input.time)
     const routed = navigation.handle(input)
     const event = routed.replay || input
     const cropped = !routed.handled || routed.replay ? cropTool.dispatch(event) : { handled: false }
@@ -284,6 +303,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return routed.input ? dispatchCore(routed.input) : routed.result ?? routed.handled
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
   })
 }
