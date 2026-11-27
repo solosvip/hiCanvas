@@ -60,10 +60,11 @@ export function createKeyboardInput({ read, change, releaseKeys, releaseKey, can
     if (!onCanvas() || input.isComposing || input.keyCode === 229) { cancel(); return { handled: false } }
     const c = read().inputContext, arrow = ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(input.key.toLowerCase())
     const escape = matchesCanvasShortcut('escape', input) || matchesCanvasShortcut('escape-folded', input)
-    // Native activation and roving focus stay with non-input controls. Every
-    // other binding continues through the existing shortcut table below.
+    // Native activation, Tab focus navigation and roving focus stay with
+    // non-input controls (checklist I11). Every other binding continues
+    // through the existing shortcut table below.
     // Rejecting a reserved key must not cancel a real pointer's active preview.
-    if (controls.has(c.owner) && (input.key.toLowerCase() === 'enter' || matchesCanvasShortcut('space', input) || arrow || escape && c.owner !== 'toolbar-button')) return { handled: false }
+    if (controls.has(c.owner) && (['enter', 'tab'].includes(input.key.toLowerCase()) || matchesCanvasShortcut('space', input) || arrow || escape && c.owner !== 'toolbar-button')) return { handled: false }
     // The window capture route leaves owned arrows to the control. Its own
     // subsequent, explicitly targeted minimap input is the one allowed route.
     if (input.type === 'key_down' && c.ownsArrows && arrow && input.target !== 'minimap') return { handled: false }
