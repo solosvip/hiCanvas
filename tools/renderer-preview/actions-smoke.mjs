@@ -90,7 +90,14 @@ export async function actionsSmoke(target, output) {
   for (const id of ['stretch-x', 'stretch-y', 'stack-x', 'stack-y', 'pack']) {
     await reset(); await selectThree(); const before = await state()
     s = await edit(() => button(id)); check(s.selectedIds.length === 3 && !same(pose(s), pose(before)), `${id} 没有修改/保留选择`)
+    if (id === 'pack') {
+      // 2026-11-26 isolated legacy native context-menu sample, same three shapes.
+      check(same(['a', 'b', 'c'].map(id => [shape(s, id).x, shape(s, id).y]), [[340, 240], [340, 330], [340, 190]]), '紧凑排布次序或整体落点不符旧版菜单读数')
+      await remember('pack-exact-positions')
+      await writeFile(join(output, 'actions-pack.png'), (await contents.capturePage()).toPNG())
+    }
     check(same(pose(await undo()), pose(before)), `${id} 一次撤销未还原`)
+    if (id === 'pack') check(same(pose(await edit(() => press('Z', [mod, 'shift']))), pose(s)), '紧凑排布重做没有恢复精确落点')
   }
   await reset(); await selectThree()
   s = await edit(() => press('G', [mod])); check(s.selectedIds.length === 1 && s.actionShapes.find(r => r.id === s.selectedIds[0]).type === 'group', '组合未选新组')

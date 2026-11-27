@@ -16,7 +16,6 @@ const scalable = context => Boolean(context.frame && context.canScale !== false)
 // the whole hold. Rotation advances to the next 15° tick, Alt to 15°/16; scale
 // is 1.1 / its reciprocal. Menu stack/pack gap=10 and frame padding=50.
 // Two-selection menu has stretch/pack; stack/distribute first appear at three.
-// Packing order remains the current command's behavior pending #154.
 export const canvasActions = Object.freeze([
   entry('duplicate', '复制副本', 1, context => {
     const offset = context.duplicateOffset || { x: Math.abs(context.frame.w * Math.cos(context.frame.rotation || 0)) + Math.abs(context.frame.h * Math.sin(context.frame.rotation || 0)) + 10, y: 0 }
@@ -32,7 +31,6 @@ export const canvasActions = Object.freeze([
     layout(`stack-${axis}`, `${axis === 'x' ? '水平' : '垂直'}堆排`, 'stack_shapes', { axis, gap: 10 }, null, 3),
     layout(`flip-${axis}`, `${axis === 'x' ? '水平' : '垂直'}镜像`, 'flip_shapes', { axis }, shortcut([axis === 'x' ? 'h' : 'v'], { shift: true }), 1),
   ]),
-  // The current command's packing order differs from legacy; tracked by #154.
   layout('pack', '紧凑排布', 'pack_shapes', { gap: 10 }),
   ...['front', 'forward', 'backward', 'back'].map(operation => entry(`reorder-${operation}`, { front: '置顶', forward: '前移一层', backward: '后移一层', back: '置底' }[operation], 1,
     command('reorder_shapes', { operation, ...(['forward', 'backward'].includes(operation) && { mode: 'overlapping' }) }),

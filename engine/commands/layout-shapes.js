@@ -65,19 +65,31 @@ export function packShapes(store, { ids, gap = 16 }) {
   checkedGap(gap)
   const context = layoutContext(store, ids)
   if (context.items.length < 2) return finishLayout(context)
-  // 按高度装入最合适的横排；同高用 ID 打破平局，结果不依赖选择顺序。
-  const items = [...context.items].sort((a, b) => b.bounds.h - a.bounds.h || b.bounds.w - a.bounds.w || a.shape.id.localeCompare(b.shape.id))
-  const width = Math.max(...items.map(item => item.bounds.w), Math.sqrt(items.reduce((sum, item) => sum + (item.bounds.w + gap) * (item.bounds.h + gap), 0)) - gap)
-  const rows = []
+  // 2026-11-26：隔离合成旧版、离屏原生右键→排列→紧凑排布，28组
+  // before/after/undo/redo 读数；精确输入输出在 engine-pack.test.mjs。
+  // ① A(100,100,100×80),B(330,190,80×120),C(620,360,60×40)
+  //    → A(340,170),B(340,260),C(340,120)，gap=10。
+  // ② 两个100×80位于(120,180)/(510,400) → (260,290)/(370,290)。
+  // ③ 四个80×60分布在x=100/400、y=150/450 → x=115/205/295/385,y=300。
+  // ④ 同样四项完全重叠(100,100) → x=100,y=-5/65/135/205。
+  // ⑤ 原范围宽169时四个80×60排一列；宽170时两列，x=100/190,y=165/235。
+  // 同尺寸反向选择反转排列，反向创建不改变；z=.5/2和尺寸翻倍仍间距10。
+  // 高、宽升序稳定排序；较高项开新行，宽度受原选择范围约束；最后整体居中。
+  const items = [...context.items].sort((a, b) => a.bounds.h - b.bounds.h || a.bounds.w - b.bounds.w)
+  const positions = []
+  let x = 0, y = 0, height = 0, width = 0
   for (const item of items) {
-    let row = rows.filter(row => row.used + item.bounds.w <= width + LAYOUT_EPSILON).sort((a, b) => b.used - a.used)[0]
-    if (!row) {
-      row = { y: rows.length ? rows.at(-1).y + rows.at(-1).height + gap : context.bounds.y, height: item.bounds.h, used: 0 }
-      rows.push(row)
+    if (x && (item.bounds.h > height || x + item.bounds.w > context.bounds.w + LAYOUT_EPSILON)) {
+      y += height + gap; x = 0
     }
-    placeLayoutShape(context, item, context.bounds.x + row.used, row.y)
-    row.used += item.bounds.w + gap
+    height = item.bounds.h
+    positions.push({ item, x, y })
+    width = Math.max(width, x + item.bounds.w)
+    x += item.bounds.w + gap
   }
+  const left = context.bounds.x + (context.bounds.w - width) / 2
+  const top = context.bounds.y + (context.bounds.h - y - height) / 2
+  for (const position of positions) placeLayoutShape(context, position.item, left + position.x, top + position.y)
   return finishLayout(context)
 }
 
