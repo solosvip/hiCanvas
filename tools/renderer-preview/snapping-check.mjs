@@ -13,7 +13,7 @@ await access(executable, constants.X_OK); await mkdir(output, { recursive: true 
 const run = await mkdtemp(join(output, 'run-'))
 let preview, child, childClosed
 try {
-  preview = await startRendererPreview({ port: Number(process.env.HICANVAS_SNAPPING_PORT || 43386) })
+  preview = await startRendererPreview({ port: Number(process.env.HICANVAS_SNAPPING_PORT || 43386), watch: false })
   const manifest = join(run, 'manifest.json')
   await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(run, 'profile'), output, result: join(output, 'result.json'), snappingOnly: true }))
   const code = await new Promise((yes, no) => {
