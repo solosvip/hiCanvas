@@ -382,3 +382,16 @@ SVG单份输入/输出各2 MiB、单批原始合计8 MiB；树10000节点/64层�
 服务识别、默认尺寸和规范地址统一来自 `model/`，使用精确主机名和路径，不授予相似域名嵌入权限。保留实测安全参数；移除重定向字段、带控制字符的字段及嵌套地址值，Figma内层地址经过同一服务校验并正确编码。只接受不带凭据或非默认端口的绝对HTTP(S)网址，UTF-8最多8192字节；链接是数据，不触发元数据抓取。
 
 专项原生入口：按白板规则登记全量时段及专用端口，指定已有的 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_EMBED_PORT=43396 node tools/renderer-preview/embeds-check.mjs`。入口先核对主进程、网页和子框剪贴板报错桩身份，再做故意拒绝证明；服务嵌入转到本机假页，外站请求不得放行。材料在 `.scratch/embeds-smoke/`，含宽窄窗口及有效、无效、取消截图。粘贴使用不受信的合成ClipboardEvent和私有DataTransfer，不能替代真实跨应用粘贴验收；仍须单独运行 `npm run renderer:smoke`。正式应用尚未切换。
+
+### 新编辑底座的画布输出（#210，独立合成预览）
+
+正式应用暂沿用旧编辑器。合成预览 `/?gallery=export&case=static` 提供选择/全部的 SVG、PNG 下载和背景开关；`case=text|media|empty|animation|decorations|external|network` 覆盖文字、媒体、空画板、当前动画、标题/书签及两类网络边界。没有系统剪贴板、打印或扁平化入口。背景颜色从现有 `--color-surface` 令牌读取，透明开关只存在本编辑会话，不保存画板或撤销事务。
+
+- `renderer/index.js` 的 `preflightCanvasExport(snapshot, options)` 预检固定快照的世界范围与尺寸；`renderCanvasExport(snapshot, options)` 返回独立 `Uint8Array bytes`、MIME、bounds、width/height、scale及资源计数。`ids`省略表示整页，显式空列表表示空结果；可传pageId、显式bounds、非负padding、正scale、普通background颜色、AbortSignal及最长30秒timeout。SVG默认1倍、PNG默认2倍；SVG声明尺寸和返回元数据一致，PNG不读取相机或设备像素比。小数范围向外取整。
+- 浏览器宿主提供document；传入对应画板的host可读取已挂载媒体的当前画面。图片先冻结并内联；生成网页/影片/幻灯片只经公开内容通道截图，不访问隔离DOM。未挂载时创建临时实例：影片暂停并取第0帧，视频取第0帧，幻灯片取当前内容页。已有播放实例不seek、不暂停。未知外部嵌入缺少截图通道时明确失败。SVG静态几何仍为矢量；文字使用共享排版输出SVG text并内联随应用分发的字体。中文、表情、系统标题和署名的后备字体取决于打开文件的系统。
+- `engine/index.js` 的 `createCanvasExport({session,interaction,render,download,background})` 决定选择/整页及输入门禁。`run({format,scope,origin,signal,...options})` 的scope为selection或all；空选回退整页，all忽略选择，空画板返回empty。默认origin=canvas；明确由工具栏点击的宿主可传toolbar，允许按钮获得焦点后的form归属，仍拒绝文字编辑、菜单、输入法组合、手势及提交中的动作。`setBackground(boolean)`只改本会话，`cancel()/dispose()`阻止尚未交付的输出下载。宿主下载端口必须在产生外部作用前再次检查signal。
+- 分配PNG之前限制每边8192、总像素1600万；源图片先检查容器声明尺寸，仍需浏览器成功解码，不保证编解码器私有工作内存。输出文件与素材累计各限64MB。隔离网页截图另外遵守内容通道已有4096边长/1600万像素限制。图片只读快照授权的本机asset/page-assets或内联图，字体只读随应用分发的清单。外链图片及书签预览/图标在读取、解码前换成占位，返回一条汇总warnings，blockedResources计份数；其他异常带blockedResources/failedResources，整次失败不返回半个文件。画框标题复用浏览器的共享测量，书签复用既有组件和截图画法，SVG导出包含它们时也需浏览器宿主。
+- 生成网页、影片和幻灯片的导出与显示使用同一个隔离网络边界；内容自己的外部资源可能再次加载。导出不赋予画板来源权限，不承诺完全离线；完全离线输出另行实现。原生专项分别记录父页、本机测试服务及内容来源的请求；画板素材外部请求必须为0，内容导出外部目标必须是同夹具显示时目标的子集。测试中唯一声明的外部图片在发出连接前重定向为自有合成像素，其他外连仍拒绝；这只是测试边界，不是生产禁网策略。
+- 共享普通截图（包括AI参考图、网页和幻灯片）现在也冻结当前动画计算值，保留暂停位置及已播完入场动画的最终状态；只作用于捕获克隆，不改变正在显示内容的播放或进度。影片专用逐帧路径沿用原有冻结行为。
+
+原生专项：设置 `HICANVAS_TEST_ELECTRON` 指向既有Electron可执行文件后，运行 `HICANVAS_EXPORT_PORT=43392 node tools/renderer-preview/export-check.mjs`，输出在 `.scratch/export-smoke/`；该专项也接入 `npm run renderer:smoke`。平台先用14项拒绝/1项成功验证剪贴板、打印、弹窗、外连与下载边界及子框安装回执，再跑原生下载、真实SVG/PNG像素、媒体初始/当前画面及取消/销毁/超时。只允许本次scratch下载，不打开保存对话框。离线回归是 `tools/canvas-export.test.mjs` 和两组 `renderer-export*.test.mjs`，由统一检查入口自动发现。
