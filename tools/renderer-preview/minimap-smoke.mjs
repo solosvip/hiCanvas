@@ -85,8 +85,12 @@ export async function minimapSmoke(window, output) {
   window.setContentSize(840, 800); await until(() => evaluate('document.querySelector("[data-action=minimap]").hidden'))
   check(!(await state()).minimap, '窄窗口未关闭小地图交互')
   window.setContentSize(841, 800); await until(async () => (await state()).minimap)
-  window.setContentSize(1280, 800); await until(async () => (await state()).minimap)
-  await click(center(await rect(toggler))); check(!(await state()).minimap, '收起未卸载小地图')
+  // The minimap is already on at 841, so waiting on it alone returns before the
+  // 1280 resize reaches the page, and the click lands where the button was in
+  // the narrower layout. Wait for the new width and a laid-out button instead.
+  window.setContentSize(1280, 800)
+  const wide = await until(async () => await evaluate('innerWidth') === 1280 && (await state()).minimap && (async () => { const box = await rect(toggler); return box.w > 0 && box.h > 0 && box })())
+  await click(center(wide)); await until(async () => !(await state()).minimap).catch(() => check(false, '收起未卸载小地图'))
   check(await evaluate('document.querySelectorAll("[data-minimap-canvas]").length') === 0, '收起遗留缩略图节点')
   await clean()
   return { cases, wheelCases, colors, shift: true, clickAndNativeDoubleClick: true, narrowAndRestore: true, collapse: true, documentUnchanged: true }
