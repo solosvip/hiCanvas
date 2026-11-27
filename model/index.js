@@ -2,6 +2,7 @@ import { Store } from '@tldraw/store'
 import { createTLSchema } from '@tldraw/tlschema'
 export { getEmbedService, getEmbedServiceConstraints, resolveEmbedUrl, EMBED_SERVICES } from './embed-services.js'
 export { normalizeHttpUrl, MAX_HTTP_URL_BYTES } from './http-url.js'
+export { cleanBookmarkText, normalizeBookmarkMetadata } from './bookmark-metadata.js'
 
 // 界面与服务端共用的快照入口；只依赖 MIT 数据层，保留旧格式和校验行为。
 export function createCanvasStore() {

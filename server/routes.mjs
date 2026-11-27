@@ -13,13 +13,15 @@ import { createAgentRequests } from './agent-requests.mjs'
 import { saveExport } from './exports.mjs'
 import { createContentRoutes } from './content-routes.mjs'
 import { createClipboardAssets } from './clipboard-assets.mjs'
+import { createBookmarkRoutes } from './bookmark-routes.mjs'
 
-export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir } = {}) {
+export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir, bookmarkOptions } = {}) {
   const events = getCanvasEvents(workspace)
   const media = createCanvasMedia(workspace)
   const requests = createAgentRequests(workspace, agentOptions)
   const content = createContentRoutes(workspace)
   const clipboard = createClipboardAssets(workspace)
+  const bookmarks = createBookmarkRoutes(bookmarkOptions)
   const middleware = async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost')
     const path = url.pathname
@@ -49,6 +51,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
         return events.subscribe(id, req, res)
       }
       requireLocalRequest(req)
+      if (path === '/api/bookmark/metadata') return await bookmarks.handle(req,res)
       if (['/api/content-host/instances','/api/content-host/slides-export'].includes(path)) return await content.handle(req, res)
       if (path === '/api/conversations' && req.method === 'GET') return sendJson(res, 200, { conversations: await workspace.list() })
       if (path === '/api/conversations/open' && req.method === 'POST') {
@@ -127,7 +130,7 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       sendJson(res, status || 500, { error: status ? error.message : '本机资料无法完整读取或保存；已保留原文件，请检查资料目录。', storage: error.storage, revision: error.revision })
     }
   }
-  middleware.close = content.close
+  middleware.close = () => { bookmarks.close(); return content.close() }
   return middleware
 }
 
