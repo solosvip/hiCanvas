@@ -10,7 +10,8 @@ test('F07 视频插入保留自然尺寸，F20 替换保留身份位置并重置
   const inserted = executeCanvasCommands(before, [{ type: 'insert_video', args: { x: 100, y: 120 }, video }])
   const { shapeId, assetId } = inserted.results[0], shape = inserted.snapshot.store[shapeId]
   assert.deepEqual([shape.x, shape.y, shape.props.w, shape.props.h], [100, 120, 1280, 720])
-  assert.equal(shape.props.playing, true)
+  assert.equal(shape.props.playing, false)
+  assert.equal(shape.props.autoplay, false)
   const replaced = executeCanvasCommands(inserted.snapshot, [{ type: 'replace_video', id: shapeId, video: { ...video, w: 160, h: 320 } }])
   const next = replaced.snapshot.store[shapeId]
   assert.deepEqual([next.id, next.x, next.y, next.props.w, next.props.h, next.props.time], [shapeId, 100, 120, 160, 320, 0])
@@ -20,6 +21,11 @@ test('F07 视频插入保留自然尺寸，F20 替换保留身份位置并重置
   assert.equal(labeled.store[shapeId].props.altText, '彩色分区展示')
   assert.equal(labeled.store[shapeId].props.assetId, next.props.assetId)
   assert.deepEqual(Object.values(before.store).filter(r => r.typeName === 'asset'), [])
+})
+test('#186 新建视频的默认值供人、MCP及AI共用，均不自动起播', () => {
+  const result = executeCanvasCommands(createCanvasSnapshot(), [{ type: 'create_shape', id: 'shape:paused-video', shapeType: 'video' }])
+  const shape = result.snapshot.store['shape:paused-video']
+  assert.equal(shape.props.playing, false); assert.equal(shape.props.autoplay, false)
 })
 test('视频命令拒绝外链、路径穿越、无效尺寸和锁定容器；失败不修改原快照', () => {
   const initial = executeCanvasCommands(createCanvasSnapshot(), [{ type: 'insert_video', video }])

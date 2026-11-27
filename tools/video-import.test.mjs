@@ -26,6 +26,7 @@ test('公开媒体入口：屏幕落点居中、自然尺寸，多文件一次�
     const revision = f.session.state.get().revision
     await f.media.begin({ point: { x: 400, y: 300 } }).commit([video, { ...video, w: 160, h: 320 }])
     assert.equal(f.shapes().length, 2); assert.notEqual(f.session.state.get().revision, revision)
+    assert.ok(f.shapes().every(shape => shape.props.playing === false && shape.props.autoplay === false))
     await f.session.undo(); assert.equal(f.shapes().length, 0)
     await f.session.redo(); assert.equal(f.shapes().length, 2)
   } finally { f.close() }

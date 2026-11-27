@@ -17,9 +17,24 @@ export async function videoSmoke(window, output, files = null) {
   const until = async (predicate, label = '视频操作') => { const end = Date.now() + 20000; while (Date.now() < end) { const value = await predicate(); if (value) return value; await delay(30) } throw new Error(`${label}超时`) }
   const click = async (x, y, count = 1) => { wc.sendInputEvent({ type: 'mouseMove', x, y }); for (const type of ['mouseDown', 'mouseUp']) wc.sendInputEvent({ type, x, y, button: 'left', clickCount: count }); await delay(80) }
   const subject = 'shape:video-0'
-  const videoState = (id = subject) => evaluate(`(() => { const v = document.querySelector('[data-shape-id="${id}"] video'); if (!v) return null; const b = v.getBoundingClientRect(); return { time:v.currentTime, paused:v.paused, duration:v.duration, controls:v.controls, seeking:v.seeking, ready:v.readyState, src:v.currentSrc.slice(0,100), box:{x:b.x,y:b.y,w:b.width,h:b.height}, fit:getComputedStyle(v).objectFit, buffered:Array.from({length:v.buffered.length},(_,i)=>[v.buffered.start(i),v.buffered.end(i)]) } })()`)
+  const videoState = (id = subject) => evaluate(`(() => { const v = document.querySelector('[data-shape-id="${id}"] video'); if (!v) return null; const b = v.getBoundingClientRect(); return { time:v.currentTime, paused:v.paused, preload:v.preload, duration:v.duration, controls:v.controls, seeking:v.seeking, ready:v.readyState, src:v.currentSrc.slice(0,100), box:{x:b.x,y:b.y,w:b.width,h:b.height}, fit:getComputedStyle(v).objectFit, buffered:Array.from({length:v.buffered.length},(_,i)=>[v.buffered.start(i),v.buffered.end(i)]) } })()`)
   const stages = [], record = async label => { const s = await state(); stages.push({ label, state: { revision: s.revision, selectedIds: s.selectedIds, interactingVideoId: s.interactingVideoId, videoPlayback: s.videoPlayback, shapes: s.videoRecords?.filter(r => r.typeName === 'shape') }, video: await videoState() }); await writeFile(join(output, 'video-native.json'), JSON.stringify({ stages }, null, 2)); return s }
-  await until(async () => (await videoState())?.ready >= 2)
+  const validIds = ['shape:video-0', 'shape:video-1', 'shape:video-4']
+  const opened = await Promise.all(validIds.map(videoState))
+  await writeFile(join(output, 'video-initial-ready.json'), JSON.stringify({ opened, preloadTrial: 'metadata' }, null, 2))
+  await until(async () => (await Promise.all(validIds.map(videoState))).every(v => v?.ready >= 2 && !v.seeking), '#186 三个暂停视频解帧')
+  const initialFrames = []
+  for (const id of validIds) {
+    const v = await videoState(id), b = v.box
+    check(v.paused, '#186 存档playing/autoplay让旧画板起播了')
+    const bitmap = (await wc.capturePage({ x: Math.round(b.x + 8), y: Math.round(b.y + 8), width: 24, height: 24 })).toBitmap()
+    let coloured = 0
+    for (let i = 0; i < bitmap.length; i += 4) if (Math.max(...bitmap.subarray(i, i + 3)) - Math.min(...bitmap.subarray(i, i + 3)) > 60) coloured++
+    check(coloured > bitmap.length / 16, '#186 暂停视频没有绘出合成彩色格，可能是黑块或背景')
+    initialFrames.push({ id, ...v, colouredPixels: coloured })
+  }
+  await writeFile(join(output, 'video-initial-ready.json'), JSON.stringify({ opened, initialFrames, preloadTrial: 'metadata' }, null, 2))
+  await writeFile(join(output, 'video-initial-frames.png'), (await wc.capturePage()).toPNG())
   const before = await record('initial'), original = before.videoRecords.find(r => r.id === subject)
   check((await videoState()).fit === 'cover' && (await videoState()).box.w === 320, 'F19 视频外框或 cover 不符')
   check(await evaluate("document.querySelectorAll('[data-video-state=missing]').length === 2"), '缺资源/外链占位未显示')
@@ -31,6 +46,24 @@ export async function videoSmoke(window, output, files = null) {
   await click(Math.round(box.x + 24), Math.round(box.y + box.h - 48))
   await until(async () => !(await videoState()).paused && (await videoState()).time > .05, '原生播放')
   await record('playing')
+  // Starting B pauses A in the editing session and preserves A's actual frame,
+  // including the fraction after its most recent timeupdate notification.
+  const second = 'shape:video-1', other = (await videoState(second)).box
+  await click(Math.round(other.x + 100), Math.round(other.y + 50)); await click(Math.round(other.x + 100), Math.round(other.y + 50), 2)
+  await until(async () => (await state()).interactingVideoId === second)
+  const beforeSwitch = (await videoState()).time
+  await click(Math.round(other.x + 24), Math.round(other.y + other.h - 48))
+  await until(async () => (await videoState()).paused && !(await videoState(second)).paused, '#186 B起播后A暂停')
+  const stopped = await videoState()
+  const forward = (stopped.time - beforeSwitch + stopped.duration) % stopped.duration
+  check(forward <= .5 || stopped.duration - forward <= .05, '#186 仲裁暂停时回拨了视频进度')
+  await delay(180)
+  check(Math.abs((await videoState()).time - stopped.time) < .01, '#186 暂停视频的进度继续走动')
+  await record('one-owner-after-switch')
+  await click(Math.round(box.x + 100), Math.round(box.y + 50)); await click(Math.round(box.x + 100), Math.round(box.y + 50), 2)
+  await until(async () => (await state()).interactingVideoId === subject)
+  await click(Math.round(box.x + 24), Math.round(box.y + box.h - 48))
+  await until(async () => !(await videoState()).paused && (await videoState(second)).paused, '#186 A恢复后B暂停')
   await click(Math.round(box.x + 24), Math.round(box.y + box.h - 48))
   await until(async () => (await videoState()).paused, '原生暂停')
   async function seek(fraction, id = subject) {
@@ -72,9 +105,12 @@ export async function videoSmoke(window, output, files = null) {
       await evaluate(`(() => {const bytes=Uint8Array.from(atob(${JSON.stringify(bytes)}),c=>c.charCodeAt(0)), f=new File([bytes],'synthetic.${mime === 'video/webm' ? 'webm' : mime === 'video/quicktime' ? 'mov' : 'mp4'}',{type:${JSON.stringify(mime)}}), dt=new DataTransfer();dt.items.add(f);const host=document.querySelector('#canvas');host.focus();host.dispatchEvent(${kind === 'drop' ? "new DragEvent('drop',{bubbles:true,cancelable:true,clientX:700,clientY:600,dataTransfer:dt})" : "new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:dt})"});})()`)
     }
     for (const [path, mime, kind] of [[files.mp4,'video/mp4','drop'], [files.webm,'video/webm','paste'], [files.mov,'video/quicktime','drop']]) {
-      const count = (await state()).videoRecords.filter(r => r.typeName === 'shape').length
+      const existing = (await state()).videoRecords.filter(r => r.typeName === 'shape').map(r => r.id), count = existing.length
       await inject(path, mime, kind)
       await until(async () => (await state()).videoRecords.filter(r => r.typeName === 'shape').length === count + 1, `F07 ${mime} ${kind}`)
+      const created = (await state()).videoRecords.find(r => r.typeName === 'shape' && !existing.includes(r.id))
+      check(created?.props.playing === false && created.props.autoplay === false, '#186 新导入的视频仍保存为自动播放')
+      await until(async () => { const v = await videoState(created.id); return v?.paused && v.ready >= 2 }, '#186 新导入视频未暂停解帧')
     }
     const count = (await state()).videoRecords.filter(r => r.typeName === 'shape').length
     await inject(files.bad, 'video/mp4')

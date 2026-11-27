@@ -4,6 +4,60 @@ import assert from 'node:assert/strict'
 import { createEditorSession, createCanvasInteraction, executeCanvasCommands } from '../engine/index.js'
 import { createVideoFixture } from './renderer-preview/video-fixtures.js'
 import { videoSource } from '../renderer/video-source.js'
+import { memoryTransport } from './renderer-preview/transport.js'
+
+test('#186 后起播的视频独占播放，前一个视频保留进度且不提交画板', async () => {
+  const snapshot = createVideoFixture().snapshot, before = structuredClone(snapshot)
+  let commits = 0
+  const session = await createEditorSession({ actor: 'one-video', transport: { read: async () => ({ snapshot, revision: '0' }), subscribe: () => () => {}, commit: async () => { commits++; throw new Error('播放不应提交') } } })
+  const interaction = createCanvasInteraction({ session })
+  const report = (id, time) => interaction.videoInput({ type: 'playback', event: 'play', id: `shape:video-${id}`, assetId: `asset:video-${id}`, time, playing: true })
+  try {
+    assert.equal(report(0, 1.25), true)
+    assert.equal(report(1, .4), true)
+    const playback = interaction.state.get().videoPlayback
+    assert.deepEqual(playback['shape:video-0'], { assetId: 'asset:video-0', time: 1.25, playing: false })
+    assert.equal(playback['shape:video-1'].playing, true)
+    assert.deepEqual(snapshot, before); assert.equal(commits, 0)
+    assert.equal(session.state.get().isGestureActive, false)
+  } finally { interaction.dispose(); session.dispose() }
+})
+
+test('#186 旧画板不从进度回执起播，暂停后迟到的进度也不能抢回播放', async () => {
+  const snapshot = createVideoFixture().snapshot
+  for (const r of Object.values(snapshot.store)) if (r.type === 'video' && r.typeName === 'shape') { r.props.playing = true; r.props.autoplay = true }
+  const before = structuredClone(snapshot)
+  const session = await createEditorSession({ actor: 'late-video', transport: { read: async () => ({ snapshot, revision: '0' }), subscribe: () => () => {}, commit: async () => { throw new Error('播放不应提交') } } })
+  const interaction = createCanvasInteraction({ session })
+  const report = (id, event, time, playing = true) => interaction.videoInput({ type: 'playback', event, id: `shape:video-${id}`, assetId: `asset:video-${id}`, time, playing })
+  try {
+    assert.equal(Object.values(interaction.state.get().videoPlayback).some(entry => entry.playing), false)
+    report(0, 'timeupdate', .1)
+    assert.equal(interaction.state.get().videoPlayback['shape:video-0'].playing, false)
+    report(0, 'play', 1.25); report(1, 'play', .5)
+    report(0, 'timeupdate', 1.3); report(0, 'seeked', 1.4)
+    assert.equal(interaction.state.get().videoPlayback['shape:video-0'].playing, false)
+    assert.equal(interaction.state.get().videoPlayback['shape:video-0'].time, 1.4)
+    assert.equal(interaction.state.get().videoPlayback['shape:video-1'].playing, true)
+    report(1, 'pause', .6, false)
+    assert.equal(Object.values(interaction.state.get().videoPlayback).some(entry => entry.playing), false)
+    assert.deepEqual(snapshot, before)
+  } finally { interaction.dispose(); session.dispose() }
+})
+
+test('#186 替换撤销只恢复旧资源进度，不恢复曾经的起播状态打断当前视频', async () => {
+  const session = await createEditorSession({ actor: 'undo-one-video', transport: memoryTransport(createVideoFixture().snapshot) })
+  const interaction = createCanvasInteraction({ session })
+  try {
+    interaction.videoInput({ type: 'playback', event: 'play', id: 'shape:video-0', assetId: 'asset:video-0', time: 1.25, playing: true })
+    session.beginGesture(); session.preview([{ type: 'replace_video', id: 'shape:video-0', video: { src: '/c/synthetic/assets/new.mp4', mimeType: 'video/mp4', w: 160, h: 320 } }]); await session.commitGesture()
+    interaction.videoInput({ type: 'playback', event: 'play', id: 'shape:video-1', assetId: 'asset:video-1', time: .5, playing: true })
+    await session.undo()
+    const playback = interaction.state.get().videoPlayback
+    assert.deepEqual(playback['shape:video-0'], { assetId: 'asset:video-0', time: 1.25, playing: false })
+    assert.equal(playback['shape:video-1'].playing, true)
+  } finally { interaction.dispose(); session.dispose() }
+})
 
 test('F19 双击进入、外点与 Escape 退出，播放状态只在会话，不产生提交和历史', async () => {
   let snapshot = createVideoFixture().snapshot, revision = 0, time = 0, commits = 0

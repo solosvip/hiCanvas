@@ -13,12 +13,14 @@ export function addVideoLoad(metadata, amount = 3) {
 }
 export function createVideoFixture(initial = createCanvasSnapshot()) {
   const commands = []
-  for (const [i, src] of [videoData.mp4, videoData.webm, null, 'https://example.invalid/forbidden.mp4'].entries()) {
+  for (const [i, src] of [videoData.mp4, videoData.webm, null, 'https://example.invalid/forbidden.mp4', videoData.mp4].entries()) {
     const assetId = `asset:video-${i}`, id = `shape:video-${i}`
     if (src) commands.push({ type: 'put', record: { id: assetId, typeName: 'asset', type: 'video', props: { src, name: 'Synthetic colour grid', w: 320, h: 180, mimeType: i === 1 ? 'video/webm' : 'video/mp4', isAnimated: true }, meta: {} } })
-    commands.push({ type: 'create_shape', id, shapeType: 'video', x: 100 + i % 2 * 420, y: 100 + Math.floor(i / 2) * 320, props: { w: 320, h: i === 1 ? 240 : 180, assetId: src ? assetId : null, playing: false, autoplay: false } })
+    // Legacy flags deliberately remain true: #186 must ignore them without
+    // migrating the saved document. Three valid clips must display paused frames.
+    commands.push({ type: 'create_shape', id, shapeType: 'video', x: i === 4 ? 950 : 100 + i % 2 * 420, y: i === 4 ? 420 : 100 + Math.floor(i / 2) * 320, props: { w: 320, h: i === 1 ? 240 : 180, assetId: src ? assetId : null, time: i === 0 ? 1.25 : i === 1 ? .5 : 0, playing: true, autoplay: true } })
   }
   commands.push({ type: 'create_shape', id: 'shape:video-unrelated', shapeType: 'geo', x: 950, y: 100, props: { w: 80, h: 60 } })
   const snapshot = executeCanvasCommands(initial, commands).snapshot, pageId = Object.values(snapshot.store).find(r => r.typeName === 'page').id
-  return { snapshot, count: 5, counts: { video: 4, geo: 1 }, assetCount: 3, videoFixture: true, viewState: { version: 1, currentPageId: pageId, camera: { x: 0, y: 0, z: 1 } } }
+  return { snapshot, count: 6, counts: { video: 5, geo: 1 }, assetCount: 4, videoFixture: true, viewState: { version: 1, currentPageId: pageId, camera: { x: 0, y: 0, z: 1 } } }
 }

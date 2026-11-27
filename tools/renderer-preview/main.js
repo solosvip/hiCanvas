@@ -149,6 +149,12 @@ try {
   })
   disposers.push(stop)
   window.addEventListener('pagehide', cleanup, { once: true })
+  // Only this synthetic performance workload requests playback explicitly.
+  // Saved autoplay flags never start real or synthetic boards on their own.
+  if (params.get('videos') === '3') {
+    const video = session.store.allRecords().find(r => r.typeName === 'shape' && r.type === 'video' && r.props.assetId === 'asset:video-perf')
+    interaction.videoInput({ type: 'playback', event: 'play', id: video.id, assetId: video.props.assetId, time: 0, playing: true })
+  }
   await document.fonts.ready
   await Promise.all([...host.querySelectorAll('img')].map(async image => { await image.decode(); decodedImages++ }))
   await Promise.all([...host.querySelectorAll('video')].map(video => video.readyState >= 1 || video.error ? null : new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('合成视频未就绪。')), 10000); const done = () => { clearTimeout(timer); video.removeEventListener('loadedmetadata', done); video.removeEventListener('error', done); resolve() }; video.addEventListener('loadedmetadata', done); video.addEventListener('error', done) })))
@@ -156,8 +162,8 @@ try {
     const end = performance.now() + 10000
     while (true) {
       const videos = [...host.querySelectorAll('video')]
-      if (videos.length === 3 && videos.every(video => video.readyState >= 2 && !video.paused && video.currentTime > .05)) break
-      if (performance.now() >= end) throw new Error('性能夹具的三个视频没有实际播放，拒绝空转样本。')
+      if (videos.length === 3 && videos.every(video => video.readyState >= 2) && videos.filter(video => !video.paused && video.currentTime > .05).length === 1 && videos.filter(video => video.paused).length === 2) break
+      if (performance.now() >= end) throw new Error('性能夹具必须三条已解帧、恰好一条在播，拒绝无效样本。')
       await new Promise(resolve => setTimeout(resolve, 20))
     }
   }

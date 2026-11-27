@@ -20,7 +20,8 @@ export function createVideoInteraction({ session, index, targets, read, change, 
           remembered.set(previous.assetId, previous); assetPlayback.set(after.id, remembered)
           // A failed commit/undo may restore a prior source. Preserve that
           // source's progress; only a genuinely new source starts at zero.
-          playback = { ...playback, [after.id]: remembered.get(after.props.assetId) || Object.freeze({ assetId: after.props.assetId, time: 0, playing: previous.playing }) }
+          const restored = remembered.get(after.props.assetId)
+          playback = { ...playback, [after.id]: Object.freeze({ assetId: after.props.assetId, time: restored?.time ?? 0, playing: previous.playing }) }
         }
       }
       for (const id of Object.keys(changes.removed)) {
@@ -36,8 +37,17 @@ export function createVideoInteraction({ session, index, targets, read, change, 
       const shape = session.store.get(value.id)
       if (value.type !== 'playback' || shape?.type !== 'video' || shape.props.assetId !== value.assetId || !Number.isFinite(value.time) || value.time < 0 || typeof value.playing !== 'boolean') return false
       const previous = read().videoPlayback[value.id]
-      if (previous?.assetId === value.assetId && previous.time === value.time && previous.playing === value.playing) return true
-      change({ videoPlayback: Object.freeze({ ...read().videoPlayback, [value.id]: Object.freeze({ assetId: value.assetId, time: value.time, playing: value.playing }) }) })
+      const event = value.event ?? (value.playing ? 'play' : 'pause')
+      if (!['play', 'pause', 'timeupdate', 'seeked'].includes(event)) return false
+      // Only a play event can take ownership. A queued progress event from a
+      // video we just paused must not turn it back on or pause the new owner.
+      const playing = value.playing && (event === 'play' || previous?.playing === true)
+      if (previous?.assetId === value.assetId && previous.time === value.time && previous.playing === playing) return true
+      const playback = { ...read().videoPlayback, [value.id]: Object.freeze({ assetId: value.assetId, time: value.time, playing }) }
+      if (playing) for (const [id, entry] of Object.entries(playback)) {
+        if (id !== value.id && entry.playing) playback[id] = Object.freeze({ ...entry, playing: false })
+      }
+      change({ videoPlayback: Object.freeze(playback) })
       return true
     },
     beforeKeyboard(input) {
