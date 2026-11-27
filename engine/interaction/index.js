@@ -41,6 +41,7 @@ import { createSnapping } from './snapping.js'
 import { createVideoInteraction } from './video.js'
 import { createImageAlt } from './image-alt.js'
 import { createStyleSession } from './style-session.js'
+import { createAiFrameSize } from './ai-frame-size.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -64,7 +65,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null, lastNotice: null }))
-  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
+  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -76,6 +77,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (snaps) next.snappingPreferences = snaps.preferences()
     next.focusedGroupId = targets.validScope(next.focusedGroupId)
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))
+    next.aiFrameSizeEditing = aiFrameSize?.sync(next) || null
     duplicates.selectionChanged(next.selectedIds)
     if (JSON.stringify(next.selectedIds) !== JSON.stringify(previous.selectedIds) && !Object.hasOwn(patch, 'selectionRotation')) next.selectionRotation = null
     if (next.hoveredId && !targets.isSelectable(next.hoveredId)) next.hoveredId = null
@@ -109,7 +111,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   }
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
-    imageAlt?.cancel(); videoInput?.finish(); keyboard?.cancel(); minimap?.cancel(); navigation?.cancel(); cropTool?.finish(); cancelTool(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
+    aiFrameSize?.cancel(); imageAlt?.cancel(); videoInput?.finish(); keyboard?.cancel(); minimap?.cancel(); navigation?.cancel(); cropTool?.finish(); cancelTool(); tool = canvasToolRegistry[id](context); change({ toolId: id, handleCursor: null })
     creation.toolChanged(id)
     return tool
   }
@@ -125,6 +127,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const textEditing = createTextEditing({ ...context, prepare: prepareText, inputContext: value => keyboard.context(value), setStyles: (patch, ids) => styles.set(patch, ids), stylesCommitted: patch => styles.adopt(patch) })
   context.textEditing = textEditing
   const styles = createStyleSession({ ...context, textEditing })
+  aiFrameSize = createAiFrameSize(context)
   noteEditing = createNoteEditing(context, textEditing)
   connectionEditing = createConnectionEditing(context)
   videoInput = createVideoInteraction({ ...context, prepare: prepareText })
@@ -233,6 +236,10 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     // Immutable {source,next,selectionCount,styles}; Mixed/unsupported omit value.
     // Group queries include locked descendants, so Mixed can remain after a set.
     getStyles() { assertActive(); return styles.get() },
+    // Single editable AI frame only; field drafts are immutable query/state
+    // values outside Store. Host owns Enter/blur/Escape, finish saves once.
+    getAiFrameSize() { assertActive(); return aiFrameSize.get() },
+    editAiFrameSize(action) { assertActive(); return aiFrameSize.action(action) },
     // Validate the whole patch; change editable leaves only, never group opacity.
     // No selection edits session defaults only. Active text joins its existing
     // transaction; defaults adopt on save, and document undo does not rewind them.
@@ -277,6 +284,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return routed.input ? dispatchCore(routed.input) : routed.result ?? routed.handled
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; styles.dispose(); imageAlt.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); actions.dispose(); stop(); disposed = true },
   })
 }
