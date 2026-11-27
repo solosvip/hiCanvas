@@ -9,6 +9,7 @@ import { httpError, withFileLock } from './file-lock.mjs'
 import { mergeLegacyPages, restoreSingleCanvasView, singlePageId } from './single-canvas.mjs'
 import { createCanvasHistory } from './canvas-history.mjs'
 import { prepareNodeTextLayout } from './text-layout.mjs'
+import { checkMediaImportFiles, protectMediaImportFiles } from './media-import-attempts.mjs'
 
 function readOnly(value) {
   for (const child of Object.values(value)) if (child && typeof child === 'object') readOnly(child)
@@ -166,7 +167,9 @@ export function createConversations(root = defaultRoot) {
       })
       // 与版本检查共用画板锁；写盘失败时，不能提前记录或消耗历史。
       const acceptHistory = edit.acceptHistory || (changes && history.record(id, actor, changes))
+      await checkMediaImportFiles(root, id, current.snapshot, snapshot)
       await writeJsonAtomic(stateFile(id), result)
+      protectMediaImportFiles(root, id, snapshot)
       acceptHistory?.()
       return { ...result, ...(changes && { changes, results: edit.results }), previousRevision: current.revision, conversationId: id, storage: 'conversation', ok: true }
     })

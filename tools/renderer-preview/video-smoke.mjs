@@ -116,7 +116,7 @@ export async function videoSmoke(window, output, files = null) {
     await inject(files.bad, 'video/mp4')
     await until(() => evaluate("document.querySelector('#status').textContent.includes('损坏')"), '损坏视频错误提示')
     check((await state()).videoRecords.filter(r => r.typeName === 'shape').length === count, '坏视频留下形状')
-    await evaluate(`window.__videoRealFetch=window.fetch; window.__videoUploadFailureUsed=0; window.fetch=(url,options)=>new URL(url,location.href).pathname==='/api/canvas/reference' ? (window.__videoUploadFailureUsed++,Promise.resolve(new Response(JSON.stringify({error:'合成上传失败'}),{status:503,headers:{'content-type':'application/json'}}))) : window.__videoRealFetch(url,options);void 0`)
+    await evaluate(`window.__videoRealFetch=window.fetch; window.__videoUploadFailureUsed=0; window.fetch=(url,options)=>new URL(url,location.href).pathname==='/api/canvas/reference' && JSON.parse(options.body).dataUrl && JSON.parse(options.body).purpose!=='file-import-prepare' ? (window.__videoUploadFailureUsed++,Promise.resolve(new Response(JSON.stringify({error:'合成上传失败'}),{status:503,headers:{'content-type':'application/json'}}))) : window.__videoRealFetch(url,options);void 0`)
     try {
       await inject(files.mp4, 'video/mp4')
       await until(() => evaluate("window.__videoUploadFailureUsed===1 && document.querySelector('#status').textContent.includes('合成上传失败')"), '上传失败反馈')

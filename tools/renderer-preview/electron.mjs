@@ -30,6 +30,7 @@ import { snappingSmoke } from './snapping-smoke.mjs'
 import { frameSmoke } from './frame-smoke.mjs'
 import { svgImportSmoke, svgSecuritySmoke } from './svg-smoke.mjs'
 import { eraserSmoke } from './eraser-smoke.mjs'
+import { mediaCleanupSmoke } from './media-cleanup-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -133,6 +134,7 @@ async function run() {
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
       samples.push({ images: await imageImportSmoke(window, manifest.output, manifest.imageFiles) })
       samples.push({ svg: await svgImportSmoke(window, manifest.output, manifest.imageFiles), svgSecurity: await svgSecuritySmoke(createWindow, origin, manifest.svgSecurity, manifest.output) })
+      samples.push({ mediaCleanup: await mediaCleanupSmoke(window, manifest.output, manifest.imageFiles) })
       check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }
@@ -142,6 +144,7 @@ async function run() {
       await window.loadURL(`${manifest.url}/?gallery=videos&edgeScrolling=0`)
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
       samples.push({ videos: await videoSmoke(window, manifest.output, manifest.videoFiles) })
+      samples.push({ mediaCleanup: await mediaCleanupSmoke(window, manifest.output, manifest.videoFiles, 'video') })
       check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }

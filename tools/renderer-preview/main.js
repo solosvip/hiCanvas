@@ -111,6 +111,7 @@ try {
   const actorKey = `preview-actor:${metadata.conversationId || gallery || metadata.count}`
   const actor = sessionStorage.getItem(actorKey) || `preview:${crypto.randomUUID()}`
   sessionStorage.setItem(actorKey, actor)
+  metadata.actor = actor
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
   let hostError = null, wasSubmitting = false, wasClipboardBusy = false
   const showError = error => { hostError = error; status.textContent = `操作失败：${error.message}` }
