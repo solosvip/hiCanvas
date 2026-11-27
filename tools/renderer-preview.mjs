@@ -1,4 +1,5 @@
 import { createServer } from 'vite'
+import { captureLibraryImports } from './check-renderer-boundary.mjs'
 import { createServer as createHttpServer } from 'node:http'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,7 +27,7 @@ export async function startRendererPreview({ port = 0, geometryFixtures = false,
   let server
   const http = createHttpServer((request, response) => server ? server.middlewares(request, response) : response.end())
   await new Promise((accept, reject) => { http.once('error', reject); http.listen(port, '127.0.0.1', accept) })
-  try { server = await createServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: ['html2canvas/dist/lib/dom/document-cloner.js', 'html2canvas/dist/lib/index.js', 'html2canvas/dist/lib/render/stacking-context.js', 'html2canvas/dist/lib/render/effects.js', 'html2canvas/dist/lib/render/bound-curves.js', 'html2canvas/dist/lib/render/path.js', 'react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port }, ...(!watch && { watch: null }) }, plugins: [{ name: 'readonly-renderer-preview', configureServer(vite) {
+  try { server = await createServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: [...captureLibraryImports, 'react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port }, ...(!watch && { watch: null }) }, plugins: [{ name: 'readonly-renderer-preview', configureServer(vite) {
     vite.middlewares.use(async (request, response, next) => {
       const url = new URL(request.url, 'http://127.0.0.1')
       if (url.pathname === '/__renderer_font_warning') {
