@@ -2,11 +2,12 @@ import { createElement as h, useId } from 'react'
 import { getStrokeGeometry } from './stroke-geometry.js'
 import { colorPaint } from './palette.js'
 import { PATTERN_METRICS } from './geo-metrics.js'
+import { strokePath } from './stroke-path.js'
+export { strokePath } from './stroke-path.js'
 
 // 2026-11-25 对照运行中的旧版画面测量：13 色合成荧光笔；黑色回退黄色。
 // Background alpha .82 and foreground alpha .35 form two ordered page layers.
 const highlights = Object.freeze({ black: '#fddd00', grey: '#cbe7f1', 'light-violet': '#ff88ff', violet: '#c77cff', blue: '#10acff', 'light-blue': '#00f4ff', yellow: '#fddd00', orange: '#ffa500', green: '#00ffc8', 'light-green': '#65f641', 'light-red': '#ff7fa3', red: '#ff636e', white: '#ffffff' })
-export const strokePath = points => points.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ') + ' Z'
 
 function Pattern({ id, scale, paint }) {
   // Same observed document-unit tile as geometry fills. Kept local to the new
