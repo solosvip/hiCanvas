@@ -64,7 +64,8 @@ export function createSelectionFrame(initial, index) {
     return { ...b, x: origin.x, y: origin.y, rotation }
   }
   return {
-    get, roots,
+    get, roots, lineage,
+    children: id => [...(children.get(id) || [])].map(key => records[key]).filter(Boolean),
     canRotate(ids) {
       const selected = roots(ids)
       return Boolean(selected.length && selected.every(id => { const b = index.getBounds(id); return b && b.w > 0 && b.h > 0 }))

@@ -27,6 +27,7 @@ import { actionsSmoke } from './actions-smoke.mjs'
 import { noteSmoke } from './note-smoke.mjs'
 import { duplicateSmoke } from './duplicate-smoke.mjs'
 import { snappingSmoke } from './snapping-smoke.mjs'
+import { frameSmoke } from './frame-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -112,6 +113,14 @@ async function run() {
   if (!contentPort) { const health = await fetch(origin + '/api/health'); if (health.ok) contentPort = (await health.json()).contentHost?.port }
   try {
     app.dock?.hide()
+    if (manifest.framesOnly) {
+      window = createWindow('frames')
+      await window.loadURL(`${manifest.url}/?gallery=frame-interaction&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ frames: await frameSmoke(window, manifest.output) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.videosOnly) {
       window = createWindow('videos')
       await prepareVideoProbe(window)

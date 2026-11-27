@@ -25,6 +25,7 @@ import { addVideoLoad } from './video-fixtures.js'
 import { attachVideoUi } from './video-ui.js'
 import { createDrawGallery } from './draw-fixture.js'
 import { createActionsGallery } from './actions-fixture.js'
+import { createFrameFixture } from './frame-fixture.js'
 import { attachActionsUi } from './actions-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
@@ -52,6 +53,7 @@ const getState = () => {
     croppingId: state?.croppingId || null, cropZoom: state?.cropZoom || 0, isPenMode: state?.isPenMode || false,
     ...(metadata?.drawInput && { strokes: session ? session.store.allRecords().filter(r => ['draw', 'highlight'].includes(r.type)).map(r => structuredClone(r)) : [] }),
     ...(metadata?.selectionActions && { actionShapes: session.store.allRecords().filter(r => r.typeName === 'shape').map(r => structuredClone(r)), actions: interaction.getActions() }),
+    ...(metadata?.frameInteractionFixture && { frameRecords: structuredClone(session.store.allRecords().filter(r => r.typeName === 'shape')) }),
     selectedShapes: (state?.selectedIds || []).map(id => { const r = session.store.get(id); return r && { id, type: r.type, parentId: r.parentId, x: r.x, y: r.y, rotation: r.rotation, w: r.props.w, h: r.props.h, props: structuredClone(r.props), meta: structuredClone(r.meta), ...(r.type === 'image' && { crop: structuredClone(r.props.crop), flipX: r.props.flipX, flipY: r.props.flipY, assetId: r.props.assetId }) } }).filter(Boolean),
     revision: session?.state.get().revision, commitCalls: transport?.getCommitCount?.() ?? null, submitting: session?.state.get().isSubmitting || false, pasteAtCursor: state?.pasteAtCursor, clipboardBusy: state?.clipboardBusy || false, privateClipboard: clipboardAdapter?.inspect(), lastError: state?.lastError || session?.state.get().lastError || null,
     minimap: state?.minimap ? structuredClone(state.minimap) : null,
@@ -73,6 +75,7 @@ try {
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
   else if (gallery === 'draw-input') metadata = createDrawGallery()
   else if (gallery === 'selection-actions') metadata = createActionsGallery()
+  else if (gallery === 'frame-interaction') metadata = createFrameFixture(params.get('frameCase') || 'drag')
   else if (gallery === 'creation') metadata = createCreationFixture()
   else if (gallery === 'connection-editing') metadata = createConnectionEditingFixture()
   else if (gallery === 'note-editing') metadata = createNoteEditingFixture()

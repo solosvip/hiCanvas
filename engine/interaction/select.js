@@ -5,6 +5,7 @@ import { createHandleGesture } from './handle-gesture.js'
 import { hitSelectionHandle, selectionHandleCursor } from './selection-handles.js'
 import { connectionCoordinates } from './connection-coordinates.js'
 import { matchesCanvasShortcut } from './shortcuts.js'
+import { createFrameDrag } from './frame-interaction.js'
 
 // Screen CSS pixels, independent of zoom. 2026-11-25 对照运行中的旧版逐帧观察。
 const threshold = 4
@@ -40,13 +41,13 @@ export function createSelectionTool(context) {
     if (hit && !before.includes(hit)) selectedIds = input.shiftKey ? [...before, hit] : [hit]
     if (!hit && !input.shiftKey) selectedIds = []
     change({ mode: 'pointing', focusedGroupId: picked.focusedGroupId, selectedIds, hoveredId: hit, lastError: null })
-    // Parent-space start positions are captured once. Every preview is an
-    // absolute update, avoiding accumulated drift and full-document nudge reads.
+    // Keep local origins for ordinary drags and page origins across containers.
     const selected = new Set(selectedIds)
     gesture.starts = selectedIds.filter(id => {
       for (let r = index.getRecord(index.getRecord(id)?.parentId); r?.typeName === 'shape'; r = index.getRecord(r.parentId)) if (selected.has(r.id)) return false
       return targets.isSelectable(id)
-    }).map(id => { const r = index.getRecord(id); return { id, x: r.x, y: r.y, bounds: index.getBounds(id), page: connectionCoordinates(index, id).page({ x: 0, y: 0 }) } })
+    }).map(id => { const r = index.getRecord(id); return { id, parentId: r.parentId, x: r.x, y: r.y, bounds: index.getBounds(id), page: connectionCoordinates(index, id).page({ x: 0, y: 0 }) } })
+    gesture.frames = createFrameDrag(context, gesture.starts)
     gesture.expected = captureRecords(gesture.starts)
     gesture.selectedIds = [...selectedIds]
     gesture.restoreDuplicate = context.duplicates.checkpoint()
@@ -87,24 +88,31 @@ export function createSelectionTool(context) {
     // originals. Retoggling allocates new IDs, Escape removes all previews,
     // one undo reverses the whole gesture. Alt-copy (70,40) seeds Mod+D too.
     const updates = (starts, offset) => starts.map(start => {
-      const local = index.parentDelta(start.id, offset)
-      return { type: 'update', id: start.id, changes: { x: start.x + local.x, y: start.y + local.y } }
+      if (index.getRecord(start.id).parentId === start.parentId) {
+        const local = index.parentDelta(start.id, offset)
+        return { type: 'update', id: start.id, changes: { x: start.x + local.x, y: start.y + local.y } }
+      }
+      const local = connectionCoordinates(index, index.getRecord(start.id).parentId).local({ x: start.page.x + offset.x, y: start.page.y + offset.y })
+      return { type: 'update', id: start.id, changes: local }
     })
     if (input.altKey && !gesture.copy) {
-      const preview = session.preview([...updates(gesture.starts, { x: 0, y: 0 }), { type: 'duplicate_shapes', ids: gesture.selectedIds, offset: delta }])
+      gesture.frames.reset()
+      const preview = gesture.frames.preview([{ type: 'duplicate_shapes', ids: gesture.selectedIds, offset: delta }])
       const idMap = preview.results.at(-1).idMap
       gesture.copy = { idMap, starts: gesture.starts.map(start => ({ ...start, id: idMap[start.id] })) }
       gesture.cloned = true
       change({ selectedIds: gesture.selectedIds.map(id => idMap[id]) })
     } else if (!input.altKey && gesture.copy) {
-      session.preview([{ type: 'delete', ids: gesture.copy.starts.map(r => r.id) }, ...updates(gesture.starts, delta)])
+      gesture.frames.reset()
+      gesture.frames.preview(updates(gesture.starts, delta))
       gesture.copy = null
       gesture.restoreDuplicate()
       change({ selectedIds: gesture.selectedIds })
     } else {
       const commands = updates(gesture.copy?.starts || gesture.starts, delta)
-      if (commands.length) session.preview(commands)
+      if (commands.length) gesture.frames.preview(commands)
     }
+    gesture.frames.contain(gesture.copy?.starts || gesture.starts, point)
     gesture.delta = delta
     gesture.expected = captureRecords([...gesture.starts, ...(gesture.copy?.starts || [])])
     change({ mode: 'dragging' })
@@ -121,7 +129,7 @@ export function createSelectionTool(context) {
       else if (previous.toggle) change({ selectedIds: read().selectedIds.filter(id => id !== previous.hit) })
     }
     change({ mode: 'idle', marquee: null, scribble: null, needsFrame: false, ...(previous.kind === 'pointing' && !previous.hit && { focusedGroupId: targets.pageId }) })
-    if (previous.kind === 'dragging' && session.state.get().isGestureActive) return session.commitGesture().then(reply => {
+    if (previous.kind === 'dragging' && session.state.get().isGestureActive) return previous.frames.commit(previous.copy?.starts || previous.starts).then(reply => {
       if (previous.copy) context.duplicates.remember(previous.selectedIds, previous.copy.idMap, previous.delta)
       return reply
     }).catch(error => { if (previous.cloned) { previous.restoreDuplicate(); change({ selectedIds: previous.selectedIds }) }; report(error); throw error })

@@ -14,6 +14,7 @@ import { alignShapes, stretchShapes, distributeShapes, stackShapes, packShapes, 
 import { groupShapes } from './group-shapes.js'
 import { ungroupShapes } from './ungroup-shapes.js'
 import { fitFrames } from './fit-frames.js'
+import { reparentShapes } from './reparent-shapes.js'
 import { rotateShapes } from './rotate-shapes.js'
 import { scaleShapes } from './scale-shapes.js'
 import { cropImage } from './crop-image.js'
@@ -45,6 +46,7 @@ export const commandHandlers = Object.freeze({
   group_shapes: groupShapes,
   ungroup_shapes: ungroupShapes,
   fit_frame_to_content: fitFrames,
+  reparent_shapes: reparentShapes,
   rotate_shapes: rotateShapes,
   scale_shapes: scaleShapes,
   crop_image: cropImage,
