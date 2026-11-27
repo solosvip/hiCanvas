@@ -34,6 +34,7 @@ import { mediaCleanupSmoke } from './media-cleanup-smoke.mjs'
 import { laserSmoke } from './laser-smoke.mjs'
 import { embedsSmoke, prepareEmbedsProbe } from './embeds-smoke.mjs'
 import { resolveEmbedUrl } from '../../model/index.js'
+import { focusSmoke } from './focus-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -138,6 +139,14 @@ async function run() {
       check(simulated.some(item => item.service === 'G06' && item.local === `${origin}/tools/renderer-preview/fake-embed.html?service=G06`), '编码后的Figma没有指向本地假页')
       check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
       await writeFile(manifest.result, JSON.stringify({ pid: process.pid, fingerprint: manifest.fingerprint, samples, mainProof, browserProof, guarded, errors, blocked, simulated, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
+    if (manifest.focusOnly) {
+      window = createWindow('focus-keys')
+      await window.loadURL(`${manifest.url}/?gallery=focus-keys&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ focus: await focusSmoke(window, manifest.output) })
+      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
+      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions, sourceHash: manifest.sourceHash }, null, 2)); window.destroy(); app.exit(0); return
     }
     if (manifest.framesOnly) {
       window = createWindow('frames')

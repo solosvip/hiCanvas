@@ -75,11 +75,19 @@ export async function duplicateSmoke(target, output) {
   await mouse('mouseUp', 210, 280); s = await state()
   check(same(s.actionShapes, cancelBefore.actionShapes) && s.revision === cancelBefore.revision && s.selectedIds[0] === 'shape:action-a', 'Esc残留副本、位移或历史')
   await evaluate('document.querySelector("#navigation button").focus();void 0')
+  check(await evaluate('document.activeElement?.dataset.action === "first-content"'), '复制正例必须聚焦真实按钮')
+  s = await edit(() => press('D', [mod]))
+  check(s.inputContext.owner === 'button' && s.commitCalls === cancelBefore.commitCalls + 1 && s.actionShapes.length === cancelBefore.actionShapes.length + 1 && s.selectedIds.length === 1 && selected(s).id !== 'shape:action-a' && cancelBefore.actionShapes.every(r => same(s.actionShapes.find(after => after.id === r.id), r)), '按钮Mod+D没有只复制一次或改坏原件')
+  s = await undo()
+  check(same(s.actionShapes, cancelBefore.actionShapes) && s.selectedIds[0] === 'shape:action-a', '按钮复制没有一次撤销完整恢复')
+  await evaluate('(()=>{const node=document.createElement("input");node.id="duplicate-form-probe";node.value="synthetic";document.body.append(node);node.focus()})();void 0')
+  check(await evaluate('document.activeElement?.id === "duplicate-form-probe"'), '复制负例必须聚焦真实input')
+  const beforeForm = await state()
   await press('D', [mod]); s = await state()
-  check(s.inputContext.owner === 'form' && same(s.actionShapes, cancelBefore.actionShapes) && s.revision === cancelBefore.revision, '表单焦点误触Mod+D')
+  check(s.inputContext.owner === 'form' && same(s.actionShapes, beforeForm.actionShapes) && same(s.selectedIds, beforeForm.selectedIds) && s.revision === beforeForm.revision && s.commitCalls === beforeForm.commitCalls, '真实input中的Mod+D误改文档、选区或版本')
   await remember('escape-and-form-gate')
   const keys = await evaluate('window.__duplicateKeys')
   check(keys.some(e => e.code === 'KeyD' && (e.meta || e.ctrl)), '未送达原生Mod+D')
   await writeFile(join(output, 'duplicate-final.png'), (await contents.capturePage()).toPNG())
-  return { nativeModD: true, liveAltToggle: true, newCopyIdsOnToggle: true, oneUndoPerDrag: true, transientRepeatOffset: true, escapeAndFormGate: true, samples: samples.length, screenshots: ['duplicate-consecutive.png', 'duplicate-alt-preview.png', 'duplicate-final.png'] }
+  return { nativeModD: true, liveAltToggle: true, newCopyIdsOnToggle: true, oneUndoPerDrag: true, transientRepeatOffset: true, buttonDuplicateSingleUndo: true, escapeAndFormGate: true, samples: samples.length, screenshots: ['duplicate-consecutive.png', 'duplicate-alt-preview.png', 'duplicate-final.png'] }
 }

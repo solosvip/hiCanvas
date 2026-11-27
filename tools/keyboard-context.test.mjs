@@ -290,3 +290,91 @@ test('I10：320ms 三次缓入缓出由帧输入推进；松键继续过渡，�
     assert.equal(f.commits.length, 0)
   } finally { f.close() }
 })
+
+// Minimal DOM facts for the public host adapter; native activation and actual
+// browser selectors are checked separately by focus-smoke, not simulated here.
+function focusHost(interaction) {
+  const keys = new EventTarget(), host = new EventTarget(), body = {}
+  const doc = { defaultView: keys, activeElement: host, body }
+  host.ownerDocument = doc; host.clientWidth = 1280; host.clientHeight = 800
+  host.contains = target => target === host; host.closest = () => null
+  const element = (tag, attrs = {}, parent = null) => ({ tag, attrs, parent, getAttribute: name => attrs[name] ?? null,
+    closest(selector) {
+      for (let node = this; node; node = node.parent) for (const part of selector.split(',').map(s => s.trim())) {
+        if (part === '[contenteditable]:not([contenteditable="false"])') {
+          if (Object.hasOwn(node.attrs, 'contenteditable') && node.attrs.contenteditable !== 'false') return node
+          continue
+        }
+        const match = part.match(/^(\w+)?(?:\[([^=\]]+)(?:="([^"]*)")?\])?$/)
+        if (!match || match[1] && match[1] !== node.tag) continue
+        if (match[2] && (!Object.hasOwn(node.attrs, match[2]) || match[3] !== undefined && node.attrs[match[2]] !== match[3])) continue
+        return node
+      }
+      return null
+    },
+  })
+  const event = (type, target, properties = {}) => {
+    const value = new Event(type, { cancelable: true })
+    for (const [key, data] of Object.entries({ target, ...properties })) Object.defineProperty(value, key, { value: data })
+    keys.dispatchEvent(value); return value
+  }
+  const controls = attachPreviewInput(host, interaction)
+  return { element, host, controls,
+    pointer: (type, x, y) => controls.dispatch({ type: `pointer_${type}`, time: 0, point: { x, y }, pointerId: 1, pointerType: 'mouse', button: 0, buttons: type === 'up' ? 0 : 1 }),
+    focus: target => { doc.activeElement = target; event('focusin', target) },
+    key: (key, extra = {}, type = 'keydown') => event(type, doc.activeElement, { key, ...extra }),
+    event,
+  }
+}
+
+test('宿主提取按钮、工具栏、菜单触发器、链接和下拉事实；嵌套span与SVG不丢归属', async () => {
+  const f = await fixture(), h = focusHost(f.interaction), e = h.element
+  const toolbar = e('div', { role: 'toolbar' }), button = e('button'), trigger = e('button', { 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, toolbar)
+  try {
+    for (const [target, owner, allowed] of [
+      [button, 'button', true], [e('span', {}, button), 'button', true], [e('svg', {}, button), 'button', true],
+      [e('button', {}, toolbar), 'toolbar-button', true], [trigger, 'menu-trigger', true],
+      [e('a', { href: '#inert' }), 'anchor', true], [e('a', { tabindex: '0' }), 'anchor', true],
+      [e('select'), 'select', false], [e('input'), 'form', false], [e('textarea'), 'form', false],
+      [e('div', { contenteditable: '' }), 'form', false],
+    ]) {
+      h.focus(target); assert.equal(f.interaction.state.get().inputContext.owner, owner)
+      assert.equal(h.key('h').defaultPrevented, allowed)
+      if (allowed) { assert.equal(f.interaction.state.get().toolId, 'hand'); f.interaction.setTool('select') }
+      assert.equal(h.key('Enter').defaultPrevented, false); assert.equal(h.key(' ').defaultPrevented, false)
+      h.key(' ', {}, 'keyup')
+    }
+    trigger.attrs['aria-expanded'] = 'true'; h.focus(trigger)
+    assert.equal(f.interaction.state.get().inputContext.expanded, true)
+    assert.equal(h.key('h').defaultPrevented, false)
+    assert.equal(h.key('Escape').defaultPrevented, false)
+  } finally { h.controls.dispose(); f.close() }
+})
+
+test('显式归属与菜单/文字/视频祖先优先于按钮细类；own-arrows由编辑层保护且keyup清理', async () => {
+  const f = await fixture(), h = focusHost(f.interaction), e = h.element
+  try {
+    for (const [parent, owner, allowed] of [
+      [e('div', { 'data-canvas-input-owner': 'video' }), 'form', false],
+      [e('div', { 'data-canvas-input-owner': 'text-editing' }), 'text-editing', false],
+      [e('div', { 'data-canvas-input-owner': 'canvas' }), 'canvas', true],
+      [e('div', { role: 'menu' }), 'menu', false], [e('div', { role: 'listbox' }), 'menu', false],
+      [e('div', { role: 'dialog' }), 'menu', false], [e('dialog'), 'menu', false],
+      [e('div', { contenteditable: 'true' }), 'form', false],
+      [e('div', { 'data-canvas-input-owner': 'canvas' }, e('div', { 'data-canvas-input-owner': 'video' })), 'form', false],
+    ]) {
+      h.focus(e('span', {}, e('button', {}, parent)))
+      assert.equal(f.interaction.state.get().inputContext.owner, owner)
+      assert.equal(h.key('h').defaultPrevented, allowed)
+      if (allowed) { assert.equal(h.key(' ').defaultPrevented, true); h.key(' ', {}, 'keyup'); f.interaction.setTool('select') }
+    }
+    h.focus(h.host); h.pointer('down', 150, 150); await h.pointer('up', 150, 150)
+    h.key('ArrowRight'); assert.equal(f.session.state.get().isGestureActive, true)
+    const minimap = e('div', { 'data-canvas-input-owner': 'canvas', 'data-canvas-own-arrows': '' })
+    h.focus(minimap)
+    assert.equal(f.interaction.state.get().inputContext.ownsArrows, true)
+    assert.equal(h.key('ArrowRight').defaultPrevented, false); h.key('ArrowRight', {}, 'keyup')
+    assert.equal(f.session.state.get().isGestureActive, false)
+    assert.equal(f.session.store.get('shape:a').x, 100); assert.equal(f.commits.length, 0)
+  } finally { h.controls.dispose(); f.close() }
+})

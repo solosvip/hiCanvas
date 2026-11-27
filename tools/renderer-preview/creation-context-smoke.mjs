@@ -41,7 +41,7 @@ export async function creationContextSmoke(target, output) {
     window.__creationKeys=[];document.addEventListener('keydown',event=>queueMicrotask(()=>window.__creationKeys.push({key:event.key,composing:event.isComposing,prevented:event.defaultPrevented})))
   })();void 0`)
   const contexts = []
-  for (const [id, owner] of [['input','form'],['textarea','form'],['select','form'],['editable','form'],['text','text-editing'],['menu','menu']]) {
+  for (const [id, owner] of [['input','form'],['textarea','form'],['select','select'],['editable','form'],['text','text-editing'],['menu','menu']]) {
     await evaluate(`document.querySelector('#creation-probe-${id}').focus();void 0`)
     const before = scope(await state())
     for (const code of ['R','O','F','G','Q','A']) await key(code)
