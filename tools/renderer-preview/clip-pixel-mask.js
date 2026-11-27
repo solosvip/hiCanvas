@@ -6,6 +6,21 @@ const opacityOf = node => {
   for (let parent = node; parent; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity)
   return opacity
 }
+const visibleBoxOf = node => {
+  const box = node.getBoundingClientRect(), paint = getComputedStyle(node)
+  if (!node.getClientRects().length || ['hidden', 'collapse'].includes(paint.visibility)) return
+  // Visibility may be overridden by a descendant, and a zero-size parent may
+  // overflow. Only display/content suppression and zero opacity hide its tree.
+  for (let parent = node; parent; parent = parent.parentElement) {
+    const style = getComputedStyle(parent)
+    if (style.display === 'none' || parent !== node && style.contentVisibility === 'hidden' || Number(style.opacity) === 0) return
+  }
+  return boxOf(box)
+}
+const paintedBoxOf = node => {
+  const box = visibleBoxOf(node)
+  return box && box.width > 0 && box.height > 0 ? box : undefined
+}
 
 export function beginClipPixelProbe({ overflowProbe = true } = {}) {
   if (active) throw new Error('裁剪像素检查已在运行')
@@ -13,7 +28,7 @@ export function beginClipPixelProbe({ overflowProbe = true } = {}) {
   if (!world) throw new Error('裁剪像素检查没有实际相机')
   let probe
   const existing = [...document.querySelectorAll('[data-shape-type=geo] > svg')]
-  if (overflowProbe && existing.some(svg => opacityOf(svg) > 0 && opacityOf(svg) < 1)) {
+  if (overflowProbe && existing.some(svg => opacityOf(svg) > 0 && opacityOf(svg) < 1 && paintedBoxOf(svg))) {
     // The opaque stroke extends beyond its 10px viewport into translucent ink.
     // The mask must reject this overlap even though viewport boxes miss it.
     probe = document.createElement('div')
@@ -24,17 +39,20 @@ export function beginClipPixelProbe({ overflowProbe = true } = {}) {
   try {
     const svgs = [...document.querySelectorAll('[data-shape-type=geo] > svg')]
     const nodes = [...document.querySelectorAll('[data-shape-id]')]
-    const semi = svgs.filter(svg => { const opacity = opacityOf(svg); return opacity > 0 && opacity < 1 })
+    const semi = svgs.filter(svg => { const opacity = opacityOf(svg); return opacity > 0 && opacity < 1 && paintedBoxOf(svg) })
     const semiNodes = new Set(semi.map(svg => svg.parentElement))
     const semiShapes = semi.map(svg => ({ id: svg.parentElement.dataset.shapeId, opacity: opacityOf(svg), bounds: boxOf(svg.getBoundingClientRect()) }))
     const opaqueNodes = [...nodes.filter(node => !semiNodes.has(node)), ...document.querySelectorAll('#status, #navigation')]
-    const opaqueBoxes = opaqueNodes.map(node => boxOf(node.firstElementChild?.getBoundingClientRect() || node.getBoundingClientRect()))
+    const opaqueBoxes = opaqueNodes.map(node => paintedBoxOf(node.firstElementChild || node)).filter(Boolean)
     for (const node of opaqueNodes) for (const element of [node, ...node.querySelectorAll('*')]) {
       if (!(element instanceof HTMLElement)) continue
-      opaqueBoxes.push(boxOf(element.getBoundingClientRect()))
+      const box = visibleBoxOf(element)
+      if (!box) continue
+      if (box.width > 0 && box.height > 0) opaqueBoxes.push(box)
       const paint = getComputedStyle(element)
-      // Shadows and filters can paint outside layout boxes. Fail closed until
-      // the probe supports their complete painted extent, rather than guessing.
+      // Visible shadows/filters may paint outside layout bounds. Keep the
+      // original fail-closed extent until complete painted bounds are known,
+      // even for zero-size boxes: a positive shadow spread can still paint.
       if ([paint.boxShadow, paint.textShadow, paint.filter].some(value => value && value !== 'none')) opaqueBoxes.push({ x: 0, y: 0, width: innerWidth, height: innerHeight })
     }
     const targets = [...new Set([...semiNodes, ...opaqueNodes])]

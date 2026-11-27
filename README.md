@@ -300,6 +300,16 @@ npm run renderer:smoke
 
 无界面几何入口 `renderer/geometry.js` 可直接在 Node 使用，不依赖 React 或 DOM：`getShapeContour(shape)` 返回共享闭合轮廓及叉勾装饰线，`getShapeBounds(shape)` 返回局部外框，`getShapePageBounds(snapshot, id)` 返回考虑父子旋转后的画布外框；`shapeToPagePoint`／`pageToShapePoint` 互换局部与画布坐标，`canvasToScreen`／`screenToCanvas` 互换画布与屏幕坐标，`pointInShape` 判断局部点，`hitTestCanvas(snapshot, point, camera?, pageId?)` 查询顶层记录。几何绘制与命中共用轮廓，无填充形状只命中边线和叉勾装饰线；曲线用多边形近似，椭圆／胶囊弦高误差不大于 `max(0.1, 长边/8192)` 画布单位，云形／心形各取 256 点。点中查询尚未接空间索引；文字外框与画面共用纯排版模块；未准备字体时须先执行上述宿主准备步骤。`npm test` 包含几何、边界和合成接口回归；`renderer:smoke` 需已安装的项目 Electron（可用 `HICANVAS_TEST_ELECTRON` 指向已有可执行文件，不会下载运行时），使用自动隔离环境在后台离屏打开三档画板，检查全量图片解码、真实滚轮输入、单记录订阅及卸载，并验证 20 种共享轮廓、六种填充和记录样式更新，结果与三档画板、两张图鉴截图保存到 `.scratch/renderer-smoke/`。截图供检查，不代表人工视觉验收，也不是性能比较报告。
 
+裁剪遮挡守卫先排除隐藏及完全透明元素，半透明祖先下的可见元素仍登记。关闭但声明阴影的dialog不会再误挡整个视口；可见浮层保留实际外框，有阴影、文字阴影或滤镜时仍保留原来的整视口保守保护，避免放行框外绘制区域。零尺寸外框不登记，但布局盒存在且样式可见时，仍为这些效果保留兜底。永久DOM边界回归在 `tools/renderer-clip-mask.test.mjs`；独立原生红绿使用真实dialog和未改的完整像素检查，验证框外真实阴影及零尺寸扩展阴影仍被拒绝；后者是否实际画出像素单独报告，不修改总Electron入口或原有像素阈值。
+
+登记全量时段及端口43397后，复用已有 `HICANVAS_TEST_ELECTRON`，可按下面命令重放。旧版本是公开第一方历史代码，入口核对固定SHA-256；全程离屏、拒绝外站请求与系统剪贴板，证据保留在 `.scratch/clip-guard-evidence/native-*/`，结束清理本轮合成资料与进程。该独立可见性夹具用整数倍率相机，并要求整张位图精确还原；分数倍率的原有裁剪检查仍由完整 `npm run renderer:smoke` 执行，它不能替代后者。
+
+```sh
+mkdir -p .scratch/clip-guard-evidence
+git show 880af4c:tools/renderer-preview/clip-pixel-mask.js > .scratch/clip-guard-evidence/baseline-mask.js
+HICANVAS_CLIP_BASELINE=.scratch/clip-guard-evidence/baseline-mask.js HICANVAS_CLIP_PORT=43397 node tools/renderer-preview/clip-visibility-check.mjs
+```
+
 性能基线使用项目锁定版本的 Electron，在后台离屏窗口测量正式构建。先在占用白板登记专用端口，避开其他重任务，再运行（端口按实际登记替换）：
 
 ```sh
