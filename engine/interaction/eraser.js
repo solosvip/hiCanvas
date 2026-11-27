@@ -1,6 +1,7 @@
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { createEraserTargets } from './eraser-targets.js'
 import { CanvasEditError } from '../errors.js'
+import { appendTrailPoint, describeTrail } from './pointer-trail.js'
 
 // Legacy native: documents stay intact while held; one release deletes all
 // preview roots in one existing command/transaction. Cancellation has no undo.
@@ -12,10 +13,7 @@ export function createEraserTool({ session, index, targets, read, change, report
   const lifetime = 100, maxPoints = 128
   let gesture = null, tail = null
   function describe(ids) {
-    const points = tail?.points.map(({ x, y }) => ({ x, y })) || []
-    const x = points.length ? Math.min(...points.map(p => p.x)) : 0, y = points.length ? Math.min(...points.map(p => p.y)) : 0
-    return { kind: 'eraser', ids, points, tailScale: tail?.scale ?? 1,
-      bounds: { x, y, w: points.length ? Math.max(...points.map(p => p.x)) - x : 0, h: points.length ? Math.max(...points.map(p => p.y)) - y : 0 } }
+    return { kind: 'eraser', ids, ...describeTrail(tail?.points || []), tailScale: tail?.scale ?? 1 }
   }
   function age(time) {
     if (!tail) return
@@ -48,8 +46,7 @@ export function createEraserTool({ session, index, targets, read, change, report
     const state = read(), point = screenToCanvas(input.point, state.camera)
     const ids = hits.segment(gesture.last, point, 8 / state.camera.z, state.focusedGroupId)
     if (!tail) tail = { points: [], ended: null, scale: 1 }
-    if (!tail.points.length || point.x !== gesture.last.x || point.y !== gesture.last.y) tail.points.push({ ...point, time: input.time })
-    if (tail.points.length > maxPoints) tail.points.splice(0, tail.points.length - maxPoints)
+    if (!tail.points.length || point.x !== gesture.last.x || point.y !== gesture.last.y) appendTrailPoint(tail.points, { ...point, time: input.time }, maxPoints)
     age(input.time)
     gesture.last = point
     publish(targets.roots([...new Set([...state.erasingIds, ...ids])]).sort(), 'erasing')
