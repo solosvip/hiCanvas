@@ -1,4 +1,4 @@
-import { getEmbedService, getEmbedServiceConstraints } from '../model/index.js'
+import { EMBED_SERVICES, resolveEmbedUrl, getEmbedServiceConstraints } from '../model/index.js'
 import {contentSandbox} from '../content-channel/index.js'
 
 // Until a validated publication supplies its own attributes, the frame is opaque.
@@ -8,75 +8,42 @@ const virtualOrigin = 'https://cowart.local'
 // Second approved constructor: resolveExternalEmbed only attaches these to
 // model's HTTPS provider whitelist. Preserve the observed #83 permissions.
 const frame = extra => Object.freeze({ sandbox: `allow-popups ${extra ? extra + ' ' : ''}allow-scripts allow-same-origin allow-forms`, referrerPolicy: 'strict-origin-when-cross-origin', allowFullScreen: true, tabIndex: -1, draggable: false, frameBorder: '0' })
-function appendQuery(raw, field) {
-  const [base, ...hash] = raw.split('#')
-  return base + (base.includes('?') ? '&' : '?') + field + (hash.length ? '#' + hash.join('#') : '')
-}
-function youtube(url, raw) {
-  if (url.hostname === 'www.youtube.com' && url.pathname.startsWith('/embed/')) return raw
-  const id = url.hostname === 'youtu.be' ? url.pathname.slice(1) : url.searchParams.get('v')
-  const params = new URLSearchParams()
-  for (const [key, value] of url.searchParams) if (key !== 'v') params.append(key === 't' ? 'start' : key, value)
-  return `https://www.youtube.com/embed/${id}${params.size ? '?' + params : ''}`
-}
-// Inputs have already been identified by model's single matching table.
-// Only address construction and legacy frame permissions live here.
-const converters = {
-  G05: (_u, raw) => raw,
-  G06: (u, raw) => u.pathname === '/embed' ? raw : 'https://www.figma.com/embed?embed_host=share&url=' + raw,
-  G07: (u, raw) => u.searchParams.has('embed') ? raw : appendQuery(raw, 'embed='),
-  G08: (_u, raw) => raw,
-  G09: u => 'https://www.val.town/embed/' + u.pathname.split('/').slice(2).join('/'),
-  G10: u => 'https://codesandbox.io/embed/' + u.pathname.split('/')[2],
-  G11: u => `https://codepen.io/${u.pathname.split('/')[1]}/embed/${u.pathname.split('/')[3]}${u.search}${u.hash}`,
-  G12: u => 'https://scratch.mit.edu/projects/embed/' + u.pathname.split('/')[2],
-  G13: youtube,
-  G14: (u, raw) => u.pathname === '/calendar/embed' ? raw : 'https://calendar.google.com/calendar/embed?src=' + encodeURIComponent(u.searchParams.get('cid')),
-  G15: (u, raw) => u.pathname.endsWith('/embed') ? raw : `https://docs.google.com/presentation/d/e/${u.pathname.split('/')[4]}/embed${u.hash}`,
-  G16: () => null,
-  G17: (_u, raw) => appendQuery(raw, 'embed=true'),
-  G18: u => 'https://felt.com/embed/map/' + u.pathname.split('/').at(-1),
-  G19: u => 'https://open.spotify.com/embed/album/' + u.pathname.split('/').at(-1),
-  G20: (u, raw) => u.hostname === 'player.vimeo.com' ? raw : `https://player.vimeo.com/video/${u.pathname.split('/')[1]}?title=0&byline=0`,
-  G21: (u, raw) => u.pathname.startsWith('/embed/') ? raw : `https://observablehq.com/embed/${u.pathname.startsWith('/d/') ? u.pathname.slice(3) : u.pathname.slice(1)}?cell=*`,
-  G22: (u, raw) => u.search ? raw : raw + '?embed',
-}
-const entry = (id, name, size, minimumObserved, extra = {}) => {
+const entry = (id, minimumObserved, extra = {}) => {
+  const { name, size } = EMBED_SERVICES.find(service => service.id === id)
   const constraints = getEmbedServiceConstraints(id)
-  return Object.freeze({ id, name, size: Object.freeze(size), minimumObserved: minimumObserved && Object.freeze(minimumObserved), canResize: constraints.canResize, lockAspectRatio: constraints.lockAspectRatio, attributes: frame(''), convert: (url, raw) => getEmbedService(raw)?.id === id ? converters[id](url, raw) : null, ...extra })
+  return Object.freeze({ id, name, size: Object.freeze(size), minimumObserved: minimumObserved && Object.freeze(minimumObserved), canResize: constraints.canResize, lockAspectRatio: constraints.lockAspectRatio, attributes: frame(''), convert: (_url, raw) => { const result = resolveEmbedUrl(raw); return result?.id === id ? result.src : null }, ...extra })
 }
 
 // Independent black-box samples from the running legacy UI (2026-11-25).
 // The observed limits describe that probe, not independently inferred minW/minH.
 // Permissions preserve legacy behavior per #83 and ADR0013's controlled boundary.
 export const EXTERNAL_EMBED_SERVICES = Object.freeze([
-  entry('G05', 'tldraw', [720, 500], [300, 300], { attributes: frame('allow-top-navigation') }),
-  entry('G06', 'Figma', [720, 500], [200, 200]),
-  entry('G07', 'Canva', [720, 500], [200, 200]),
-  entry('G08', 'Google Maps', [720, 500], [200, 200], { attributes: frame('allow-presentation') }),
-  entry('G09', 'Val Town', [720, 500], [260, 100]),
-  entry('G10', 'CodeSandbox', [720, 500], [300, 300]),
-  entry('G11', 'CodePen', [520, 400], [300, 300]),
-  entry('G12', 'Scratch', [520, 400], null),
-  entry('G13', 'YouTube', [800, 450], [355.556, 200], { attributes: frame('allow-popups-to-escape-sandbox allow-presentation') }),
-  entry('G14', 'Google Calendar', [720, 500], [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
-  entry('G15', 'Google Slides', [720, 500], [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
-  entry('G16', 'GitHub Gist', [720, 500], [200, 200], { fallbackIssue: 78, attributes: Object.freeze({ ...frame(''), sandbox: 'allow-popups allow-scripts allow-forms', allowFullScreen: false }) }),
-  entry('G17', 'Replit', [720, 500], [200, 200]),
-  entry('G18', 'Felt', [720, 500], [200, 200]),
+  entry('G05', [300, 300], { attributes: frame('allow-top-navigation') }),
+  entry('G06', [200, 200]),
+  entry('G07', [200, 200]),
+  entry('G08', [200, 200], { attributes: frame('allow-presentation') }),
+  entry('G09', [260, 100]),
+  entry('G10', [300, 300]),
+  entry('G11', [300, 300]),
+  entry('G12', null),
+  entry('G13', [355.556, 200], { attributes: frame('allow-popups-to-escape-sandbox allow-presentation') }),
+  entry('G14', [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
+  entry('G15', [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
+  entry('G16', [200, 200], { fallbackIssue: 78, attributes: Object.freeze({ ...frame(''), sandbox: 'allow-popups allow-scripts allow-forms', allowFullScreen: false }) }),
+  entry('G17', [200, 200]),
+  entry('G18', [200, 200]),
   // #83 preserves observed permissions, including provider-specific capabilities.
-  entry('G19', 'Spotify', [720, 500], [200, 500]),
-  entry('G20', 'Vimeo', [640, 360], [355.556, 200]),
-  entry('G21', 'Observable', [720, 500], [200, 200]),
-  entry('G22', 'Desmos', [700, 450], [200, 200]),
+  entry('G19', [200, 500]),
+  entry('G20', [355.556, 200]),
+  entry('G21', [200, 200]),
+  entry('G22', [200, 200]),
 ])
 
 export function resolveExternalEmbed(value) {
-  const source = getEmbedService(value)
+  const source = resolveEmbedUrl(value)
   if (!source) return null
   const service = EXTERNAL_EMBED_SERVICES.find(service => service.id === source.id)
-  const src = service.convert(new URL(value), value)
-  return src ? { service, src, attributes: service.attributes } : null
+  return { service, src: source.src, attributes: service.attributes }
 }
 
 function assetUrl(value, extensions = /\.html?$/i) {

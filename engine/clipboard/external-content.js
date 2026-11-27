@@ -89,7 +89,11 @@ function geometryData(shape) {
 export function createExternalClipboardContent(input) {
   input = plainData(input)
   let commands
-  if (input?.type === 'text') {
+  if (input?.type === 'url') {
+    keys(input, ['type', 'url', 'source'])
+    if (!['url', 'iframe'].includes(input.source)) fail('外部网址来源无效。')
+    commands = [{ type: 'insert_url', id: 'shape:external-url', url: input.url, source: input.source }]
+  } else if (input?.type === 'text') {
     keys(input, ['type', 'richText'])
     const richText = textData(input.richText)
     if (!richText) return null
@@ -108,5 +112,6 @@ export function createExternalClipboardContent(input) {
   } else throw new CanvasEditError('不支持的外部内容数据。')
   if (!commands.length) return null
   const result = executeCanvasCommands(createCanvasSnapshot(), commands)
-  return createClipboardContent(result.snapshot, commands.filter(c => c.type === 'create_shape').map(c => c.id))
+  const roots = commands.flatMap((command, i) => command.type === 'create_shape' ? [command.id] : result.results[i]?.shapeId ? [result.results[i].shapeId] : [])
+  return createClipboardContent(result.snapshot, roots)
 }

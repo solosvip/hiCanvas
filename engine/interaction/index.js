@@ -43,6 +43,7 @@ import { createVideoInteraction } from './video.js'
 import { createImageAlt } from './image-alt.js'
 import { createStyleSession } from './style-session.js'
 import { createAiFrameSize } from './ai-frame-size.js'
+import { createEmbedEditing } from './embeds.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -144,6 +145,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   connectionEditing = createConnectionEditing(context)
   videoInput = createVideoInteraction({ ...context, prepare: prepareText })
   imageAlt = createImageAlt({ ...context, prepare: prepareText })
+  const embeds = createEmbedEditing({ ...context, prepare: prepareText })
   const textInput = createTextInput({ ...context, prepare: prepareText, replay: dispatchCore, canCreate: () => toolIds.includes('text') }, textEditing)
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
@@ -185,6 +187,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       if (input.type === 'frame') navigation.finishFrame()
       return
     }
+    if (embeds.handle(input)) return true
     // Count only input that reaches the canvas: a rejected click must not
     // prime a later double click (#139). The minimap keeps native dblclick.
     input = countClicks(input)
@@ -278,6 +281,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     cropImage(action) { assertActive(); try { return cropTool.action(action) } catch (error) { cropTool.cancel(); report(error); throw error } },
     videoInput(action) { assertActive(); return videoInput.input(action) },
     imageAlt(action) { assertActive(); return imageAlt.action(action) },
+    embed(action) { assertActive(); return embeds.action(action) },
+    canEmbed() { assertActive(); return embeds.available() },
     editText(action) { assertActive(); return textEditing.action(action) },
     setEdgeScrolling(enabled) { assertActive(); change({ edgeScrolling: Boolean(enabled) }); navigation.finishFrame() },
     setViewport(value) { assertActive(); minimap.cancel(); navigation.setViewport(value) },
@@ -294,6 +299,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       if (input.time < lastTime) throw new Error('输入时间必须单调递增。')
       lastTime = input.time
       try {
+        const embedEdited = embeds.beforeKeyboard(input)
+        if (embedEdited.handled) return embedEdited.result ?? true
         const imageEdited = imageAlt.beforeKeyboard(input)
         if (imageEdited.handled) return imageEdited.result ?? true
         if (videoInput.beforeKeyboard(input)) return true
@@ -305,6 +312,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return routed.input ? dispatchCore(routed.input) : routed.result ?? routed.handled
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
   })
 }

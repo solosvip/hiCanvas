@@ -7,6 +7,7 @@ export { createCanvasInteraction, canvasToolRegistry } from './interaction/index
 export { getShapeScalingCapabilities } from './shape-scaling.js'
 export { canvasActions, planCanvasAction } from './actions/index.js'
 export { maxVideoBytes } from './media-limits.js'
+export { planUrlInsertion, planUrlConversion } from './embeds.js'
 export { createMediaImport } from './interaction/media-import.js'
 export { createClipboardContent, encodeClipboardContent, decodeClipboardContent, planClipboardPaste, validateClipboardContent, MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_RECORDS, MAX_CLIPBOARD_FILES, MAX_CLIPBOARD_FILE_BYTES, MAX_CLIPBOARD_RESOURCE_BYTES } from './clipboard/index.js'
 export { createExternalClipboardContent, EXTERNAL_CLIPBOARD_LIMITS } from './clipboard/index.js'

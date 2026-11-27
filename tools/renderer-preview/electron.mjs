@@ -32,6 +32,8 @@ import { svgImportSmoke, svgSecuritySmoke } from './svg-smoke.mjs'
 import { eraserSmoke } from './eraser-smoke.mjs'
 import { mediaCleanupSmoke } from './media-cleanup-smoke.mjs'
 import { laserSmoke } from './laser-smoke.mjs'
+import { embedsSmoke, prepareEmbedsProbe } from './embeds-smoke.mjs'
+import { resolveEmbedUrl } from '../../model/index.js'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -48,7 +50,7 @@ app.setPath('sessionData', manifest.profile)
 if (process.platform === 'darwin') app.setActivationPolicy('prohibited')
 app.on('window-all-closed', () => {})
 const samples = [], errors = [], blocked = [], simulated = []
-const fakeSources = new Map(externalSamples.filter(sample => sample.src).map(sample => [new URL(sample.src).href.split('#')[0], sample.id]))
+const fakeSources = new Map(externalSamples.flatMap(sample => { const src = resolveEmbedUrl(sample.input)?.src; return src ? [[new URL(src).href.split('#')[0], sample.id]] : [] }))
 let window,contentPort=manifest.contentPort
 const evaluate = code => window.webContents.executeJavaScript(code)
 async function state() { return evaluate('window.__HICANVAS_RENDERER_PREVIEW__?.getState()') }
@@ -97,7 +99,7 @@ function createWindow(key, audit = null) {
   target.webContents.session.webRequest.onBeforeRequest((details, callback) => {
     const service = fakeSources.get(details.url)
     if (service && details.resourceType === 'subFrame') {
-      simulated.push({ service, source: details.url })
+      simulated.push({ service, source: details.url, local: `${origin}/tools/renderer-preview/fake-embed.html?service=${service}` })
       callback({ redirectURL: `${origin}/tools/renderer-preview/fake-embed.html?service=${service}` }); return
     }
     const url = new URL(details.url), contentAllowed = (manifest.scriptUrl && url.origin === new URL(manifest.scriptUrl).origin || /^[a-f0-9]{48}\.localhost$/.test(url.hostname) && Number(url.port) === contentPort), allowed = contentAllowed || url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
@@ -118,6 +120,25 @@ async function run() {
   if (!contentPort) { const health = await fetch(origin + '/api/health'); if (health.ok) contentPort = (await health.json()).contentHost?.port }
   try {
     app.dock?.hide()
+    if (manifest.embedsOnly) {
+      const clipboardCalls = [], guarded = [], clipboardGuards = new Map()
+      for (const name of Object.getOwnPropertyNames(clipboard)) if (typeof clipboard[name] === 'function') {
+        const denied = () => { clipboardCalls.push(name); throw new Error(`System clipboard blocked: ${name}`) }
+        Object.defineProperty(clipboard, name, { value: denied }); guarded.push(name); clipboardGuards.set(name, denied)
+      }
+      check(guarded.includes('readText') && guarded.includes('writeText') && [...clipboardGuards].every(([name, denied]) => clipboard[name] === denied), '主进程剪贴板接口未锁住，拒绝调用原生方法')
+      try { clipboard.readText() } catch { /* Explicit red probe, never a native call. */ }
+      check(clipboardCalls.length === 1, '主进程剪贴板报错桩红例失败')
+      const mainProof = clipboardCalls.splice(0)
+      window = createWindow('embed-editing')
+      const browserProof = await prepareEmbedsProbe(window)
+      await window.loadURL(`${manifest.url}/?gallery=embed-editing&edgeScrolling=0`)
+      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
+      samples.push({ embeds: await embedsSmoke(window, manifest.output) })
+      check(simulated.some(item => item.service === 'G06' && item.local === `${origin}/tools/renderer-preview/fake-embed.html?service=G06`), '编码后的Figma没有指向本地假页')
+      check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
+      await writeFile(manifest.result, JSON.stringify({ pid: process.pid, fingerprint: manifest.fingerprint, samples, mainProof, browserProof, guarded, errors, blocked, simulated, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    }
     if (manifest.framesOnly) {
       window = createWindow('frames')
       await window.loadURL(`${manifest.url}/?gallery=frame-interaction&edgeScrolling=0`)

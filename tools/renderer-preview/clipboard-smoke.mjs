@@ -8,6 +8,7 @@ const origin = new URL(manifest.url).origin
 if (!origin.startsWith('http://127.0.0.1:')) throw new Error('仅允许隔离的本机合成宿主。')
 const violations = [], errors = [], samples = [], guarded = [], locked = [], pasteRequests = [], trapRequests = []
 const controlledErrors = [], controlledResponses = []
+const externalRequests = []
 let expectingRuntimeFailure = false
 function deny(target, prefix, only) {
   const names = new Set()
@@ -54,11 +55,12 @@ async function open(board) {
 
 const inspectExternal = () => evaluate('window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.inspect()')
 async function externalPaste(fixture) {
-  const before = await inspectExternal(), stateBefore = await state(), requests = pasteRequests.length
+  const before = await inspectExternal(), stateBefore = await state(), requests = pasteRequests.length, outside = externalRequests.length
   const sent = await evaluate(`window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.paste(${JSON.stringify(fixture.name)})`)
   check(!sent.trusted && sent.prevented, `${fixture.name}: 未经过私有合成事件。`)
   const s = await until(value => value.privateClipboard.reads === stateBefore.privateClipboard.reads + 1 && !value.clipboardBusy && !value.submitting)
   const after = await inspectExternal()
+  if (fixture.noExternal) check(externalRequests.length === outside, `${fixture.name}: 无联网书签产生外部请求。`)
   check(after.executionCount === 0 && trapRequests.length === 0, `${fixture.name}: HTML执行或资源请求不为零。`)
   if (fixture.rejected || fixture.empty) {
     check(before.signature === after.signature && before.revision === after.revision && pasteRequests.length === requests, `${fixture.name}: 拒绝/全跳过改变了记录、版本或提交。`)
@@ -68,6 +70,10 @@ async function externalPaste(fixture) {
   } else {
     check(after.count === before.count + fixture.count && after.revision !== before.revision && pasteRequests.length === requests + 1, `${fixture.name}: 没有整批一次提交。`)
     check(s.selectedShapes.length === fixture.count, `${fixture.name}: 新对象未被选择。`)
+    if (fixture.shapeType) {
+      const shape = s.selectedShapes[0]
+      check(shape.type === fixture.shapeType && shape.props.url === fixture.url && JSON.stringify([shape.w, shape.h]) === JSON.stringify(fixture.size), `${fixture.name}: 书签类型、原网址或默认宽高不符。`)
+    }
     if (fixture.text !== undefined) check(JSON.stringify(after.selectedText) === JSON.stringify([fixture.text]), `${fixture.name}: 正文/段落不匹配。`)
     if (fixture.marks) {
       const runs = s.selectedShapes[0].props.richText.content[0].content.filter(node => node.marks?.length).map(node => [node.text, node.marks.map(mark => mark.type)])
@@ -197,7 +203,7 @@ async function run() {
     const url = new URL(details.url), allowed = url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:', 'about:'].includes(url.protocol)
     if (details.method === 'POST' && url.pathname === '/api/canvas/clipboard/paste') pasteRequests.push({ url: details.url, method: details.method })
     if (url.pathname.includes('__clipboard_trap__')) trapRequests.push({ url: details.url, type: details.resourceType })
-    if (!allowed) errors.push(`Unexpected network: ${details.url}`)
+    if (!allowed) { externalRequests.push(details.url); errors.push(`Unexpected network: ${details.url}`) }
     reply({ cancel: !allowed })
   })
   contents.session.webRequest.onCompleted(details => {
