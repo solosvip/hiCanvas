@@ -83,7 +83,7 @@ test('删除会通知已打开窗口，原画板资源及请求不再可访问',
 })
 
 test('删除画板后未发送的图片不再调用模型，已发出图片保存但不复活画板', async t => {
-  const { workspace, root } = await fixture(t)
+  const { workspace, root, beforeClose } = await fixture(t)
   const { id } = await workspace.open()
   let started, release, calls = 0
   const entered = new Promise(resolve => { started = resolve })
@@ -92,6 +92,8 @@ test('删除画板后未发送的图片不再调用模型，已发出图片保�
     calls++; started(); await barrier
     return [{ bytes: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'), extension: 'png' }]
   } })
+  // 任务终态先于执行器收尾可见；删夹具前必须等迟到的画板锁写入结束。
+  beforeClose(async () => { release(); await jobs.waitForIdle() })
   const job = await jobs.submit(id, { expectedRevision: (await workspace.read(id)).revision, requests: Array.from({ length: 3 }, () => ({ prompt: '合成测试' })) })
   await entered
   await workspace.remove(id, (await workspace.read(id)).revision)
