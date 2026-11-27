@@ -28,20 +28,23 @@ test('吸附偏好是宿主会话状态，复制输入、校验原子性、不�
     options.enabled = true;
     assert.deepEqual(f.interaction.getSnappingPreferences(), {
       enabled: false,
+      grid: false,
       controlPoints: false
     });
     f.interaction.setSnappingPreferences({
       enabled: true,
+      grid: false,
       controlPoints: true
     });
     assert.deepEqual(f.interaction.state.get().snappingPreferences, {
       enabled: true,
+      grid: false,
       controlPoints: true
     });
     assert.ok(Object.isFrozen(f.interaction.getSnappingPreferences()));
     assert.throws(() => f.interaction.setSnappingPreferences({
       enabled: false,
-      grid: true
+      unknownOption: true
     }), /吸附/);
     assert.equal(f.interaction.getSnappingPreferences().enabled, true);
     assert.throws(() => f.interaction.setSnappingPreferences({
