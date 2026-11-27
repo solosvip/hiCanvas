@@ -174,11 +174,16 @@ export async function imageImportSmoke(window, output, files) {
     await until(() => evaluate(`(() => {const n=document.querySelector('[data-shape-id="${id}"] img');return n?.complete && n.naturalWidth>0})()`), '真实图片解码')
     const b = await evaluate(`(() => {const b=document.querySelector('[data-shape-id="${id}"] img').getBoundingClientRect();return {x:Math.ceil(b.x),y:Math.ceil(b.y),width:Math.min(16,Math.floor(b.width)),height:Math.min(16,Math.floor(b.height))}})()`)
     check(b.width > 0 && b.height > 0, '图片没有可见像素')
-    const bitmap = (await wc.capturePage(b)).toBitmap()
-    let colored = 0
-    for (let i = 0; i < bitmap.length; i += 4) if (Math.max(bitmap[i], bitmap[i + 1], bitmap[i + 2]) - Math.min(bitmap[i], bitmap[i + 1], bitmap[i + 2]) > 60) colored++
-    check(colored > 0, '图片只显示空白或灰色占位')
-    return colored
+    // A decoded <img> can still be one frame away from the compositor; capture
+    // until the colour shows (bounded by until's timeout) so only an image that
+    // never paints fails, instead of a busy machine capturing the frame before.
+    const count = async () => {
+      const bitmap = (await wc.capturePage(b)).toBitmap()
+      let colored = 0
+      for (let i = 0; i < bitmap.length; i += 4) if (Math.max(bitmap[i], bitmap[i + 1], bitmap[i + 2]) - Math.min(bitmap[i], bitmap[i + 1], bitmap[i + 2]) > 60) colored++
+      return colored
+    }
+    try { return await until(count, '图片像素') } catch { throw new Error('图片只显示空白或灰色占位') }
   }
   const subject = 'shape:image-0'
   await record('initial')
