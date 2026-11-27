@@ -1,4 +1,4 @@
-import {contentBase,contentReferences} from './content-references.mjs'
+import {contentBase,rewriteContentReferences} from './content-references.mjs'
 import {open,realpath} from 'node:fs/promises'
 import {constants} from 'node:fs'
 import {join,relative,sep,extname} from 'node:path'
@@ -6,6 +6,7 @@ import {httpError} from './file-lock.mjs'
 
 const virtual='http://cowart.local'
 const types={'.html':'text/html; charset=utf-8','.htm':'text/html; charset=utf-8','.svg':'image/svg+xml','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.avif':'image/avif','.apng':'image/apng','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.mp4':'video/mp4','.webm':'video/webm','.mp3':'audio/mpeg','.wav':'audio/wav','.ogg':'audio/ogg'}
+export const contentAssetType=path=>types[extname(path).toLowerCase()]||'application/octet-stream'
 export function sandboxActiveAsset(res,type) {
   res.setHeader('x-content-type-options','nosniff')
   if(/^(?:text\/html|image\/svg\+xml)(?:;|$)/i.test(type)){
@@ -27,6 +28,7 @@ function localPath(value,base,parentOrigin,id) {
   if(actual!==id||!(tail[0]==='assets'&&tail.length===2||tail[0]==='page-assets'&&tail.length===3))throw httpError('内容只能引用本画板的资源。',403)
   return {path:url.pathname,tail}
 }
+export { localPath as localContentAssetPath }
 // This is a conservative literal-reference allowlist, not an HTML sanitizer.
 // Missing/dynamic references are denied, never fetched or served by directory fallback.
 function projectUrls(text,parentOrigin) {
@@ -41,13 +43,14 @@ export function createContentAssets(workspace,{maxFileBytes=20*1024*1024,maxByte
     if(sourceUrl&&!source)throw httpError('内容来源不是本画板资源。',403)
     const path=source?.path||'/document.html',files=new Map(),queue=[],discovered=new Set()
     let size=Buffer.byteLength(html)
-    const discover=(text,base,kind='html')=>{if(kind==='html')base=contentBase(text,base);for(const value of contentReferences(text,{modules:recursiveText,kind})){
-      if(kind==='javascript'&&!/^(?:[./]|[a-z][a-z\d+.-]*:)/i.test(value))continue
+    const discover=(text,base,kind='html')=>{if(kind==='html')base=contentBase(text,base);rewriteContentReferences(text,(value,item)=>{
+      if(item.tag==='base'||item.module&&!/^(?:[./]|[a-z][a-z\d+.-]*:)/i.test(value))return value
       const ref=localPath(value,base,parentOrigin,conversationId)
-      if(!ref||discovered.has(ref.path)||ref.path===path)continue
+      if(!ref||discovered.has(ref.path)||ref.path===path)return value
       if(discovered.size>=maxFiles)throw httpError('内容资源集合超过上限。',413)
       discovered.add(ref.path);queue.push(ref)
-    }}
+      return value
+    },{modules:recursiveText,kind})}
     discover(html,virtual+path)
     while(queue.length){
       if(files.size>=maxFiles||size>maxBytes)throw httpError('内容资源集合超过上限。',413)
@@ -69,7 +72,7 @@ export function createContentAssets(workspace,{maxFileBytes=20*1024*1024,maxByte
         if(length!==stat.size)throw httpError('读取期间内容资源发生变化。',409)
         bytes=buffer.subarray(0,length)
       }finally{await file.close()}
-      const extension=extname(ref.path).toLowerCase(),type=types[extension]||'application/octet-stream'
+      const extension=extname(ref.path).toLowerCase(),type=contentAssetType(ref.path)
       size+=bytes.length
       if(extension==='.css'||recursiveText&&['.js','.mjs','.html','.htm','.svg'].includes(extension)){
         const text=bytes.toString('utf8');files.set(ref.path,{bytes,type});discover(text,virtual+ref.path,extension==='.css'?'css':['.js','.mjs'].includes(extension)?'javascript':'html')

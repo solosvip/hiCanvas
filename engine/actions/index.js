@@ -17,6 +17,8 @@ const scalable = context => Boolean(context.frame && context.canScale !== false)
 // is 1.1 / its reciprocal. Menu stack/pack gap=10 and frame padding=50.
 // Two-selection menu has stretch/pack; stack/distribute first appear at three.
 export const canvasActions = Object.freeze([
+  ...[['copy', '复制', 'c'], ['cut', '剪切', 'x'], ['paste', '粘贴', 'v']].map(([id, label, key]) => entry(id, label, id === 'paste' ? 0 : 1, context => ({ clipboard: id, selectedIds: context.ids }), shortcut([key], { mod: true, ...(id === 'paste' && { shift: undefined }) }))),
+  entry('paste-at-cursor', '粘贴至光标处', 0, () => ({ clipboard: 'paste-at-cursor' })),
   entry('duplicate', '复制副本', 1, context => {
     const offset = context.duplicateOffset || { x: Math.abs(context.frame.w * Math.cos(context.frame.rotation || 0)) + Math.abs(context.frame.h * Math.sin(context.frame.rotation || 0)) + 10, y: 0 }
     return { commands: [{ type: 'duplicate_shapes', ids: context.ids, offset }], selectedIds: context.ids, selectDuplicateResult: true, duplicateOffset: offset }

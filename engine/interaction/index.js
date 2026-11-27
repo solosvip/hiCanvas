@@ -9,6 +9,7 @@ import { createSelectionTargets } from './targets.js'
 import { createSelectionNavigation } from './selection-navigation.js'
 import { createSelectionShortcuts } from './selection-shortcuts.js'
 import { createSelectionActions } from './selection-actions.js'
+import { createClipboardActions } from './clipboard.js'
 import { createDuplicateMemory } from './duplicate-memory.js'
 import { createHandTool } from './camera-pan.js'
 import { createCameraContent } from './camera-content.js'
@@ -50,7 +51,7 @@ export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, h
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
 // Hosts may supply design tokens; the engine validates and copies the values.
-export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null }) {
+export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null, clipboard: clipboardPort, boardId = '' }) {
   if (!session?.store || !toolIds.length || toolIds.some(id => !Object.hasOwn(canvasToolRegistry, id))) throw new Error('交互模块需要运行时和已登记工具。')
   const metrics = checkedHandleMetrics(handleMetrics)
   if (typeof controlPointSnapping !== 'boolean') throw new Error('控制点吸附需要布尔值。')
@@ -60,7 +61,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
-  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, selectionKeys, actions, snaps, lastTime = -Infinity
+  let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -95,7 +96,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function cancelTool() {
     // Context loss cancels real and comma pointers together. Recreate the
     // shared counter so neither a previous click nor an unreleased press leaks.
-    countClicks = createClickCounter(); actions?.cancel(); selectionKeys?.cancel(); connectionEditing?.cancel(); noteEditing?.cancel(); snaps?.clear(); tool?.cancel()
+    countClicks = createClickCounter(); clipboard?.cancel(); actions?.cancel(); selectionKeys?.cancel(); connectionEditing?.cancel(); noteEditing?.cancel(); snaps?.clear(); tool?.cancel()
   }
   function setTool(id) {
     if (!toolIds.includes(id)) throw new Error('工具未向本产品开放。')
@@ -120,6 +121,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const textInput = createTextInput({ ...context, prepare: prepareText, replay: dispatchCore, canCreate: () => toolIds.includes('text') }, textEditing)
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
+  clipboard = createClipboardActions({ ...context, boardId }, clipboardPort); context.clipboard = clipboard
+  change({ pasteAtCursor: false, clipboardBusy: false })
   selectionKeys = createSelectionShortcuts(context)
   actions = createSelectionActions(context)
   const drawKeys = createDrawShortcuts({ toolIds, setTool })
@@ -248,6 +251,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return routed.input ? dispatchCore(routed.input) : routed.result ?? routed.handled
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); actions.dispose(); stop(); disposed = true },
   })
 }

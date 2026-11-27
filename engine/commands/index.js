@@ -19,6 +19,7 @@ import { scaleShapes } from './scale-shapes.js'
 import { cropImage } from './crop-image.js'
 import { replaceImage } from './replace-image.js'
 import { insertVideo, replaceVideo, setVideoAltText } from './video.js'
+import { pasteContent } from './paste-content.js'
 
 // 新命令只增加处理函数并在此登记，不修改已有命令；一行一个，并行开发时互不冲突。
 export const commandHandlers = Object.freeze({
@@ -51,4 +52,5 @@ export const commandHandlers = Object.freeze({
   insert_video: insertVideo,
   replace_video: replaceVideo,
   set_video_alt_text: setVideoAltText,
+  paste_content: pasteContent,
 })

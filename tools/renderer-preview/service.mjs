@@ -8,6 +8,7 @@ import { scratchPath } from '../perf/config.mjs'
 import { createVideoFixture } from './video-fixtures.js'
 import { createFixture } from '../perf/fixture.mjs'
 import { prepareFixture } from '../perf/prepare.mjs'
+import { createClipboardFixture } from './clipboard-fixture.js'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 // Separate development host: production service and user data are never used.
@@ -42,11 +43,29 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
     })())
     return boards.get(count)
   }
+  async function clipboardFixture(name) {
+    const key = `clipboard-${name}`
+    if (!boards.has(key)) boards.set(key, (async () => {
+      const title = `剪贴板合成 ${name}`, existing = (await workspace.list()).find(board => board.title === title)
+      const board = existing || await workspace.open({ createNew: true, title })
+      const current = await workspace.read(board.id), data = createClipboardFixture({ empty: name === 'target' })
+      if (!existing && name !== 'target') await prepareFixture(workspace, board.id, current, data.snapshot)
+      return { ...data, snapshot: undefined, conversationId: board.id, persistent: true }
+    })())
+    const data = await boards.get(key), current = await workspace.read(data.conversationId)
+    const shapes = Object.values(current.snapshot.store).filter(record => record.typeName === 'shape')
+    return { ...data, count: shapes.length, counts: Object.fromEntries([...new Set(shapes.map(record => record.type))].map(type => [type, shapes.filter(record => record.type === type).length])) }
+  }
   let vite
   async function handle(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1'), path = url.pathname
     try {
       requireLocalRead(req)
+      if (path === '/__clipboard_fixture') {
+        const name = url.searchParams.get('board')
+        if (req.method !== 'GET' || !['source', 'target'].includes(name)) { res.writeHead(400); res.end(); return }
+        return sendJson(res, 200, await clipboardFixture(name))
+      }
       if (path === '/__renderer_fixture') {
         if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
         const count = url.searchParams.get('gallery') === 'videos' ? 'videos' : Number(url.searchParams.get('count'))
@@ -70,8 +89,9 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
       }
       if (path.startsWith('/c/')) return canvas(req, res, () => { res.writeHead(404); res.end() })
       if (path.startsWith('/api/')) {
-        if (['/api/canvas/undo', '/api/canvas/redo', '/api/canvas/reference'].includes(path) && !(await Promise.all(boards.values())).some(board => board.conversationId === url.searchParams.get('conversation'))) { res.writeHead(404); res.end(); return }
-        if (!['/api/canvas/undo', '/api/canvas/redo', '/api/canvas/reference', '/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || path === '/api/canvas' && req.method !== 'GET') { res.writeHead(403); res.end(); return }
+        const mutations = ['/api/canvas/undo', '/api/canvas/redo', '/api/canvas/reference', '/api/canvas/clipboard/copy', '/api/canvas/clipboard/paste']
+        if (mutations.includes(path) && !(await Promise.all(boards.values())).some(board => board.conversationId === url.searchParams.get('conversation'))) { res.writeHead(404); res.end(); return }
+        if (![...mutations, '/api/canvas', '/api/canvas-events', '/api/view-state'].includes(path) || path === '/api/canvas' && req.method !== 'GET') { res.writeHead(403); res.end(); return }
         return canvas(req, res, () => { res.writeHead(404); res.end() })
       }
       if (path === '/') req.url = `/tools/renderer-preview/index.html${url.search}`
