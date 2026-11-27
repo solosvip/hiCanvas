@@ -7,6 +7,7 @@ import { validateRelationships } from '../relationships.js'
 import { restoreCanvasRecords } from './restore.js'
 import { executeLiveCommands } from './live-commands.js'
 import { MAX_REPLAYS, emptyChanges, changedIds, changesToCommands, netChanges, assertUnchanged, errorData } from './changes.js'
+export { MAX_REPLAYS } from './changes.js'
 
 /**
  * transport: read() → {snapshot, revision}; commit({expectedRevision,commands,actor})

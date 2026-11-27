@@ -250,6 +250,8 @@ npm run renderer:smoke
 
 提示线由编辑层给出 `snap-guides` 纯数据（线段、锚点、间距刻度），渲染层使用 DESIGN 既有令牌绘制，屏幕线宽不随缩放变化；松手、取消、工具切换时清理。网格为 `{kind:'grid',bounds:{x:0,y:0,w:0,h:0},spacing:10}` 纯数据，经同一 `setOverlays` 接口送入渲染层，在作品下方画10/40/160/640四层点阵，颜色、点径及淡入取DESIGN令牌；关闭网格即移除，结束手势保留网格。合成预览 `/?gallery=snapping&snapping=1`，加 `grid=1` 开网格；另有 `snapCase=gap`、`snapCase=resize`、`snapCase=grid`、`snapCase=grid-priority` 和 `snapCase=grid-resize`。登记专用端口及全量检查时段后，设置已有 `HICANVAS_TEST_ELECTRON`，运行 `HICANVAS_SNAPPING_PORT=43386 node tools/renderer-preview/snapping-check.mjs`；同一永久入口覆盖对象及网格，原生输入与截图存 `.scratch/snapping-smoke/`。逻辑回归并入 `npm run check`；创建 G01 和新增控制点 G07 接入仍另单，正式界面尚未切换。
 
+画框交互的独立入口：登记全量检查时段和端口，设置已有 `HICANVAS_TEST_ELECTRON`，运行 `HICANVAS_FRAME_PORT=43396 node tools/renderer-preview/frame-check.mjs`。只编辑内存合成夹具 `/?gallery=frame-interaction`，证据存 `.scratch/frame-smoke/`；`frameCase=crop`、`crop-rotated`、`fit`、`fit-rotated` 可单独预览。拖入拖出按指针选择一个可用框，组只换根；Command 同时翻转对象吸附、绕过网格并补偿未锁的直接子项，锁子随框移动。双击左右边适配宽度、上下边适配高度、四角适配两轴，留白10且所有孩子画布位置保持；整次操作一次撤销。共享 `reparent_shapes` 在服务器重查锁和父链；无关远端更新可有限重试，相关子树/父级变化拒绝。本入口不调用系统剪贴板、真实资料或外部接口，服务端原子拒绝和历史回归并入 `npm run check`。
+
 #128 性能复用 #96 入口：完成生产构建、登记两个端口后，运行 `HICANVAS_STROKE_SNAPPING=1 node tools/perf/strokes.mjs --sizes 5000 --port 43392 --preview-port 43393 --output .scratch/snapping-perf --load-note '白板独占及实际负载说明'`（同样设置已有 Electron）。三轮新旧交替，原生菜单开启旧版偏好，并在两端拖动前读回开启状态；按拖动 paint 帧率不低于旧版90%判定，失败自动补测两版各一轮并保留初测。其余性能指标仍记录；不带环境开关时原有 #96 四组全指标门禁保持原样。
 
 登记专用端口及已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_CONNECTION_PORT=43386 node tools/renderer-preview/connection-check.mjs`；原生鼠标、键盘及标签文字守卫的结果写入 `.scratch/connection-smoke/`，也纳入完整 `npm run renderer:smoke`。普通 `npm run check` 自动执行连接线的定向事务与几何回归。正式应用尚未切换；旧版标签拖动和端帽双击未取得可靠正例，差异及待集中确认项见功能清单。
