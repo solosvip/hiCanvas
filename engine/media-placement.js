@@ -11,6 +11,7 @@ function adjacent(records, anchor, parentId, w, h, args) {
   let y = args.y ?? (anchor?.y || 0)
   if (anchor && args.placement === 'below') { x = anchor.x; y = anchor.y + anchor.props.h + gap }
   if (anchor && args.placement === 'left') x = anchor.x - w - gap
+  if (args.avoidOverlap === false) return { x, y }
   const obstacles = Object.values(records).filter(record => record.typeName === 'shape' && record.parentId === parentId && record.id !== anchor?.id)
   for (let i = 0; i < 100; i++) {
     if (!obstacles.some(record => x < record.x + (record.props?.w || 0) + gap / 2 && x + w + gap / 2 > record.x && y < record.y + (record.props?.h || 0) + gap / 2 && y + h + gap / 2 > record.y)) break

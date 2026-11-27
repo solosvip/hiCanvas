@@ -309,6 +309,12 @@ npm run perf:baseline -- --renderer both --workload handles --sizes 5000 --port 
 
 本次浏览器验证使用合成图片与文字，实际操作了新建、重命名、切换和刷新恢复画板，确认 MCP 修改实时显示；模拟保存断网时切换被阻止、恢复后可继续切换。图片结果独立显示并能放入画板，其他画板保持空结果；1440 和 390 像素窗口中检查了浮层布局及 Escape 后焦点恢复。另在独立 REX 测试服务和合成接收程序中，实际操作画板按钮→终端通知→模拟 Agent 领取→原框写回，验证网页、影片和幻灯片流程；这不等于验证真实语言模型的内容质量。浏览器走查尚未接入持续执行的界面守卫；数据、并发、MCP 和保存切换逻辑由回归测试保护。
 
+图片文件导入与属性交互（#137）沿用同一个公开 `createMediaImport`：宿主传准备好的图片/视频，编辑层按落点将自然尺寸媒体紧贴排成一行，版本或选择变化拒绝，整批一次提交/撤销。文件导入不避障；大图保留尺寸并按视口90%适配，生图与MCP的默认512宽不变。PNG/JPEG/WebP/GIF/APNG/AVIF单文件上限20 MB、边长16384、像素64 Mi，单批最多100个；支持项有一个读取、上传或解码失败时整批不落形状。SVG暂不支持，净化与放开另见#189。`/api/canvas/reference` 的 `purpose: 'file-import'` 使用专用栅格解码器，不扩大生成参考图的格式范围。上传成功而事务被拒时可能保留未引用资源，沿用视频导入约定。
+
+`interaction.imageAlt({ type: 'start' | 'update' | 'finish' | 'cancel', text? })` 持有图片描述草稿；Enter或外点确认，Escape取消，临时内容不写画板。替换继续保留ID、位置、外框、镜像与描述，按新图居中裁剪。隔离预览 `/?gallery=image-import` 提供选择文件、拖入、替换与描述编辑；文件粘贴复用#136公开宿主适配器，系统权限与跨应用互通需正式界面接入后集中体验。
+
+登记专用端口及全量检查时段，设置已有 `HICANVAS_TEST_ELECTRON` 后运行 `node tools/renderer-preview/image-check.mjs --port 43397`；入口显式 `watch: false`，只用 `.scratch` 合成资料，报告和截图在 `.scratch/image-check/`。永久逻辑回归并入 `npm run check`。本轮代码仍是新底座与临时宿主，正式应用尚未切换。
+
 ## 上游与许可
 
 导入 Cowart `0.1.38`，来源提交 [`38bdafeff47374ddbc11b12bddbc4f1f4cf14587`](https://github.com/zhongerxin/Cowart/tree/38bdafeff47374ddbc11b12bddbc4f1f4cf14587)。保留 Cowart 的 [MIT 许可证](LICENSE) 和原作者版权，拆分原来的大界面文件以便维护。本版未启用 Cowart 自带的遥测发送。

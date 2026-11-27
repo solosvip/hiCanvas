@@ -16,7 +16,7 @@ export function createClipboardActions({ session, read, change, report, boardId 
     if (disposed) return 'disposed'
     if (pending && !own) return 'clipboard-busy'
     if (runtime.isSubmitting) return 'submitting'
-    if (!menu && state.inputContext.owner !== 'canvas' || state.inputContext.isComposing || state.textEditing) return 'input-context'
+    if (!menu && state.inputContext.owner !== 'canvas' || state.inputContext.isComposing || state.textEditing || state.imageAltEditing) return 'input-context'
     if (state.croppingId) return 'cropping'
     if (runtime.isGestureActive || state.mode !== 'idle' || state.temporaryTool) return 'pointer-gesture'
     return null
@@ -63,6 +63,12 @@ export function createClipboardActions({ session, read, change, report, boardId 
   }
   return {
     run, reason, cancel,
+    fileTarget() {
+      const blocked = reason()
+      if (blocked) return unavailable(blocked)
+      const state = read(), center = { x: state.viewport.w / 2, y: state.viewport.h / 2 }
+      return Object.freeze({ status: 'available', point: Object.freeze({ ...(state.pasteAtCursor && point || center) }) })
+    },
     availability(action) {
       // Menu controls focus the canvas before invoking an action. Describing
       // them must not disable a button merely because it holds native focus.
