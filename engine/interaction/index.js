@@ -63,7 +63,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const index = createSpatialIndex(initial, activePage), targets = createSelectionTargets(index, activePage, initial)
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
-  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null }))
+  const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null, lastNotice: null }))
   let disposed = false, tool, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
@@ -71,6 +71,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const previous = read(), next = { ...previous, ...patch }
     next.erasingIds = Object.freeze([...(next.erasingIds || [])])
     next.eraser = next.eraser ? Object.freeze({ ...next.eraser, ids: Object.freeze([...next.eraser.ids]), points: Object.freeze(next.eraser.points.map(p => Object.freeze({ ...p }))), bounds: Object.freeze({ ...next.eraser.bounds }) }) : null
+    if (Object.hasOwn(patch, 'lastError')) next.lastNotice = null
+    if (patch.lastNotice && !patch.lastError) { next.lastNotice = patch.lastNotice; next.lastError = null }
     if (snaps) next.snappingPreferences = snaps.preferences()
     next.focusedGroupId = targets.validScope(next.focusedGroupId)
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))

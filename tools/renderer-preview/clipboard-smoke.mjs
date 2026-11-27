@@ -6,7 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 const manifest = JSON.parse(await readFile(process.argv.at(-1), 'utf8'))
 const origin = new URL(manifest.url).origin
 if (!origin.startsWith('http://127.0.0.1:')) throw new Error('仅允许隔离的本机合成宿主。')
-const violations = [], errors = [], samples = [], guarded = [], locked = []
+const violations = [], errors = [], samples = [], guarded = [], locked = [], pasteRequests = [], trapRequests = []
+const controlledErrors = [], controlledResponses = []
+let expectingRuntimeFailure = false
 function deny(target, prefix, only) {
   const names = new Set()
   for (let current = target; current && current !== Object.prototype; current = Object.getPrototypeOf(current)) for (const name of Object.getOwnPropertyNames(current)) if (name !== 'constructor') names.add(name)
@@ -50,6 +52,104 @@ async function open(board) {
   await evaluate('document.querySelector("#canvas").focus();void 0')
 }
 
+const inspectExternal = () => evaluate('window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.inspect()')
+async function externalPaste(fixture) {
+  const before = await inspectExternal(), stateBefore = await state(), requests = pasteRequests.length
+  const sent = await evaluate(`window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.paste(${JSON.stringify(fixture.name)})`)
+  check(!sent.trusted && sent.prevented, `${fixture.name}: 未经过私有合成事件。`)
+  const s = await until(value => value.privateClipboard.reads === stateBefore.privateClipboard.reads + 1 && !value.clipboardBusy && !value.submitting)
+  const after = await inspectExternal()
+  check(after.executionCount === 0 && trapRequests.length === 0, `${fixture.name}: HTML执行或资源请求不为零。`)
+  if (fixture.rejected || fixture.empty) {
+    check(before.signature === after.signature && before.revision === after.revision && pasteRequests.length === requests, `${fixture.name}: 拒绝/全跳过改变了记录、版本或提交。`)
+    check(JSON.stringify(s.selectedIds) === JSON.stringify(stateBefore.selectedIds), `${fixture.name}: 拒绝改变了选择。`)
+    if (fixture.rejected) check(s.lastError?.message.includes(fixture.rejected) && !s.lastNotice, `${fixture.name}: 错误提示或错误/通知互斥不正确。`)
+    else check(!s.lastError && s.lastNotice?.message.includes('没有可导入的内容') && !after.status.includes('操作失败'), `${fixture.name}: 全跳过未显示普通通知。`)
+  } else {
+    check(after.count === before.count + fixture.count && after.revision !== before.revision && pasteRequests.length === requests + 1, `${fixture.name}: 没有整批一次提交。`)
+    check(s.selectedShapes.length === fixture.count, `${fixture.name}: 新对象未被选择。`)
+    if (fixture.text !== undefined) check(JSON.stringify(after.selectedText) === JSON.stringify([fixture.text]), `${fixture.name}: 正文/段落不匹配。`)
+    if (fixture.marks) {
+      const runs = s.selectedShapes[0].props.richText.content[0].content.filter(node => node.marks?.length).map(node => [node.text, node.marks.map(mark => mark.type)])
+      check(JSON.stringify(runs) === JSON.stringify([['B', ['bold']], ['I', ['bold', 'italic']]]), '粗体斜体在真实浏览器中丢失。')
+    }
+    if (fixture.poses) s.selectedShapes.forEach((r, i) => {
+      check(r.parentId === 'page:page', 'Excalidraw错误进入框/组。')
+      for (const [actual, expected] of [[r.x, fixture.poses[i][0]], [r.y, fixture.poses[i][1]], [r.rotation, fixture.poses[i][2]]]) check(Math.abs(actual - expected) < 1e-8, `旋转落点不匹配 ${actual} != ${expected}`)
+    })
+    check(!s.lastError, `${fixture.name}: 成功导入走了错误通道。`)
+  }
+  if (fixture.notice) check(s.lastNotice?.source === 'clipboard' && !after.status.includes('操作失败'), `${fixture.name}: 缺少独立汇总通知。`)
+  samples.push({ label: fixture.name, before, after, pasteRequests: pasteRequests.length - requests, lastNotice: s.lastNotice, lastError: s.lastError })
+  return { before, after, state: s }
+}
+
+async function externalSmoke() {
+  const cases = await evaluate('window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.cases()')
+  await key('A', [mod]); await until(s => s.selectedIds.length === 2)
+  const failCommit = async () => {
+    const before = await inspectExternal(), responses = controlledResponses.length, errorCount = controlledErrors.length
+    expectingRuntimeFailure = true
+    try {
+      const result = await evaluate('window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.failCommit()')
+      await flush()
+      const after = await inspectExternal()
+      check(result.runtimeError && (await state()).lastError && after.signature === before.signature && after.revision === before.revision, '受控提交失败没有留下真实runtime错误或修改了画板。')
+      check(controlledResponses.length === responses + 1 && controlledResponses.at(-1).status === 400, '未收到本次合成update的确切400回执。')
+      check(controlledErrors.slice(errorCount).every(error => error.url === controlledResponses.at(-1).url), '受控错误不是本次提交请求。')
+    } finally { expectingRuntimeFailure = false }
+  }
+  await failCommit()
+  await externalPaste(cases.find(item => item.name === 'excal-all-skipped'))
+  check((await inspectExternal()).runtimeError, '显示层不应篡改runtime错误状态。')
+  await failCommit()
+  const writes = (await state()).privateClipboard.writes
+  check((await event('copy')).prevented, '受控失败后复制未接管。')
+  await until(s => !s.clipboardBusy && s.privateClipboard.writes === writes + 1)
+  check(!(await state()).lastError && !(await inspectExternal()).status.includes('操作失败'), '成功复制被旧runtime错误遮住。')
+  await externalPaste(cases.find(item => item.name === 'excal-all-skipped'))
+  // Exercise the real host feedback callback with a synthetic error, then a
+  // native hover refresh. This is a display-lifecycle test, not a network test.
+  await evaluate('window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.reportHostError()')
+  await input({ type: 'mouseMove', x: 120, y: 180 })
+  check((await inspectExternal()).status.includes('Synthetic host feedback failure'), '持续存在的旧通知清掉了新宿主错误。')
+  for (const fixture of cases) {
+    const { before, after } = await externalPaste(fixture)
+    if (fixture.rejected || fixture.empty) continue
+    if (['html-marks', 'excal-convert-skip'].includes(fixture.name)) {
+      const camera = (await state()).camera
+      if (fixture.name === 'html-marks') await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.resetCamera({x:160,y:140,z:1})')
+      await flush()
+      await writeFile(join(manifest.output, `${fixture.name}.png`), (await target.webContents.capturePage()).toPNG())
+      if (fixture.name === 'html-marks') await evaluate(`window.__HICANVAS_RENDERER_PREVIEW__.resetCamera(${JSON.stringify(camera)})`)
+    }
+    let revision = after.revision
+    await key('Z', [mod]); await until(s => !s.submitting && s.revision !== revision)
+    check((await inspectExternal()).signature === before.signature, `${fixture.name}: 一次原生撤销没恢复整板。`)
+    if (fixture.name === 'html-marks') {
+      // Rejected/empty pastes must preserve an existing redo branch too.
+      await externalPaste(cases.find(item => item.name === 'excal-bad-json'))
+      await externalPaste(cases.find(item => item.name === 'excal-all-skipped'))
+    }
+    revision = (await state()).revision
+    await key('Z', [mod, 'shift']); await until(s => !s.submitting && s.revision !== revision)
+    check((await inspectExternal()).signature === after.signature, `${fixture.name}: 拒绝后重做分支或内容丢失。`)
+    revision = (await state()).revision
+    await key('Z', [mod]); await until(s => !s.submitting && s.revision !== revision)
+    check((await inspectExternal()).signature === before.signature, `${fixture.name}: 下一夹具前未恢复初态。`)
+  }
+  await evaluate('window.__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__.prepareContainers()')
+  await click(120, 120); await click(120, 120)
+  await until(s => s.focusedGroupId === 'shape:external-group')
+  const button = await evaluate('(()=>{const r=document.querySelector("[data-selection-action=paste-at-cursor]").getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()')
+  if (!(await state()).pasteAtCursor) await click(Math.round(button.x), Math.round(button.y))
+  await input({ type: 'mouseMove', x: 700, y: 420 })
+  const rotation = cases.find(item => item.name === 'excal-rotation')
+  await externalPaste(rotation)
+  await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.resetCamera({x:-200,y:-100,z:.5})')
+  await externalPaste({ ...rotation, poses: rotation.poses.map(([x, y, angle]) => [x + 700, y + 450, angle]) })
+}
+
 function browserGuard() {
   const violation = path => { globalThis.__clipboardViolation(path); throw new Error(`SYSTEM_CLIPBOARD_FORBIDDEN:${path}`) }
   const getter = () => violation('browser.clipboard')
@@ -83,16 +183,28 @@ async function run() {
   })
   contents.on('context-menu', event => event.preventDefault())
   contents.on('console-message', details => {
-    if (details.level === 'error' || details.level >= 3) errors.push(details.message)
+    if (details.level === 'error' || details.level >= 3) {
+      let url
+      try { url = new URL(details.sourceId) } catch { /* An unlocated error is never an expected HTTP failure. */ }
+      if (expectingRuntimeFailure && url?.origin === origin && url.pathname === '/__interaction/commit' && /Failed to load resource: the server responded with a status of 400\b/.test(details.message)) controlledErrors.push({ message: details.message, url: url.href })
+      else errors.push(details.message)
+    }
   })
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
   contents.session.setPermissionRequestHandler((_contents, _permission, reply) => reply(false))
   contents.session.setPermissionCheckHandler(() => false)
   contents.session.webRequest.onBeforeRequest((details, reply) => {
     const url = new URL(details.url), allowed = url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:', 'about:'].includes(url.protocol)
+    if (details.method === 'POST' && url.pathname === '/api/canvas/clipboard/paste') pasteRequests.push({ url: details.url, method: details.method })
+    if (url.pathname.includes('__clipboard_trap__')) trapRequests.push({ url: details.url, type: details.resourceType })
     if (!allowed) errors.push(`Unexpected network: ${details.url}`)
     reply({ cancel: !allowed })
   })
+  contents.session.webRequest.onCompleted(details => {
+    const url = new URL(details.url)
+    if (expectingRuntimeFailure && details.method === 'POST' && url.origin === origin && url.pathname === '/__interaction/commit') controlledResponses.push({ url: details.url, status: details.statusCode })
+  })
+  contents.on('will-frame-navigate', event => { if (event.url.includes('__clipboard_trap__')) { event.preventDefault(); trapRequests.push({ url: event.url, type: 'frame-navigation' }) } })
   await target.loadURL('about:blank')
   contents.debugger.attach('1.3')
   contents.debugger.on('message', (_event, method, params) => {
@@ -156,16 +268,17 @@ async function run() {
   await remember('cross-board'); await open('target')
   check((await until(s => s.renderedShapes === 2)).renderedShapes === 2, '刷新后粘贴丢失。')
   await writeFile(join(manifest.output, 'clipboard-target.png'), (await contents.capturePage()).toPNG())
+  await externalSmoke()
   check(!violations.length && !errors.length, JSON.stringify({ violations, errors }))
   for (const [object, name, blocked] of locked) check(Object.getOwnPropertyDescriptor(object, name)?.value === blocked, '系统剪贴板守卫被替换。')
 }
 async function main() {
   try {
     await run()
-    await writeFile(manifest.result, JSON.stringify({ ok: true, mode: manifest.mode, pid: process.pid, boundary: 'synthetic ClipboardEvent/private DataTransfer; emulated document focus with native pointers, modifiers, preference button and form click; system clipboard never used', samples, guarded, violations, errors, runtime: process.versions }, null, 2))
+    await writeFile(manifest.result, JSON.stringify({ ok: true, mode: manifest.mode, fingerprint: manifest.fingerprint, pid: process.pid, boundary: 'synthetic ClipboardEvent/private DataTransfer; emulated document focus with native pointers, modifiers, preference button and form click; system clipboard never used', samples, guarded, violations, errors, controlledErrors, controlledResponses, pasteRequests, trapRequests, runtime: process.versions }, null, 2))
     target?.destroy(); app.exit(0)
   } catch (error) {
-    await writeFile(manifest.result, JSON.stringify({ ok: false, mode: manifest.mode, pid: process.pid, guarded, violations, errors: [...errors, String(error.stack || error)], samples }, null, 2))
+    await writeFile(manifest.result, JSON.stringify({ ok: false, mode: manifest.mode, fingerprint: manifest.fingerprint, pid: process.pid, guarded, violations, errors: [...errors, String(error.stack || error)], samples, controlledErrors, controlledResponses, pasteRequests, trapRequests }, null, 2))
     target?.destroy(); app.exit(1)
   }
 }

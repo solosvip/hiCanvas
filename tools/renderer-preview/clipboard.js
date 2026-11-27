@@ -1,4 +1,5 @@
 import { createClipboardContent, MAX_CLIPBOARD_BYTES } from '../../engine/index.js'
+import { parseExternalClipboard } from './clipboard-external.js'
 
 // Fixtures explicitly choose private memory. Production clipboard bytes never
 // enter diagnostics; the editing layer receives only ordinary format strings.
@@ -10,18 +11,18 @@ export function createPreviewClipboard({ host, transport, sandbox = false, onErr
     copyContent: transport.copyContent || (({ snapshot, ids, boardId }) => createClipboardContent(snapshot, ids, { boardId })),
     async read() {
       reads++
-      if (active?.clipboardData) return readTransfer(active.clipboardData)
-      if (sandbox) return structuredClone(formats)
+      if (active?.clipboardData) return parseExternalClipboard(readTransfer(active.clipboardData), { document: doc })
+      if (sandbox) return parseExternalClipboard(structuredClone(formats), { document: doc })
       const clipboard = view.navigator.clipboard
       if (!clipboard) throw new Error('此窗口不支持读取剪贴板。')
-      if (!clipboard.read) return { 'text/plain': await clipboard.readText() }
+      if (!clipboard.read) return parseExternalClipboard({ 'text/plain': await clipboard.readText() }, { document: doc })
       const result = {}
       for (const item of await clipboard.read()) for (const type of ['text/plain', 'text/html']) if (item.types.includes(type)) {
         const blob = await item.getType(type)
         if (blob.size > MAX_CLIPBOARD_BYTES * (type === 'text/html' ? 6 : 1)) throw new Error('剪贴板内容超过大小上限。')
         result[type] = await blob.text()
       }
-      return result
+      return parseExternalClipboard(result, { document: doc })
     },
     async write(value) {
       writes++

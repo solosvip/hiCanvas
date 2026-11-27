@@ -8,7 +8,9 @@ function boundsOf(content) {
   const boxes = content.rootIds.map(id => getShapePageBounds(snapshot, id, context)).filter(Boolean)
   if (!boxes.length) throw new CanvasEditError('剪贴板对象没有可放置的边界。')
   const x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y))
-  return { x, y, w: Math.max(...boxes.map(b => b.x + b.w)) - x, h: Math.max(...boxes.map(b => b.y + b.h)) - y }
+  const bounds = { x, y, w: Math.max(...boxes.map(b => b.x + b.w)) - x, h: Math.max(...boxes.map(b => b.y + b.h)) - y }
+  if (![bounds.x, bounds.y, bounds.w, bounds.h].every(Number.isFinite)) throw new CanvasEditError('剪贴板对象的联合边界越界。')
+  return bounds
 }
 
 function usableParent(snapshot, id, pageId) {
@@ -47,12 +49,17 @@ function withinClippingFrames(snapshot, parent, point) {
 // overlap; an offscreen copy centers in the viewport. Cursor mode centers the
 // whole copied bounds at the current world point, including z=.5. Shift made
 // no change in either mode. The preference is session data, not a command.
-export function planClipboardPaste(snapshot, input, { viewport, point, atCursor = false, boardId = '', selectedIds = [], focusedGroupId = null } = {}) {
+export function planClipboardPaste(snapshot, input, { viewport, point, atCursor = false, boardId = '', selectedIds = [], focusedGroupId = null, strategy = 'default' } = {}) {
   const content = validateClipboardContent(input), bounds = boundsOf(content)
   if (!viewport || ![viewport.x, viewport.y, viewport.w, viewport.h].every(Number.isFinite) || viewport.w <= 0 || viewport.h <= 0) throw new CanvasEditError('粘贴需要有效的画布视口。')
-  if (atCursor && (!point || ![point.x, point.y].every(Number.isFinite))) throw new CanvasEditError('光标粘贴需要有效的世界坐标。')
+  if (!['default', 'viewport-page'].includes(strategy)) throw new CanvasEditError('不支持的粘贴落点策略。')
   const page = Object.values(snapshot.store).find(r => r.typeName === 'page')
   if (!page) throw new CanvasEditError('找不到粘贴画布。')
+  const center = { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }
+  // Observed external Excalidraw paste centers on the viewport's page even
+  // with cursor preference, an enclosing frame or a focused group (#176).
+  if (strategy === 'viewport-page') return { parentId: page.id, offset: { x: viewport.x + viewport.w / 2 - center.x, y: viewport.y + viewport.h / 2 - center.y } }
+  if (atCursor && (!point || ![point.x, point.y].every(Number.isFinite))) throw new CanvasEditError('光标粘贴需要有效的世界坐标。')
   let parent = usableParent(snapshot, focusedGroupId, page.id)
   if (!parent && atCursor) parent = frameAtPoint(snapshot, point, page.id)
   if (!parent && boardId && boardId === content.origin.boardId) {
@@ -60,7 +67,6 @@ export function planClipboardPaste(snapshot, input, { viewport, point, atCursor 
     if (parents.size === 1) parent = usableParent(snapshot, [...parents][0], page.id)
   }
   parent ||= page
-  const center = { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 }
   let destination = center
   if (atCursor) destination = point
   else if (bounds.x + bounds.w < viewport.x || bounds.y + bounds.h < viewport.y || bounds.x > viewport.x + viewport.w || bounds.y > viewport.y + viewport.h) {
