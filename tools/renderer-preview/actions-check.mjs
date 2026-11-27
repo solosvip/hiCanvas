@@ -13,7 +13,7 @@ await access(executable, constants.X_OK); await mkdir(output, { recursive: true 
 const run = await mkdtemp(join(output, 'run-'))
 let preview
 try {
-  preview = await startInteractionPreview({ port: Number(process.env.HICANVAS_ACTION_PORT || 43395), dataDir: join(run, 'data') })
+  preview = await startInteractionPreview({ port: Number(process.env.HICANVAS_ACTION_PORT || 43395), dataDir: join(run, 'data'), watch: false })
   const manifest = join(run, 'manifest.json')
   await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(run, 'profile'), output, result: join(output, 'result.json'), actionsOnly: true }))
   const code = await new Promise((yes, no) => {

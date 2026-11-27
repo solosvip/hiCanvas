@@ -12,7 +12,7 @@ test('隔离服务跨运行时重建仍可撤销自己的上次拖动并重做�
   const dir = await mkdtemp(resolve('.scratch/camera-service-'))
   let preview, session, interaction, count = 0, time = 0
   try {
-    preview = await startInteractionPreview({ dataDir: dir })
+    preview = await startInteractionPreview({ dataDir: dir, watch: false })
     const metadata = await (await fetch(preview.url + '/__renderer_fixture?count=500')).json()
     const query = '?conversation=' + metadata.conversationId, actor = 'camera-reload'
     const request = async (path, body) => {

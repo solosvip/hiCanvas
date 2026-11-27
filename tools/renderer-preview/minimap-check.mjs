@@ -14,7 +14,7 @@ await access(executable, constants.X_OK); await mkdir(output, { recursive: true 
 const profile = await mkdtemp(join(output, 'runtime-'))
 let preview
 try {
-  preview = await startRendererPreview({ port: Number(process.env.HICANVAS_MINIMAP_PORT || 43396) })
+  preview = await startRendererPreview({ port: Number(process.env.HICANVAS_MINIMAP_PORT || 43396), watch: false })
   await (await fetch(`${preview.url}/__renderer_fixture?count=5000`)).json()
   const manifest = join(profile, 'manifest.json'), result = join(output, process.argv.includes('--performance') ? 'performance.json' : 'smoke.json')
   await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(profile, 'profile'), output, result, performance: process.argv.includes('--performance') }))

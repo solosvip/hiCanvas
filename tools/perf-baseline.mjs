@@ -41,7 +41,7 @@ try {
   }
   if (options.renderer !== 'legacy') {
     const { startRendererPreview } = await import('./renderer-preview.mjs')
-    preview = await startRendererPreview({ port: options.previewPort })
+    preview = await startRendererPreview({ port: options.previewPort, watch: false })
     // Both hosts prepare synthetic data before navigation starts. Otherwise the
     // first preview sample would also time PNG generation absent from legacy.
     for (const count of options.sizes) {

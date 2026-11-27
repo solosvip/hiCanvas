@@ -11,7 +11,7 @@ import { prepareFixture } from '../perf/prepare.mjs'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 // Separate development host: production service and user data are never used.
 // A browser reload preserves records on disk. Undo/redo reuse the #82 host routes and actor-owned history.
-export async function startInteractionPreview({ port = 0, dataDir = resolve(root, '.scratch/interaction-preview') } = {}) {
+export async function startInteractionPreview({ port = 0, dataDir = resolve(root, '.scratch/interaction-preview'), watch = true } = {}) {
   if (port !== 0 && (!Number.isInteger(port) || port < 43300 || port > 65535)) throw new Error('隔离预览端口须在 43300–65535。')
   const base = await scratchPath(dataDir, root)
   const paths = { PROJECT_DIR: base, CANVAS_DIR: join(base, 'canvas'), SETTINGS_DIR: join(base, 'settings'), DESKTOP_CONFIG_DIR: join(base, 'desktop-config') }
@@ -79,9 +79,13 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
   const http = createHttpServer((req, res) => { void handle(req, res) })
   await new Promise((yes, no) => { http.once('error', no); http.listen(port, '127.0.0.1', yes) })
   try {
-    vite = await createViteServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: [...captureLibraryImports, 'react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port } } })
+    // Keep the Vite connection on this HTTP port; disabling its watcher stops
+    // updates without making the browser retry a missing WebSocket server.
+    vite = await createViteServer({ root, configFile: false, publicDir: false, appType: 'mpa', optimizeDeps: { entries: ['tools/renderer-preview/index.html'], noDiscovery: true, include: [...captureLibraryImports, 'react', 'react-dom', 'react-dom/client', '@tldraw/state', '@tldraw/state-react', '@tldraw/store', '@tldraw/tlschema', '@tldraw/utils', 'fontkit/core', 'fontkit/formats/WOFF2Font', 'fontkit/shapers/DefaultShaper', 'linebreak', 'unicode-segmenter/grapheme', 'unicode-segmenter/emoji'] }, server: { middlewareMode: true, ...(!watch && { watch: null }), hmr: { server: http, host: '127.0.0.1', clientPort: http.address().port } } })
   } catch (error) { http.closeAllConnections(); http.close(); throw error }
-  return { url: `http://127.0.0.1:${http.address().port}`, async close() {
+  // A read-only diagnostic snapshot lets checks distinguish no watchers from a
+  // broken update connection. Do not expose the mutable Vite server or watcher.
+  return { url: `http://127.0.0.1:${http.address().port}`, getWatchedPaths: () => Object.keys(vite.watcher.getWatched()), async close() {
     await vite.close(); http.closeAllConnections(); await new Promise((yes, no) => http.close(error => error ? no(error) : yes()))
   } }
 }

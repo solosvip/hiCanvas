@@ -13,7 +13,7 @@ test('隔离预览拒绝非 scratch 路径及正式端口', async () => {
 })
 
 test('真实隔离服务：一次拖动一次保存、刷新保持、提交只含拖动净变化，拒绝生图和旧快照写入口', async () => {
-  const dir = await mkdtemp(resolve('.scratch/selection-service-')), preview = await startInteractionPreview({ dataDir: dir })
+  const dir = await mkdtemp(resolve('.scratch/selection-service-')), preview = await startInteractionPreview({ dataDir: dir, watch: false })
   let session, interaction
   try {
     const metadata = await (await fetch(preview.url + '/__renderer_fixture?count=500')).json()
