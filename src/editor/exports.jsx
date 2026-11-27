@@ -1,4 +1,3 @@
-import {contentHostEnabled} from '../../renderer/index.js'
 // 基于 Cowart 38bdafeff47374ddbc11b12bddbc4f1f4cf14587 的 App.jsx 按职责拆分；MIT，© 2026 Twox。
 import { Box } from "tldraw"
 import { renderCowartFilmMp4 } from "../filmExport.js"
@@ -47,7 +46,7 @@ function cowartImageSlideHtml(dataUrl, title) {
 function cowartSlidesPlayerHtml(slidesName, pageFiles, isolatedScript) {
   const safeTitle = JSON.stringify(slidesName).replaceAll('<', '\\u003c')
   const safePages = JSON.stringify(pageFiles).replaceAll('<', '\\u003c')
-  const legacy = `<!doctype html>
+  const player = `<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -66,35 +65,17 @@ function cowartSlidesPlayerHtml(slidesName, pageFiles, isolatedScript) {
 <body>
   <main class="stage" id="stage"><div class="canvas" id="canvas"><iframe id="slide" title="Slides player"></iframe></div></main>
   <nav class="controls" id="controls" aria-label="翻页控制"><button id="prev" aria-label="上一页">‹</button><span class="count" id="count"></span><button id="next" aria-label="下一页">›</button></nav>
-  <script>
-    const title=${safeTitle}, pages=${safePages}; let index=0;
-    const stage=document.getElementById('stage'), canvas=document.getElementById('canvas'), frame=document.getElementById('slide'), count=document.getElementById('count'), prev=document.getElementById('prev'), next=document.getElementById('next');
-    document.title=title+' · Play';
-    function layout(){const scale=Math.min(innerWidth/1024,innerHeight/576);canvas.style.left=(innerWidth-1024*scale)/2+'px';canvas.style.top=(innerHeight-576*scale)/2+'px';canvas.style.transform='scale('+scale+')'}
-    function show(value){index=Math.max(0,Math.min(pages.length-1,value));frame.src=pages[index];count.textContent=(index+1)+' / '+pages.length;prev.disabled=index===0;next.disabled=index===pages.length-1}
-    function go(delta){show(index+delta)}
-    function isInteractiveClick(event){const target=event.target;return !!target?.closest?.('a[href],button,input,select,textarea,summary,video,audio,canvas,[contenteditable="true"],[onclick],[role="button"],[role="link"],[role="menuitem"],[role="tab"]')}
-    function handleKey(event){if(event.key==='ArrowLeft'){event.preventDefault();go(-1)}else if(event.key==='ArrowRight'||event.key===' '){event.preventDefault();go(1)}}
-    function bindSlideEvents(){try{const doc=frame.contentDocument;if(!doc)return;doc.addEventListener('click',event=>{if(!isInteractiveClick(event))go(1)});doc.addEventListener('keydown',handleKey)}catch(_error){}}
-    frame.addEventListener('load',bindSlideEvents);
-    stage.addEventListener('click',()=>go(1));
-    document.getElementById('controls').addEventListener('click',event=>event.stopPropagation());
-    prev.onclick=()=>go(-1);next.onclick=()=>go(1);
-    addEventListener('keydown',handleKey);addEventListener('resize',layout);
-    layout();
-    show(0);
-  </script>
-</body>
-</html>`
-  if (!isolatedScript) return legacy
-  const bootstrap = isolatedScript + `
+  <script>${(isolatedScript + `
     document.title=${safeTitle}+' · Play';
     const canvas=document.getElementById('canvas');
     function layout(){const scale=Math.min(innerWidth/1024,innerHeight/576);canvas.style.left=(innerWidth-1024*scale)/2+'px';canvas.style.top=(innerHeight-576*scale)/2+'px';canvas.style.transform='scale('+scale+')'}
     addEventListener('resize',layout);layout();
     hiCanvasOfflineSlides({pages:${safePages}});
-  `
-  return legacy.replace(/<script>[\s\S]*<\/script>/,()=>'<script>'+bootstrap.replaceAll('</script','<\\/script')+'</script>')
+  `).replaceAll('</script','<\\/script')}</script>
+</body>
+</html>`
+  if (!isolatedScript) throw new Error('离线播放器模块尚未就绪。')
+  return player
 }
 
 function downloadDataUrl(dataUrl, fileName) {
@@ -219,7 +200,7 @@ async function exportCowartSlides(editor, slidesShapeId, format) {
     return { directoryName, filePath: results[0]?.directoryPath, results }
   }
   let prepared
-  if (await contentHostEnabled()) {
+  {
     const pages=[]
     let bytes=0
     for (const [index,item] of items.entries()) {
@@ -235,17 +216,10 @@ async function exportCowartSlides(editor, slidesShapeId, format) {
   const pageFiles = []
   for (const [index, item] of items.entries()) {
     const fileName = `page-${String(index + 1).padStart(2, '0')}.html`
-    let htmlContent
-    if(prepared)htmlContent=prepared.pages[index]
-    else if (isCowartHtmlDraftEmbedShape(item)) {
-      htmlContent = await hydrateCowartHtmlDraftLocalImages(await readCowartHtmlDraftContent(item))
-    } else {
-      const imageDataUrl = await readCowartImageDataUrl(editor, item)
-      htmlContent = cowartImageSlideHtml(imageDataUrl, `${directoryName} · ${index + 1}`)
-    }
+    const htmlContent=prepared.pages[index]
     pageFiles.push(`pages/${fileName}`)
     const result = await downloadCowartFile({
-      dataUrl: prepared?await readFileAsDataUrl(new Blob([htmlContent],{type:'text/html'})):textDataUrl(htmlContent, 'text/html'),
+      dataUrl: await readFileAsDataUrl(new Blob([htmlContent],{type:'text/html'})),
       directoryName,
       subdirectory: 'pages',
       fileName,
@@ -257,12 +231,12 @@ async function exportCowartSlides(editor, slidesShapeId, format) {
     results.push(result)
   }
   results.push(await downloadCowartFile({
-    dataUrl: textDataUrl(cowartSlidesPlayerHtml(directoryName, pageFiles, prepared?.playerScript), 'text/html'),
+    dataUrl: textDataUrl(cowartSlidesPlayerHtml(directoryName, pageFiles, prepared.playerScript), 'text/html'),
     directoryName,
     fileName: 'Play.html',
     mimeType: 'text/html',
     overwrite: true
   }))
-  return { directoryName, filePath: results.at(-1)?.directoryPath, results, ...prepared?{externalResources:prepared.externalResources}:{} }
+  return { directoryName, filePath: results.at(-1)?.directoryPath, results, externalResources:prepared.externalResources }
 }
 export { cowartSlidesExportName, escapeHtmlText, cowartImageSlideHtml, cowartSlidesPlayerHtml, downloadDataUrl, downloadCowartImageShape, exportCowartHtmlDraft, exportCowartFilm, exportCowartSlides }

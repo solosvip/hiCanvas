@@ -64,7 +64,7 @@ try{
   await evaluate(`window.editProbe.setup(${JSON.stringify(manifest.shapeId)})`)
   await until(async()=>{try{return await child('document.readyState!=="loading"')}catch{return false}})
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');await contents.capturePage();await delay(100)
-  check('开关选用预期加载路径',(await evaluate('window.editProbe.state().isolated'))===manifest.enabled)
+  check('网页编辑始终经过实例通道',await evaluate('window.editProbe.state().isolated'))
   check('合成本地图片实际解码',await child('document.getElementById("raster").naturalWidth===1'))
   await begin()
   await child('window.__editInputTrace=[];document.addEventListener("pointerdown",event=>window.__editInputTrace.push({type:event.type,id:event.target.id,x:event.clientX,y:event.clientY}),true)')
@@ -92,9 +92,9 @@ try{
   check('真实编辑命令保存了输入',saved.html.includes('gamma!')&&saved.html.includes('edited')&&saved.html.includes('three!')&&saved.html.includes('Existing!'))
   check('保存无编辑标记和桥接残留',!/data-cowart-dom-editor-|cowart-dom-editor-style|\.hicanvas-channel|[a-f0-9]{48}\.localhost|blob:/i.test(saved.html))
   check('原始资源链接未变',saved.html.includes('href="'+origin+'/c/'+manifest.conversationId+'/assets/sample.css"'))
-  check('图片保存保留开关对应路径',manifest.enabled?saved.html.includes('src="/c/'+manifest.conversationId+'/assets/sample.png"'):saved.html.includes('src="data:image/png;base64,'))
+  check('图片保存保留资源原址',saved.html.includes('src="/c/'+manifest.conversationId+'/assets/sample.png"'))
   check('原有contenteditable和spellcheck未被清理',saved.html.includes('contenteditable="true" spellcheck="true"'))
-  if(manifest.enabled&&!manifest.observe){
+  {
     await begin();await element('second');await insert(' racing-A')
     check('输入后不等父状态即有子页退出保护',await child('(()=>{document.getElementById("second").dispatchEvent(new InputEvent("input",{bubbles:true}));const event=new Event("beforeunload",{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented})()'))
     await until(()=>unloadBlocked())
@@ -139,7 +139,7 @@ try{
     check('冲突后未保存退出保护仍生效',await unloadBlocked())
     observations.conflict={error:await evaluate('window.__editFlush.error'),requests:await evaluate('window.editProbe.requests')}
   }
-  await writeFile(join(manifest.output,(manifest.observe?'legacy':manifest.enabled?'on':'off')+'-window.png'),(await contents.capturePage()).toPNG())
+  await writeFile(join(manifest.output,'isolated'+'-window.png'),(await contents.capturePage()).toPNG())
   check('未发起公网请求',blocked.length===0)
   await writeFile(manifest.result,JSON.stringify({checks,observations,errors,blocked,runtime:process.versions},null,2)+'\n')
   window.destroy();app.exit(0)
@@ -147,7 +147,7 @@ try{
   observations.failure=await evaluate('({state:window.editProbe?.state(),flush:window.__editFlush,current:window.__cowartEditor?.store.getStoreSnapshot(),notice:document.querySelector("[data-hicanvas-save-error]")?.textContent})').catch(()=>null)
   observations.persisted=await persisted().catch(()=>null)
   await writeFile(manifest.result,JSON.stringify({checks,observations,errors,blocked,error:error.stack},null,2)+'\n')
-  await writeFile(join(manifest.output,'failed-'+(manifest.enabled?'on':'off')+'.png'),(await contents.capturePage()).toPNG())
+  await writeFile(join(manifest.output,'failed-'+'isolated'+'.png'),(await contents.capturePage()).toPNG())
   console.error(error);window.destroy();app.exit(1)
 }
 

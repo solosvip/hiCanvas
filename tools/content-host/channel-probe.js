@@ -18,7 +18,6 @@ window.startChannelPreview=async html=>{
   }
   const renderer=mountCanvasRenderer(document.querySelector('#canvas'),{store,pageId,loadGeneratedFrame:async(...args)=>{
     const frame=await loadGeneratedFrame(args[0],{...args[1],fetcher});frames.push(frame)
-    if(!frame.bind)return frame
     return {...frame,bind(iframe,options){
       const bound=frame.bind(iframe,options)
       if(options.film){loadVersion++;channel=bound;controller?.dispose();controller=channel.attachFilmController({onStatus:status})}

@@ -33,22 +33,21 @@ try{
   const executable=process.env.HICANVAS_TEST_ELECTRON||join(root,'node_modules/electron/dist',(await readFile(join(root,'node_modules/electron/path.txt'),'utf8')).trim())
   await access(executable,constants.X_OK)
   const captureFont=(await readFile(join(root,'renderer/fonts/files/ibm-plex-sans/IBMPlexSans-Bold.woff2'))).toString('base64')
-  for(const enabled of [false,true]){
-    const key=enabled?'on':'off'
-    service=createHiCanvasService({distDir,canvasDir:join(runtime,key,'canvas'),settingsDir:join(runtime,key,'settings'),contentHostEnabled:enabled})
+  for(const key of ['first','repeat']){
+    service=createHiCanvasService({distDir,canvasDir:join(runtime,key,'canvas'),settingsDir:join(runtime,key,'settings')})
     await new Promise((resolve,reject)=>{service.once('error',reject);service.listen(port,'127.0.0.1',resolve)})
     const url='http://127.0.0.1:'+port,health=await(await fetch(url+'/api/health')).json()
     const result=join(output,key+'.json'),manifest=join(runtime,'manifest.json')
-    await writeFile(manifest,JSON.stringify({url,output,result,profile:join(runtime,'profile-'+key),contentCaptureOnly:true,contentSecurityOnly:true,securityEnabled:enabled,contentPort:health.contentHost.port,scriptUrl:url,captureFont}))
+    await writeFile(manifest,JSON.stringify({url,output,result,profile:join(runtime,'profile-'+key),contentCaptureOnly:true,contentSecurityOnly:true,sample:key,contentPort:health.contentHost.port,scriptUrl:url,captureFont}))
     await runElectron(executable,[join(root,'tools/renderer-preview/electron.mjs'),manifest])
     service.closeAllConnections();await new Promise(resolve=>service.close(resolve));service=null
   }
   // Pixel comparison runs in a fresh Electron process for its built-in PNG
   // decoder. No extra image tools or browser downloads are installed.
   const compare=join(runtime,'compare.cjs'),report=join(output,'pixels.json')
-  await writeFile(compare,`const{app,nativeImage}=require('electron'),fs=require('node:fs'),path=require('node:path');app.setActivationPolicy?.('prohibited');const results=[];try{for(const key of ['png','copy','annotation','page-01','page-02']){const images=['off','on'].map(mode=>nativeImage.createFromPath(path.join(${JSON.stringify(output)},mode+'-'+key+'.png')));const size=images[0].getSize();if(JSON.stringify(size)!==JSON.stringify(images[1].getSize()))throw Error('尺寸改变 '+key);const a=images[0].toBitmap(),b=images[1].toBitmap();let changed=0,total=0,red=0,green=0;for(let i=0;i<a.length;i+=4){let max=0;for(let c=0;c<4;c++){const d=Math.abs(a[i+c]-b[i+c]);total+=d;max=Math.max(max,d)}if(max>8)changed++;if(a[i+2]>180&&a[i+1]<120)red++;if(a[i+1]>100&&a[i+2]<80)green++}const ratio=changed/(a.length/4),mean=total/a.length;if(ratio>.01||mean>.5)throw Error('像素差异超限 '+key+' '+ratio+' '+mean);if(red<1000||green<1000)throw Error('素材未真实出现 '+key+' '+red+' '+green);results.push({key,...size,changedPixels:changed,ratio,mean,red,green})}fs.writeFileSync(${JSON.stringify(report)},JSON.stringify({tolerance:{channelDelta:8,maxChangedRatio:.01,maxMeanAbsoluteDifference:.5},results},null,2));app.exit(0)}catch(error){console.error(error);app.exit(1)}`)
+  await writeFile(compare,`const{app,nativeImage}=require('electron'),fs=require('node:fs'),path=require('node:path');app.setActivationPolicy?.('prohibited');const results=[];try{for(const key of ['png','copy','annotation','page-01','page-02']){const images=['first','repeat'].map(mode=>nativeImage.createFromPath(path.join(${JSON.stringify(output)},mode+'-'+key+'.png')));const size=images[0].getSize();if(JSON.stringify(size)!==JSON.stringify(images[1].getSize()))throw Error('尺寸改变 '+key);const a=images[0].toBitmap(),b=images[1].toBitmap();let changed=0,total=0,red=0,green=0;for(let i=0;i<a.length;i+=4){let max=0;for(let c=0;c<4;c++){const d=Math.abs(a[i+c]-b[i+c]);total+=d;max=Math.max(max,d)}if(max>8)changed++;if(a[i+2]>180&&a[i+1]<120)red++;if(a[i+1]>100&&a[i+2]<80)green++}const ratio=changed/(a.length/4),mean=total/a.length;if(ratio>.01||mean>.5)throw Error('像素差异超限 '+key+' '+ratio+' '+mean);if(red<1000||green<1000)throw Error('素材未真实出现 '+key+' '+red+' '+green);results.push({key,...size,changedPixels:changed,ratio,mean,red,green})}fs.writeFileSync(${JSON.stringify(report)},JSON.stringify({tolerance:{channelDelta:8,maxChangedRatio:.01,maxMeanAbsoluteDifference:.5},results},null,2));app.exit(0)}catch(error){console.error(error);app.exit(1)}`)
   await runElectron(executable,[compare],30000)
-  console.log('四截图入口原生开关对照通过；证据：'+output)
+  console.log('四截图入口及重复像素一致性通过；证据：'+output)
 }finally{
   if(service){service.closeAllConnections();await new Promise(resolve=>service.close(resolve))}
   await rm(runtime,{recursive:true,force:true})

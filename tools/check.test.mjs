@@ -29,7 +29,7 @@ function fixture(run) {
     write('AGENTS.md', '# Fixture rules\n')
     mkdirSync(join(root, 'tools'))
     // 临时仓库复用正式检查器所用的解析器，不另装环境或软链依赖。
-    write('tools/check.mjs', readFileSync(checker, 'utf8').replace("from '@babel/parser'", `from '${import.meta.resolve('@babel/parser')}'`))
+    for(const name of ['check.mjs','check-content-isolation.mjs'])write('tools/'+name, readFileSync(join(dirname(checker),name), 'utf8').replace("from '@babel/parser'", `from '${import.meta.resolve('@babel/parser')}'`))
     run({ root, git, write, check })
   } finally {
     rmSync(root, { recursive: true, force: true })

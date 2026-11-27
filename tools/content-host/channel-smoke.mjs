@@ -9,14 +9,19 @@ export async function channelSmoke(window,manifest,createPreviewWindow){
   const checks=[],check=(name,value)=>{checks.push({name,pass:!!value});if(!value)throw new Error(name)}
   const until=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){const value=await predicate();if(value)return value;await delay(20)}throw new Error('实例通道原生冒烟等待超时')}
   async function click(selector){
+    // DOM readiness precedes Chromium's native hit-test commit. Settle that
+    // frame before sending real input, especially after the ready status.
+    await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+    await contents.capturePage()
     const point=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),r=e?.getBoundingClientRect();if(!e||e.disabled||!r.width)throw new Error('控件不可用：'+${JSON.stringify(selector)});return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`)
+    contents.sendInputEvent({type:'mouseMove',...point})
     for(const type of ['mouseDown','mouseUp'])contents.sendInputEvent({type,...point,button:'left',clickCount:1})
   }
   await window.loadURL(manifest.url+'/?conversation='+manifest.conversationId)
   const play='button[aria-label="播放影片"]',pause='button[aria-label="暂停影片"]',mute='button[aria-label="静音影片"]',range='input[aria-label="影片进度"]'
   await until(()=>evaluate(`document.querySelector(${JSON.stringify(play)})?.disabled===false`))
   const before=await evaluate("(()=>{const frame=document.querySelector('iframe[data-cowart-html-draft-shape-id]');return {url:frame.src,srcdoc:frame.hasAttribute('srcdoc'),blocked:!frame.contentDocument}})()")
-  check('旧界面开启时确实跨来源，关闭时保留直接DOM',manifest.securityEnabled?before.blocked&&!before.srcdoc:!before.blocked&&before.srcdoc)
+  check('旧界面生成页始终跨来源且无srcdoc',before.blocked&&!before.srcdoc)
   await click(play)
   await until(()=>evaluate(`document.querySelector(${JSON.stringify(range)}).valueAsNumber>.15`))
   await click(pause)
@@ -28,8 +33,8 @@ export async function channelSmoke(window,manifest,createPreviewWindow){
   check('旧界面原生定位仍暂停，时间显示同步',await evaluate(`!!document.querySelector(${JSON.stringify(play)})&&document.querySelector(${JSON.stringify(range)}).valueAsNumber<1.9`))
   await click(mute)
   await until(()=>evaluate('document.querySelector(\'button[aria-label="取消静音"]\')?.getAttribute("aria-pressed")==="true"'))
-  await writeFile(join(manifest.output,'legacy-'+(manifest.securityEnabled?'on-':'off-')+manifest.variant+'.png'),(await contents.capturePage()).toPNG())
-  if(manifest.securityEnabled){
+  await writeFile(join(manifest.output,'legacy-isolated-'+manifest.variant+'.png'),(await contents.capturePage()).toPNG())
+  {
     await until(()=>evaluate(`fetch('/api/canvas?conversation='+${JSON.stringify(manifest.conversationId)},{headers:{'x-hicanvas-client':'1'}}).then(r=>{if(!r.ok)throw new Error('合成画板读取失败：'+r.status);return r.json()}).then(result=>Object.values(result.snapshot.store).some(record=>record.meta?.cowartFilmMuted===true))`))
     check('静音经原有保存路径写回合成画板',true)
     // Keep the real editor alive: navigation would abort its unrelated pending
@@ -55,10 +60,9 @@ export async function channelSmoke(window,manifest,createPreviewWindow){
     check('新渲染页重载后新通道仍可播放',true)
     await click('#pause')
     await until(()=>evaluate('window.__channelSmoke.getState().status.playing===false'))
-    await writeFile(join(manifest.output,'renderer-on-'+manifest.variant+'.png'),(await contents.capturePage()).toPNG())
+    await writeFile(join(manifest.output,'renderer-isolated-'+manifest.variant+'.png'),(await contents.capturePage()).toPNG())
     await evaluate('window.__channelSmoke.unmount()')
     preview.destroy()
     return {checks,oldUrl:before.url,urls}
   }
-  return {checks,oldUrl:before.url}
 }

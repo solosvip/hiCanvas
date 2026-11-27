@@ -46,7 +46,7 @@ try{
   const {startStrokePreview,startProductionStrokePreview}=await import('./strokes-host.mjs')
   if(!(await readFile(join(repositoryRoot,'dist/index.html'),'utf8')).includes('/app-assets/'))throw new Error('先运行npm run build。')
   const workspace=createConversations(process.env.HICANVAS_CANVAS_DIR),fixtures=new Map()
-  service=createHiCanvasService({distDir:join(repositoryRoot,'dist'),canvasDir:process.env.HICANVAS_CANVAS_DIR,settingsDir:process.env.HICANVAS_SETTINGS_DIR,contentHostEnabled:false})
+  service=createHiCanvasService({distDir:join(repositoryRoot,'dist'),canvasDir:process.env.HICANVAS_CANVAS_DIR,settingsDir:process.env.HICANVAS_SETTINGS_DIR})
   await new Promise((resolve,reject)=>{service.once('error',reject);service.listen(options.port,'127.0.0.1',resolve)})
   const productionPreview=process.env.HICANVAS_STROKE_DEV!=='1'
   preview=productionPreview?await startProductionStrokePreview(fixtures,options.previewPort,join(runtime,'preview-dist')):await startStrokePreview(fixtures,options.previewPort)

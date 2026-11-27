@@ -11,7 +11,7 @@ import { createServer } from 'vite'
 import { build } from 'esbuild'
 
 test('裁剪修补保留祖先变换后裁剪的顺序及当前层效果', async () => {
-  await import('../src/html2canvasClipFix.js')
+  await import('../content-channel/index.js')
   const { ElementPaint } = await import('html2canvas/dist/lib/render/stacking-context.js')
   const { ClipEffect, TransformEffect, OpacityEffect } = await import('html2canvas/dist/lib/render/effects.js')
   const transform = new TransformEffect(40, 30, [1, 0, 0, 1, -40, -30])
@@ -53,7 +53,7 @@ test('真实 Vite 开发转换后的 HTML 捕获入口可加载，裁剪与克�
     root: fileURLToPath(new URL('../', import.meta.url)),
     cacheDir,
     logLevel: 'silent',
-    optimizeDeps: { entries: ['src/htmlDraftCapture.js'] },
+    optimizeDeps: { entries: ['content-channel/index.js'] },
     server: { middlewareMode: true, hmr: false },
   })
   http = createHttpServer(server.middlewares)
@@ -63,7 +63,7 @@ test('真实 Vite 开发转换后的 HTML 捕获入口可加载，裁剪与克�
   // output preserves Vite's interop expressions; bundling the source directly
   // would skip the development-only bug and give a false green result.
   const result = await build({
-    entryPoints: [base + '/src/htmlDraftCapture.js'],
+    entryPoints: [base + '/content-channel/index.js'],
     bundle: true, write: false, format: 'cjs', platform: 'browser', logLevel: 'silent',
     plugins: [{
       name: 'served-vite-modules',
@@ -87,5 +87,5 @@ test('真实 Vite 开发转换后的 HTML 捕获入口可加载，裁剪与克�
     // Report the application error without dumping the bundled dependency stack.
     assert.fail(`开发模式 HTML 捕获入口加载失败：${error.message}`)
   }
-  assert.equal(typeof module.exports.renderHtmlDraftDocument, 'function', '捕获入口应加载完成，供画板渲染导出使用')
+  assert.equal(typeof module.exports.renderHtmlDraftDocument, 'function', '捕获入口应加载完成，供内容页内部截图使用')
 })

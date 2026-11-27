@@ -1,4 +1,4 @@
-import {contentSandbox} from '../content-channel/index.js'
+import {isolatedContentSandbox} from '../content-channel/index.js'
 import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { httpError } from './file-lock.mjs'
@@ -20,14 +20,15 @@ export function createContentHost({now=Date.now,ttl=30*60*1000,maxHtmlBytes=5*10
     try{path=new URL(req.url,'http://localhost').pathname}catch{res.writeHead(400).end();return}
     const file=instance.files.get(path)
     if(!file){res.writeHead(404).end();return}
-    res.writeHead(200,{'content-type':file.type,'content-length':file.bytes.length,'cache-control':'no-store','content-security-policy':`${'sandbox '+contentSandbox(true)}; frame-ancestors ${instance.parentOrigin} 'self'`,'x-content-type-options':'nosniff','referrer-policy':'no-referrer','cross-origin-resource-policy':'same-origin'})
+    const sandbox=isolatedContentSandbox(`http://${instance.hostname}`,{port:server.address().port,parentOrigin:instance.parentOrigin})
+    res.writeHead(200,{'content-type':file.type,'content-length':file.bytes.length,'cache-control':'no-store','content-security-policy':`sandbox ${sandbox}; frame-ancestors ${instance.parentOrigin} 'self'`,'x-content-type-options':'nosniff','referrer-policy':'no-referrer','cross-origin-resource-policy':'same-origin'})
     res.end(req.method==='HEAD'?undefined:file.bytes)
   })
   async function info() {
     if(closed)throw httpError('内容宿主已关闭。',503)
     listening ||= new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)})
     await listening
-    return {enabled:true,port:server.address().port,leaseMs:ttl}
+    return {port:server.address().port,leaseMs:ttl}
   }
   function authorize(id,token) {
     sweep()

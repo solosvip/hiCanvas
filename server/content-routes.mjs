@@ -6,13 +6,12 @@ import {sendJson} from './protocol.mjs'
 import {httpError} from './file-lock.mjs'
 
 // Called only after the main service's unchanged read AND client guards.
-export function createContentRoutes(workspace,enabled=process.env.HICANVAS_CONTENT_HOST==='1') {
-  const host=enabled?createContentHost({prepare:createContentAssets(workspace)}):null
+export function createContentRoutes(workspace) {
+  const host=createContentHost({prepare:createContentAssets(workspace)})
   return {
-    info:()=>host?host.info():{enabled:false},
-    close:()=>host?.close(),
+    info:()=>host.info(),
+    close:()=>host.close(),
     async handle(req,res){
-      if(!host)throw httpError('内容宿主开关未开启。',404)
       const body=await jsonBody(req)
       if(new URL(req.url,'http://localhost').pathname==='/api/content-host/slides-export'){
         if(req.method!=='POST')throw httpError('方法不支持。',405)

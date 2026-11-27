@@ -7,7 +7,7 @@ export async function filmSmoke(window,manifest){
   const until=async predicate=>{const end=Date.now()+90000;while(Date.now()<end){const result=await predicate();if(result)return result;await delay(20)}throw new Error('影片原生回归等待超时')}
   await window.loadURL(manifest.url+'/tools/content-host/film.html')
   await until(()=>evaluate('typeof window.startFilmPreview==="function"'))
-  await evaluate(`window.startFilmPreview(${JSON.stringify({enabled:manifest.securityEnabled,font:manifest.captureFont})})`)
+  await evaluate(`window.startFilmPreview(${JSON.stringify({font:manifest.captureFont})})`)
   await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
   await contents.capturePage();await delay(100)
   const clicks=[]
@@ -18,7 +18,7 @@ export async function filmSmoke(window,manifest){
     await until(async()=>{const state=await evaluate('({done:window.__filmSmoke.completed,error:window.__filmSmoke.error,elapsed:window.__filmSmoke.artifacts.elapsed,slow:window.__filmSmoke.artifacts.slow,slowAudio:window.__filmSmoke.artifacts.slowAudio})');if(state.error)throw new Error(key+' '+state.error+' '+JSON.stringify(state));return state.done.includes(key)})
     clicks.push(key)
   }
-  const state=await evaluate('({checks:window.__filmSmoke.checks,artifacts:window.__filmSmoke.artifacts})'),key=manifest.securityEnabled?'on':'off'
+  const state=await evaluate('({checks:window.__filmSmoke.checks,artifacts:window.__filmSmoke.artifacts})'),key=manifest.sample
   for(const [index,frame]of state.artifacts.frames.entries())await writeFile(join(manifest.output,key+'-frame-'+index+'.png'),Buffer.from(frame.png.split(',')[1],'base64'))
   for(const [index,channel]of state.artifacts.pcm.entries())await writeFile(join(manifest.output,key+'-pcm-'+index+'.f32'),Buffer.from(channel,'base64'))
   for(const [index,channel]of state.artifacts.legacy.pcm.entries())await writeFile(join(manifest.output,key+'-legacy-pcm-'+index+'.f32'),Buffer.from(channel,'base64'))

@@ -9,10 +9,10 @@ import { requireLocalRead } from './local-request.mjs'
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.woff2': 'font/woff2', '.woff': 'font/woff', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4' }
 
 // 桌面版和 MCP 使用与 Vite 插件完全相同的接口，只替换静态文件宿主。
-export function createHiCanvasService({ distDir, canvasDir, settingsDir, contentHostEnabled }) {
+export function createHiCanvasService({ distDir, canvasDir, settingsDir }) {
   const workspace = createConversations(canvasDir)
   const images = createImageMiddleware({ workspace, settingsDir })
-  const canvas = createCanvasMiddleware({ workspace, settingsDir, contentHostEnabled })
+  const canvas = createCanvasMiddleware({ workspace, settingsDir })
   const root = resolve(distDir)
   async function staticFile(req, res) {
     try {

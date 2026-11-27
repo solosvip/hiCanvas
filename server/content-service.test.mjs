@@ -9,11 +9,11 @@ import http from 'node:http'
 const contentGet=url=>new Promise((resolve,reject)=>{
   const u=new URL(url);http.get({hostname:'127.0.0.1',port:u.port,path:u.pathname,headers:{host:u.host},agent:false},res=>{const chunks=[];res.on('data',x=>chunks.push(x));res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,text:Buffer.concat(chunks).toString()}))}).on('error',reject)
 })
-async function setup(t,enabled=false){
+async function setup(t){
   const scratch=fileURLToPath(new URL('../.scratch/',import.meta.url));await mkdir(scratch,{recursive:true})
   const root=await mkdtemp(join(scratch,'content-host-')),distDir=join(root,'dist'),canvasDir=join(root,'canvas')
   await mkdir(distDir);await writeFile(join(distDir,'index.html'),'<h1>host</h1>')
-  const service=createHiCanvasService({distDir,canvasDir,settingsDir:join(root,'settings'),contentHostEnabled:enabled})
+  const service=createHiCanvasService({distDir,canvasDir,settingsDir:join(root,'settings')})
   await new Promise(resolve=>service.listen(0,'127.0.0.1',resolve))
   t.after(async()=>{service.closeAllConnections();await new Promise(resolve=>service.close(resolve));await rm(root,{recursive:true,force:true})})
   const base=`http://127.0.0.1:${service.address().port}`
@@ -23,12 +23,10 @@ async function setup(t,enabled=false){
   }
   return {root,canvasDir,base,api,service}
 }
-test('开关默认关闭；开启后的启动信息提供运行时端口，只有父来源可登记和撤销',async t=>{
-  const off=await setup(t)
-  assert.deepEqual((await off.api('/api/health')).body.contentHost,{enabled:false})
-  assert.equal((await off.api('/api/content-host/instances','POST',{html:'<h1>x</h1>'})).status,404)
-  const on=await setup(t,true),health=(await on.api('/api/health')).body
-  assert.equal(health.contentHost.enabled,true);assert.ok(health.contentHost.port)
+test('启动信息始终提供内容宿主运行时端口，只有父来源可登记和撤销',async t=>{
+  const on=await setup(t),health=(await on.api('/api/health')).body
+  assert.ok(Number.isInteger(health.contentHost.port))
+  assert.equal('enabled' in health.contentHost,false)
   const denied=await on.api('/api/content-host/instances','POST',{html:'x'},{origin:'http://attacker.localhost:1'})
   assert.equal(denied.status,403)
   const created=await on.api('/api/content-host/instances','POST',{html:'<h1>x</h1>'})
@@ -40,7 +38,7 @@ test('开关默认关闭；开启后的启动信息提供运行时端口，只�
   assert.equal((await contentGet(created.body.url)).status,403)
 })
 test('仅发布本页授权素材及其CSS依赖，禁止越画板、路径和符号链接，直接HTML与SVG带沙箱',async t=>{
-  const {root,canvasDir,api,base}=await setup(t,true)
+  const {root,canvasDir,api,base}=await setup(t)
   const {conversation}= (await api('/api/conversations/open','POST',{title:'synthetic'})).body
   const id=conversation.id,dir=join(canvasDir,'conversations',id,'assets'),prefix=`/c/${id}/assets/`
   await mkdir(dir,{recursive:true})
@@ -61,7 +59,7 @@ test('仅发布本页授权素材及其CSS依赖，禁止越画板、路径和�
 })
 
 test('关闭主服务同时停止内容端口',async t=>{
-  const {service,api}=await setup(t,true)
+  const {service,api}=await setup(t)
   const created=await api('/api/content-host/instances','POST',{html:'<h1>close</h1>'})
   assert.equal((await contentGet(created.body.url)).status,200)
   service.closeAllConnections();await new Promise(resolve=>service.close(resolve))
@@ -70,12 +68,21 @@ test('关闭主服务同时停止内容端口',async t=>{
   await assert.rejects(contentGet(created.body.url),e=>e.code==='ECONNREFUSED')
 })
 
-test('离线准备接口仅接受隔离开关打开的父客户端，不给子来源读取资源',async t=>{
+test('离线准备接口仅接受父客户端，不给子来源读取资源',async t=>{
   const payload={pages:[{html:'<p>合成离线页</p>'}]}
-  const off=await setup(t)
-  assert.equal((await off.api('/api/content-host/slides-export','POST',payload)).status,404)
-  const on=await setup(t,true)
+  const on=await setup(t)
   for(const headers of [{origin:'http://attacker.localhost:1'},{'x-hicanvas-client':'0'}])assert.equal((await on.api('/api/content-host/slides-export','POST',payload,headers)).status,403)
   const result=await on.api('/api/content-host/slides-export','POST',payload)
   assert.equal(result.status,200);assert.ok(result.body.pages[0].endsWith(payload.pages[0].html));assert.deepEqual(result.body.externalResources,[])
+})
+
+
+test('画板首页与静态入口禁止被嵌入，不能靠子页导航取得画板身份',async t=>{
+  const {base}=await setup(t)
+  for(const path of ['/','/index.html']){
+    const response=await fetch(base+path)
+    assert.equal(response.status,200)
+    assert.equal(response.headers.get('x-frame-options'),'DENY')
+    assert.equal(response.headers.get('content-security-policy'),"frame-ancestors 'none'")
+  }
 })

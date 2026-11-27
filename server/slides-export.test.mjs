@@ -5,7 +5,7 @@ import {mkdir,mkdtemp,writeFile,rm,readdir} from 'node:fs/promises'
 import {fileURLToPath} from 'node:url'
 import {join} from 'node:path'
 import {prepareOfflineSlides} from './slides-export.mjs'
-import {contentSandbox,CONTENT_CAPABILITIES} from '../content-channel/content-policy.js'
+import {contentSandbox,isolatedContentSandbox,CONTENT_CAPABILITIES} from '../content-channel/content-policy.js'
 
 async function fixture(t){
   const directory=await mkdtemp(fileURLToPath(new URL('../.scratch/slides-export-',import.meta.url))),assets=join(directory,'assets');await mkdir(assets)
@@ -41,8 +41,13 @@ test('后页缺资源、跨画板或循环依赖明确失败，预检不留下�
 })
 test('应用与离线的脚本、表单、弹窗及网络规则相同，只有来源隔离方式不同',()=>{
   assert.deepEqual(contentSandbox().split(' '),CONTENT_CAPABILITIES)
-  assert.deepEqual(contentSandbox(true).split(' ').filter(value=>value!=='allow-same-origin'),CONTENT_CAPABILITIES)
+  assert.deepEqual(isolatedContentSandbox(`http://${'a'.repeat(48)}.localhost:43386`,{port:43386,parentOrigin:context.parentOrigin}).split(' ').filter(value=>value!=='allow-same-origin'),CONTENT_CAPABILITIES)
   assert.ok(!contentSandbox().includes('allow-same-origin'))
+})
+test('来源权限构造拒绝画板地址、伪造随机域、错误端口与缺失父来源',()=>{
+  const valid=`http://${'a'.repeat(48)}.localhost:43386/document.html`,options={port:43386,parentOrigin:context.parentOrigin}
+  for(const value of [context.parentOrigin,'http://localhost:43386','http://attacker.localhost:43386',valid.replace('.localhost:', '.localhost.attacker.invalid:'),valid.replace('43386','43387'),valid.replace('http:', 'https:'),valid.replace('http://','http://user@')])assert.throws(()=>isolatedContentSandbox(value,options),/来源无效/,value)
+  for(const invalid of [{},{port:43386},{port:'43386',parentOrigin:context.parentOrigin},{...options,parentOrigin:valid},{...options,parentOrigin:'https://external.invalid'}])assert.throws(()=>isolatedContentSandbox(valid,invalid),/来源无效/)
 })
 test('正文引语、textarea里的标签与JS字符串不当作模块；外部base保持原解析',async t=>{
   const {workspace}=await fixture(t)

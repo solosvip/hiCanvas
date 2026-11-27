@@ -13,14 +13,18 @@ import { createAgentRequests } from './agent-requests.mjs'
 import { saveExport } from './exports.mjs'
 import { createContentRoutes } from './content-routes.mjs'
 
-export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir, contentHostEnabled } = {}) {
+export function createCanvasMiddleware({ root, workspace = root ? createConversations(root) : conversations, agentOptions, settingsDir } = {}) {
   const events = getCanvasEvents(workspace)
   const media = createCanvasMedia(workspace)
   const requests = createAgentRequests(workspace, agentOptions)
-  const content = createContentRoutes(workspace, contentHostEnabled)
+  const content = createContentRoutes(workspace)
   const middleware = async (req, res, next) => {
     const url = new URL(req.url, 'http://localhost')
     const path = url.pathname
+    // A generated page may navigate its own frame. The canvas must never
+    // become a framed same-origin document, even after an HTTP redirect.
+    res.setHeader('content-security-policy',"frame-ancestors 'none'")
+    res.setHeader('x-frame-options','DENY')
     const actor = req.headers['x-hicanvas-actor'] || 'http'
     if (!path.startsWith('/api/') && !/^\/c\//.test(path) && !/^\/(?:page-assets|assets)\//.test(path)) return next()
     if (path.startsWith('/api/image')) return next()
