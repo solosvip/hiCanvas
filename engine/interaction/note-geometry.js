@@ -1,5 +1,6 @@
 import { getShapeBounds } from '../../renderer/geometry.js'
 import { connectionCoordinates } from './connection-coordinates.js'
+import { styledCreation } from './style-definitions.js'
 
 // 2026-11-26 opaque legacy app; native clicks and public getShapeHandles /
 // shape records: edge midpoints, 200-square paper, gap10 * scale. Half/double
@@ -18,9 +19,9 @@ export function adjacentNote(context, source, direction, id = `shape:${globalThi
   const existing = context.index.hitsAtPoint(center).find(candidate => candidate !== source.id && context.index.getRecord(candidate)?.type === 'note' && context.index.getRecord(candidate).parentId === source.parentId && context.targets.isSelectable(candidate))
   if (existing) return { id: existing, commands: [] }
   const c = Math.cos(source.rotation), s = Math.sin(source.rotation)
-  return { id, commands: [{ type: 'create_shape', id, shapeType: 'note', parentId: source.parentId, rotation: source.rotation,
+  return { id, commands: styledCreation({ type: 'create_shape', id, shapeType: 'note', parentId: source.parentId, rotation: source.rotation,
     x: source.x + c * offset.x - s * offset.y, y: source.y + s * offset.x + c * offset.y,
-    props: { ...source.props, growY: 0, textFirstEditedBy: null, richText: { type: 'doc', content: [{ type: 'paragraph' }] }, url: '' } }] }
+    props: { ...source.props, growY: 0, textFirstEditedBy: null, richText: { type: 'doc', content: [{ type: 'paragraph' }] }, url: '' } }, { props: {}, opacity: source.opacity }) }
 }
 
 // First strong letter, respecting an explicit rich-text direction. Native

@@ -4,6 +4,36 @@ import assert from 'node:assert/strict'
 import { drawFixture, points } from './draw-fixture.mjs'
 import { getStrokeGeometry, hitTestCanvas } from '../renderer/geometry.js'
 
+for (const tool of ['draw', 'highlight']) test(`${tool} 起手样式只取一次；Shift续段保持原ID和样式，新笔迹才取新默认`, async () => {
+  const f = await drawFixture()
+  try {
+    f.interaction.setTool(tool)
+    f.pointer('down', 100, 100, { shiftKey: true }); await f.pointer('up', 180, 100, { shiftKey: true })
+    const first = f.shapes()[0]
+    assert.equal(first.props.color, 'black', '旧版荧光笔存black，由渲染层映成黄色')
+    await f.interaction.setStyles({ color: 'red', opacity: .25, size: 'xl', dash: 'dotted', fill: 'solid', font: 'mono' })
+    f.pointer('down', 240, 160, { shiftKey: true }); await f.pointer('up', 240, 160, { shiftKey: true })
+    const continued = f.shapes()[0]
+    assert.equal(continued.id, first.id)
+    assert.deepEqual([continued.props.color, continued.props.size, continued.opacity], ['black', 'm', 1])
+    assert.equal(points(continued).length, 2)
+    f.key('Shift', {}, 'up')
+    f.pointer('down', 400, 300, { pointerType: 'pen', pressure: .4 })
+    assert.equal((await f.interaction.setStyles({ color: 'blue' })).reason, 'pointer-gesture')
+    f.pointer('move', 450, 320, { pointerType: 'pen', pressure: .8 })
+    await f.pointer('up', 500, 300, { pointerType: 'pen', pressure: 0 })
+    const fresh = f.shapes()[1]
+    assert.notEqual(fresh.id, first.id)
+    assert.deepEqual([fresh.props.color, fresh.props.size, fresh.opacity], ['red', 'xl', .25])
+    assert.equal(Object.hasOwn(fresh.props, 'font'), false)
+    if (tool === 'draw') assert.deepEqual([fresh.props.dash, fresh.props.fill], ['dotted', 'solid'])
+    else assert.equal(Object.hasOwn(fresh.props, 'dash'), false)
+    assert.deepEqual(points(fresh)[0].points.map(p => Math.round(p.z * 100) / 100), [.5, 1, 1])
+    await f.session.undo(); assert.deepEqual(f.shapes(), [continued])
+    await f.session.redo(); assert.deepEqual(f.shapes(), [continued, fresh])
+  } finally { f.close() }
+})
+
 for (const tool of ['draw', 'highlight']) test(`${tool} 逐帧预览保存全部微小采样，松手仅一次提交，撤销重做整条笔画`, async () => {
   const f = await drawFixture()
   try {

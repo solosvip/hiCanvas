@@ -1,12 +1,18 @@
-import { freezeStyles, initialStyles } from './style-definitions.js'
+import { creationStyles, freezeStyles, initialStyles } from './style-definitions.js'
 import { checkedStyles, planStyles } from './style-actions.js'
 import { queryStyles, styleShapes } from './style-query.js'
 import { findCanvasShortcut } from './shortcuts.js'
+import { CanvasEditError } from '../errors.js'
 
-export function createStyleSession({ read, change, targets, session, report, textEditing }) {
+export function createStyleSession({ read, change, targets, session, report, textEditing, creation }) {
   let disposed = false
   change({ styles: freezeStyles({ next: { ...initialStyles } }) })
-  const adopt = values => { if (!disposed) change({ styles: freezeStyles({ next: { ...read().styles.next, ...values } }), lastError: null }) }
+  const adopt = values => {
+    if (disposed) return
+    const changedGeo = Object.hasOwn(values, 'geo') && values.geo !== read().styles.next.geo
+    change({ styles: freezeStyles({ next: { ...read().styles.next, ...values } }), lastError: null })
+    if (changedGeo && read().toolId === 'geo') creation.toolChanged('geo')
+  }
   function blocked() {
     if (session.state.get().isSubmitting) return 'submitting'
     if (read().croppingId) return 'cropping'
@@ -40,6 +46,13 @@ export function createStyleSession({ read, change, targets, session, report, tex
     }
   }
   return {
+    creation: type => creationStyles(read().styles.next, type),
+    setCreationGeo(geo) {
+      const values = checkedStyles({ geo })
+      if (geo === read().styles.next.geo) return
+      if (blocked() || read().textEditing) throw new CanvasEditError('正在进行其他编辑，暂时不能改几何默认。', 'busy')
+      adopt(values)
+    },
     get: () => queryStyles(read().styles.next, read().selectedIds, styleShapes(targets.records, read().selectedIds)),
     set,
     handle(input) {

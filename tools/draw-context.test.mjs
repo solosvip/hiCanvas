@@ -92,7 +92,8 @@ test('A10 荧光笔两档压力沿用等宽几何；同一笔画保持一条路�
     assert.equal(a.props.segments.length, 1); assert.equal(b.props.segments.length, 1)
     assert.ok(Math.abs(getStrokeGeometry(a).bounds.h - 26.88) < .001)
     assert.ok(Math.abs(getStrokeGeometry(a).bounds.h - getStrokeGeometry(b).bounds.h) < .001)
-    assert.equal(f.commits.length, 2); assert.equal(a.props.color, 'yellow')
+    // black 由渲染层画成黄色，依据是 #194 第 0 组旧版观察。
+    assert.equal(f.commits.length, 2); assert.equal(a.props.color, 'black')
   } finally { f.close() }
 })
 

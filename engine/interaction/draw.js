@@ -12,7 +12,7 @@ const toLocal = (point, r) => {
 export const createDrawTool = context => createStrokeTool(context, 'draw')
 export const createHighlightTool = context => createStrokeTool(context, 'highlight')
 
-function createStrokeTool({ session, index, targets, read, change, report }, type) {
+function createStrokeTool({ session, index, targets, read, change, report, creationStyles }, type) {
   let gesture = null, continuation = null, generation = 0
   function releaseKey(key) { if (key === 'Shift') { continuation = null; generation++ } }
   function cancel() {
@@ -55,8 +55,9 @@ function createStrokeTool({ session, index, targets, read, change, report }, typ
       const parentId = index.hitsAtPoint(page, 0).map(id => index.getRecord(id)).find(r => r.type === 'frame' && targets.isSelectable(r.id))?.id || state.focusedGroupId
       const origin = targets.lineage(parentId).reverse().reduce(toLocal, page)
       const siblings = targets.records.childIds(parentId).map(id => index.getRecord(id)?.index).filter(Boolean).sort()
-      shape = { id: `shape:${globalThis.crypto.randomUUID()}`, typeName: 'shape', type, parentId, x: origin.x, y: origin.y, rotation: 0, index: getIndexAbove(siblings.at(-1) || 'a0'), isLocked: false, opacity: 1, meta: {},
-        props: { color: type === 'draw' ? 'black' : 'yellow', size: 'm', segments: [], isComplete: false, isPen: input.pointerType === 'pen', scale: 1, scaleX: 1, scaleY: 1, ...(type === 'draw' && { fill: 'none', dash: 'draw', isClosed: false }) } }
+      const styles = creationStyles(type)
+      shape = { id: `shape:${globalThis.crypto.randomUUID()}`, typeName: 'shape', type, parentId, x: origin.x, y: origin.y, rotation: 0, index: getIndexAbove(siblings.at(-1) || 'a0'), isLocked: false, opacity: styles.opacity, meta: {},
+        props: { ...styles.props, segments: [], isComplete: false, isPen: input.pointerType === 'pen', scale: 1, scaleX: 1, scaleY: 1, ...(type === 'draw' && { isClosed: false }) } }
       first = { x: 0, y: 0, z: strokePressure(input) }
     }
     session.beginGesture()

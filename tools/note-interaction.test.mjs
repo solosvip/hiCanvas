@@ -25,6 +25,29 @@ test('便签显式创建后复用文字会话，创建和首次输入整次撤�
   } finally { f.close() }
 })
 
+test('普通便签取下一对象默认，四边相邻继承来源整体透明度且不污染默认', async () => {
+  for (const direction of ['top', 'right', 'bottom', 'left']) {
+    const f = await creationFixture({ commands: [putNote('shape:note', 300, 300, { richText: content('Source'), color: 'blue', font: 'sans', size: 's', align: 'start', verticalAlign: 'start' }, { opacity: .75 })] })
+    try {
+      await f.interaction.setStyles({ color: 'red', size: 'xl', font: 'mono', align: 'end', verticalAlign: 'end', opacity: .25 })
+      await f.click(400, 400)
+      const handle = f.interaction.state.get().overlays.find(o => o.kind === 'note').handles.find(h => h.id === direction)
+      await f.click(handle.x, handle.y)
+      const id = f.interaction.state.get().textEditing.id
+      f.interaction.editText({ type: 'update', content: content('Adjacent') }); await f.key('Escape')
+      const adjacent = f.current().store[id]
+      assert.deepEqual([adjacent.props.color, adjacent.props.font, adjacent.props.size, adjacent.props.align, adjacent.props.verticalAlign, adjacent.opacity], ['blue', 'sans', 's', 'start', 'start', .75])
+      await f.session.undo(); assert.equal(f.shapes().length, 1)
+      await f.session.redo(); assert.deepEqual(f.current().store[id], adjacent)
+      f.interaction.setTool('note'); await f.click(1000, 650)
+      f.interaction.editText({ type: 'update', content: content('Ordinary') }); await f.key('Escape')
+      const ordinary = f.shapes().at(-1)
+      assert.deepEqual([ordinary.props.color, ordinary.props.font, ordinary.props.size, ordinary.props.align, ordinary.props.verticalAlign, ordinary.opacity], ['red', 'mono', 'xl', 'end', 'end', .25])
+      assert.equal(f.commits.length, 2)
+    } finally { f.close() }
+  }
+})
+
 test('已有便签双击编辑，无宿主姓名时署名保持空值', async () => {
   const f = await creationFixture({ commands: [{ type: 'put', record: note }] })
   try {
@@ -75,11 +98,13 @@ for (const [direction,x,y] of [['top',300,90],['right',510,300],['bottom',300,51
 })
 
 for(const [key,mods,x,y] of [['Tab',{},510,300],['Tab',{shiftKey:true},90,300],['Enter',{metaKey:true},300,510],['Enter',{ctrlKey:true,shiftKey:true},300,90]])test(`便签续建 ${key} ${JSON.stringify(mods)} 整次提交源文和新邻居`,async()=>{
- const f=await creationFixture({commands:[putNote('shape:note',300,300)]})
+ const f=await creationFixture({commands:[putNote('shape:note',300,300,{}, {opacity:.75})]})
  try{
+  await f.interaction.setStyles({opacity:.25,color:'red'})
   await begin(f); f.interaction.editText({type:'update',content:content('Source')}); await f.key(key,mods)
   assert.equal(f.commits.length,1);const id=f.interaction.state.get().textEditing.id
   assert.notEqual(id,'shape:note'); assert.deepEqual([f.shapes().find(s=>s.id===id).x,f.shapes().find(s=>s.id===id).y],[x,y])
+  assert.equal(f.current().store[id].opacity,.75);assert.equal(f.interaction.getStyles().next.opacity,.25)
   await f.key('Escape');assert.equal(f.commits.length,1)
   await f.session.undo();assert.equal(f.shapes().length,1);assert.deepEqual(f.shapes()[0].props.richText,content(''))
   assert.equal(Object.values(f.current().store).some(r=>r.typeName==='instance'),false)
