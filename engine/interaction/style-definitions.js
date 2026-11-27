@@ -36,3 +36,20 @@ export const styleDefinitions = freezeStyles({
 export const initialStyles = freezeStyles(Object.fromEntries(Object.entries(styleDefinitions).map(([key, definition]) => [key, definition.initial])))
 export const supportsStyle = (shape, definition) => shape?.typeName === 'shape' && shape.type !== 'group' && (definition.types === '*' || definition.types.includes(shape.type))
 export const styleValue = (shape, definition) => (definition.root ? shape : shape.props)[definition.field]
+
+// Creation and selection share this registry, including root/props mapping.
+// Capture once at pointer-down; geometry updates must not re-read defaults.
+export function creationStyles(next, type) {
+  const shape = { typeName: 'shape', type }, result = { props: {} }
+  for (const [key, definition] of Object.entries(styleDefinitions)) {
+    if (supportsStyle(shape, definition)) (definition.root ? result : result.props)[definition.field] = next[key]
+  }
+  return freezeStyles(result)
+}
+
+export function styledCreation(command, styles) {
+  // create_shape deliberately retains its standalone document defaults. Root
+  // styles use an update inside the same gesture, never new command semantics.
+  return [{ ...command, props: { ...command.props, ...styles.props } },
+    ...(styles.opacity === 1 ? [] : [{ type: 'update', id: command.id, changes: { opacity: styles.opacity } }])]
+}

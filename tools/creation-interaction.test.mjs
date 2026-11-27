@@ -148,3 +148,31 @@ test('创建选项严格校验、只读且不提交；关闭后的新增方法�
   assert.throws(()=>f.interaction.setCreationOptions({geo:'star'}),/关闭/)
   assert.throws(()=>f.interaction.useRecentTool(),/关闭/)
 })
+
+test('几何默认两入口同源；G保留当前默认，最近工具回取历史变体但不回退颜色', async () => {
+  const f = await creationFixture()
+  try {
+    f.interaction.setCreationOptions({ geo: 'pentagon' })
+    assert.equal(f.interaction.getStyles().next.geo, 'pentagon')
+    f.interaction.setTool('geo'); await f.click(350, 300)
+    f.interaction.select('clear')
+    await f.interaction.setStyles({ geo: 'trapezoid', color: 'red' })
+    assert.equal(f.interaction.state.get().creation.geo, 'trapezoid')
+    f.key('g'); await f.click(650, 300)
+    assert.deepEqual(f.shapes().map(s => s.props.geo), ['pentagon', 'trapezoid'])
+    f.interaction.select('clear')
+    await f.interaction.setStyles({ geo: 'octagon', color: 'white' })
+    f.interaction.useRecentTool()
+    assert.equal(f.interaction.getStyles().next.geo, 'trapezoid')
+    await f.click(950, 300)
+    assert.deepEqual([f.shapes()[2].props.geo, f.shapes()[2].props.color], ['trapezoid', 'white'])
+    f.interaction.setTool('geo'); f.pointer('down', 200, 500)
+    const config = f.interaction.state.get().creation, defaults = f.interaction.getStyles().next
+    assert.throws(() => f.interaction.setCreationOptions({ geo: 'cloud', toolLocked: true }), /进行|忙碌/)
+    assert.deepEqual(f.interaction.state.get().creation, config)
+    assert.deepEqual(f.interaction.getStyles().next, defaults)
+    assert.throws(() => f.interaction.setCreationOptions({ geo: 'cloud', dynamicSize: 'bad' }))
+    assert.deepEqual(f.interaction.getStyles().next, defaults)
+    f.key('Escape')
+  } finally { f.close() }
+})

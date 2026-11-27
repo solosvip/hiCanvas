@@ -71,6 +71,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   function change(patch = {}) {
     if (disposed) return
     const previous = read(), next = { ...previous, ...patch }
+    if (next.creation && next.styles) next.creation = Object.freeze({ ...next.creation, geo: next.styles.next.geo })
     next.erasingIds = Object.freeze([...(next.erasingIds || [])])
     next.eraser = next.eraser ? Object.freeze({ ...next.eraser, ids: Object.freeze([...next.eraser.ids]), points: Object.freeze(next.eraser.points.map(p => Object.freeze({ ...p }))), bounds: Object.freeze({ ...next.eraser.bounds }) }) : null
     if (Object.hasOwn(patch, 'lastError')) next.lastNotice = null
@@ -127,13 +128,14 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   }
   const context = { session, index, targets, selection, duplicates, handleMetrics: metrics, controlPointSnapping, snapModifier, displayName, read, change, report, measureFrameTitle, pageId: activePage, returnToSelect: () => { if (!disposed && toolIds.includes('select')) setTool('select') } }
   snaps = createSnapping(context, snapping); context.snapping = snaps
-  const creation = createCreationControls({ read, change, switchTool: setTool, canUseTool: id => toolIds.includes(id) })
+  const creation = createCreationControls({ read, change, switchTool: setTool, canUseTool: id => toolIds.includes(id), setGeo: geo => styles.setCreationGeo(geo) })
   context.creation = creation
   cropTool = createImageCrop(context)
   navigation = createCameraNavigation({ session, read, change, content, cancelTool: () => { cancelTool(); cropTool.cancel() }, setTool: id => { if (!toolIds.includes(id)) return false; setTool(id); return true }, inputDevice, invertZoom, reduceMotion })
   minimap = createMinimapInteraction({ session, read, change, content, navigation })
   context.navigation = navigation
   const prepareText = () => { cancelTool(); cropTool.cancel(); navigation.cancel() }
+  context.creationStyles = type => styles.creation(type)
   const textEditing = createTextEditing({ ...context, prepare: prepareText, inputContext: value => keyboard.context(value), setStyles: (patch, ids) => styles.set(patch, ids), stylesCommitted: patch => styles.adopt(patch) })
   context.textEditing = textEditing
   const styles = createStyleSession({ ...context, textEditing })

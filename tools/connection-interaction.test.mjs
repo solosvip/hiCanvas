@@ -16,6 +16,40 @@ const drag = async (f, from, to, modifiers = {}) => { f.pointer('down', ...from)
 async function select(f, x = 350, y = 450) { await f.click(x, y); assert.equal(f.interaction.state.get().selectedIds.length, 1) }
 async function transact(f, commands) { f.session.beginGesture(); f.session.preview(commands); return f.session.commitGesture() }
 
+test('新线和箭头取适用默认，箭头绑定及整体透明度保留；线续段不覆盖原样式', async () => {
+  for (const type of ['line', 'arrow']) {
+    const f = await creationFixture({ commands: [target()] })
+    try {
+      await f.interaction.setStyles({ color: 'red', opacity: .5, dash: 'dotted', size: 'xl', font: 'mono', fill: 'solid', spline: 'cubic', arrowKind: 'elbow', arrowheadStart: 'dot', arrowheadEnd: 'diamond' })
+      f.interaction.setCreationOptions({ toolLocked: true })
+      f.interaction.setTool(type); await drag(f, [200, 450], [650, 250])
+      const first = f.shapes().find(s => s.type === type)
+      assert.deepEqual([first.props.color, first.props.dash, first.props.size, first.opacity], ['red', 'dotted', 'xl', .5])
+      if (type === 'arrow') {
+        assert.deepEqual([first.props.kind, first.props.font, first.props.fill, first.props.arrowheadStart, first.props.arrowheadEnd], ['elbow', 'mono', 'solid', 'dot', 'diamond'])
+        assert.equal(bindings(f).length, 1)
+        assert.equal(bindings(f)[0].toId, 'shape:target')
+        assert.equal(Object.hasOwn(first.props, 'spline'), false)
+      } else {
+        assert.equal(first.props.spline, 'cubic')
+        assert.equal(Object.hasOwn(first.props, 'font'), false)
+        f.interaction.select('clear')
+        await f.interaction.setStyles({ color: 'blue', opacity: .25, dash: 'solid', size: 's', spline: 'line' })
+        await f.click(850, 450, { shiftKey: true })
+        const continued = f.current().store[first.id]
+        assert.deepEqual([continued.props.color, continued.props.dash, continued.props.size, continued.props.spline, continued.opacity], ['red', 'dotted', 'xl', 'cubic', .5])
+        assert.equal(points(continued).length, 3)
+        await f.click(1000, 650)
+        const fresh = f.shapes().at(-1)
+        assert.notEqual(fresh.id, first.id)
+        assert.deepEqual([fresh.props.color, fresh.props.dash, fresh.props.size, fresh.props.spline, fresh.opacity], ['blue', 'solid', 's', 'line', .25])
+        await f.session.undo(); assert.deepEqual(f.current().store[first.id], continued)
+        await f.session.redo(); assert.deepEqual(f.current().store[fresh.id], fresh)
+      }
+    } finally { f.close() }
+  }
+})
+
 test('箭头和线条显式开放，默认产品工具不变；创建整次撤销', async () => {
   for (const type of ['arrow', 'line']) {
     const f = await creationFixture()

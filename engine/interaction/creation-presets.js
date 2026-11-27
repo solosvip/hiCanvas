@@ -2,12 +2,10 @@
 // dimensions, not interface styles; star and cloud have distinct click sizes.
 export const geometryVariants = Object.freeze(['rectangle', 'ellipse', 'triangle', 'diamond', 'hexagon', 'oval', 'rhombus', 'star', 'cloud', 'heart', 'x-box', 'check-box', 'arrow-left', 'arrow-right', 'arrow-up', 'arrow-down', 'pentagon', 'octagon', 'rhombus-2', 'trapezoid'])
 export const creationToolIds = Object.freeze(['geo', 'frame', 'text', 'note', 'line', 'arrow', 'ai-image', 'ai-draft', 'ai-film', 'ai-slides'])
-// Native blank-double and toolbar-drag text records, 2026-11-26: font=draw.
-export const textCreationProps = Object.freeze({ font: 'draw' })
 
 export function geometryPreset(geo) {
   const [w, h] = geo === 'star' ? [200, 190] : geo === 'cloud' ? [300, 180] : [200, 200]
-  return { id: 'geo', shapeType: 'geo', w, h, props: { geo, dash: 'draw', font: 'draw' } }
+  return { id: 'geo', shapeType: 'geo', w, h }
 }
 
 // hiCanvas's MIT holder records, independently read back through the running

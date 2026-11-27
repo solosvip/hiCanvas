@@ -4,6 +4,7 @@ import { CanvasEditError } from '../errors.js'
 import { captureCreationParent } from './creation-parent.js'
 import { connectionCoordinates, constrainConnectionPoint, distance, linePoints } from './connection-coordinates.js'
 import { captureBindingTargets, createTerminalBinding } from './connection-binding.js'
+import { styledCreation } from './style-definitions.js'
 
 export const createArrowTool = context => createConnectionTool(context, 'arrow')
 export const createLineTool = context => createConnectionTool(context, 'line')
@@ -27,13 +28,9 @@ function createConnectionTool(context, type) {
     point = constrainConnectionPoint(g.origin, point, input.shiftKey && !g.continuing)
     if (!g.moved && !g.continuing) point = { x: .1, y: .1 }
     const props = type === 'line' ? { points: { ...g.points, [g.endId]: { id: g.endId, index: g.endId, ...point } } } : { end: point }
-    const commands = [g.expected ? { type: 'update', id: g.id, changes: { props } } : {
-      // Native tools.more.arrow drag record, 2026-11-26: draw dash/font,
-      // local start zero and end at the pointer delta.
-      type: 'create_shape', id: g.id, shapeType: type, ...g.parent.pose(g.point), props: { dash: 'draw', font: 'draw', ...props },
-    }]
-    // The line schema has no font; arrow uses the legacy drawing font.
-    if (!g.expected && type === 'line') delete commands[0].props.font
+    const commands = g.expected ? [{ type: 'update', id: g.id, changes: { props } }] : styledCreation({
+      type: 'create_shape', id: g.id, shapeType: type, ...g.parent.pose(g.point), props,
+    }, g.styles)
     if (type === 'arrow') {
       if (!g.expected) {
         // First create the record so candidate filtering can see its ancestry.
@@ -59,7 +56,7 @@ function createConnectionTool(context, type) {
     const origin = continuing ? points.at(replace ? -2 : -1) : { x: 0, y: 0 }, endId = continuing ? replace ? points.at(-1).id : getIndexAbove(points.at(-1).index) : 'a2'
     const id = continuing ? last.id : `shape:${globalThis.crypto.randomUUID()}`
     session.beginGesture()
-    gesture = { id, pointerId: input.pointerId, point, screen: input.point, before: [...read().selectedIds], parent, coordinates, continuing, origin, endId,
+    gesture = { id, pointerId: input.pointerId, point, screen: input.point, styles: continuing ? null : context.creationStyles(type), before: [...read().selectedIds], parent, coordinates, continuing, origin, endId,
       points: continuing ? last.props.points : { a1: { id: 'a1', index: 'a1', x: 0, y: 0 } },
       moved: false, expected: continuing ? JSON.stringify(last) : null, bindings: JSON.stringify(context.targets.records.bindingsFrom(id)),
       targetsMatch: captureBindingTargets(context, id),

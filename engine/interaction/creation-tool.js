@@ -2,6 +2,7 @@ import { screenToCanvas } from '../../renderer/geometry.js'
 import { CanvasEditError } from '../errors.js'
 import { draggedCreationBounds } from './creation-bounds.js'
 import { captureCreationParent } from './creation-parent.js'
+import { styledCreation } from './style-definitions.js'
 
 // All creation previews use the runtime's local gesture; the host receives a
 // single transaction on pointer-up. No tool/session fields enter the document.
@@ -27,7 +28,7 @@ export function createCreationTool(context, definition) {
     const sized = { ...preset, w: preset.w * scale, h: preset.h * scale, props: { ...preset.props, ...(preset.shapeType === 'geo' && { scale }) } }
     const point = screenToCanvas(screenPoint, read().camera), parent = captureCreationParent(context, source === 'toolbar' ? null : point)
     session.beginGesture()
-    gesture = { pointerId, screenPoint, point, parent, definition: sized, selectedIds: [...read().selectedIds], id: `shape:${globalThis.crypto.randomUUID()}`, created: false, generation: context.creation.generation(), forceSelect }
+    gesture = { pointerId, screenPoint, point, parent, definition: sized, styles: context.creationStyles(preset.shapeType), selectedIds: [...read().selectedIds], id: `shape:${globalThis.crypto.randomUUID()}`, created: false, generation: context.creation.generation(), forceSelect }
     change({ mode: 'pointing', selectedIds: [], lastError: null })
   }
   function down(input) { if (input.button === 0 && !gesture) start(input.point, input.pointerId, source === 'toolbar') }
@@ -41,9 +42,9 @@ export function createCreationTool(context, definition) {
     const { x, y, w, h } = bounds
     if (source === 'toolbar') gesture.parent = captureCreationParent(context, { x: x + w / 2, y: y + h / 2 }, gesture.id)
     const pose = gesture.parent.pose(bounds)
-    session.preview([gesture.created
-      ? { type: 'update', id: gesture.id, changes: { ...pose, props: { w, h } } }
-      : { type: 'create_shape', id: gesture.id, shapeType, ...pose, props: { ...props, w, h }, meta }])
+    session.preview(gesture.created
+      ? [{ type: 'update', id: gesture.id, changes: { ...pose, props: { w, h } } }]
+      : styledCreation({ type: 'create_shape', id: gesture.id, shapeType, ...pose, props: { ...props, w, h }, meta }, gesture.styles))
     gesture.created = true
     gesture.expected = JSON.stringify(session.store.get(gesture.id))
     change({ selectedIds: [gesture.id] })

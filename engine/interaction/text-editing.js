@@ -3,10 +3,9 @@ import { react } from '@tldraw/state'
 import { isEqual } from '@tldraw/utils'
 import { captureCreationParent } from './creation-parent.js'
 import { getShapeTextLayout } from '../../renderer/geometry.js'
-import { textCreationProps } from './creation-presets.js'
 import { createNoteAuthor } from './note-author.js'
 import { checkedStyles, planStyles } from './style-actions.js'
-import { styleDefinitions, supportsStyle, styleValue } from './style-definitions.js'
+import { styledCreation, styleDefinitions, supportsStyle, styleValue } from './style-definitions.js'
 
 const supported = new Set(['text', 'geo', 'arrow', 'frame', 'note'])
 const contentOf = shape => shape.type === 'frame' ? shape.props.name : shape.props.richText
@@ -36,7 +35,11 @@ export function createTextEditing(context) {
   function begin(id, adopt = false) {
     if (active) throw new CanvasEditError('请先结束当前文字编辑。', 'busy')
     const shape = index.getRecord(id)
-    if (!canBegin(id)) return false
+    // Only the creation hand-off may edit its own zero-opacity preview. Saved
+    // hidden shapes and invisible/locked ancestors retain normal access rules.
+    const chain = adopt && shape?.opacity === 0 && session.state.get().isGestureActive && targets.lineage(id)
+    const hiddenCreation = chain && chain.at(-1)?.parentId === targets.pageId && chain.every(record => !record.isLocked && (record.opacity !== 0 || record.id === id))
+    if (!canBegin(id) && !(hiddenCreation && supported.has(shape.type))) return false
     if (!adopt) { prepare(); session.beginGesture() }
     active = { id, kind: shape.type, epoch: ++epoch, content: structuredClone(contentOf(shape)), original: structuredClone(contentOf(shape)), previewed: structuredClone(contentOf(shape)), originalAuthor: shape.props.textFirstEditedBy ?? null, previewedAuthor: shape.props.textFirstEditedBy ?? null, revision: session.state.get().revision, authorExisted: session.store.has(noteAuthor.recordId), selection: null, conflict: null, styles: {}, originalStyles: {}, previewedOpacity: shape.opacity }
     change({ selectedIds: [id] }); publish()
@@ -48,7 +51,7 @@ export function createTextEditing(context) {
     prepare()
     const id = `shape:${globalThis.crypto.randomUUID()}`, parent = captureCreationParent(context, point)
     session.beginGesture()
-    session.preview([{ type: 'create_shape', id, shapeType: 'text', ...parent.pose(point), props: { ...textCreationProps, w: 1, autoSize: true } }])
+    session.preview(styledCreation({ type: 'create_shape', id, shapeType: 'text', ...parent.pose(point), props: { w: 1, autoSize: true } }, context.creationStyles('text')))
     return begin(id, true)
   }
   function releaseContext() { if (read().inputContext.owner === 'text-editing') inputContext({ owner: 'canvas' }) }

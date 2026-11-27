@@ -1,7 +1,7 @@
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { CanvasEditError } from '../errors.js'
 import { captureCreationParent } from './creation-parent.js'
-import { textCreationProps } from './creation-presets.js'
+import { styledCreation } from './style-definitions.js'
 
 // Text reuses the existing canvas pointer slop, not a guessed legacy text
 // threshold. The confirmed legacy long drag (200,300)->(900,300) yields w700.
@@ -25,8 +25,8 @@ export function createTextTool(context) {
     const point = screenToCanvas(input.point, read().camera), fixed = source !== 'toolbar' && gesture.moved
     const bounds = { x: source === 'toolbar' ? point.x : Math.min(gesture.point.x, fixed ? point.x : gesture.point.x), y: source === 'toolbar' ? point.y : gesture.point.y, w: fixed ? Math.max(1, Math.abs(point.x - gesture.point.x)) : 1 }
     if (source === 'toolbar') gesture.parent = captureCreationParent(context, point, gesture.id)
-    const pose = gesture.parent.pose(bounds), props = { ...textCreationProps, w: bounds.w, autoSize: !fixed }
-    session.preview([gesture.expected ? { type: 'update', id: gesture.id, changes: { ...pose, props } } : { type: 'create_shape', id: gesture.id, shapeType: 'text', ...pose, props }])
+    const pose = gesture.parent.pose(bounds), props = { w: bounds.w, autoSize: !fixed }
+    session.preview(gesture.expected ? [{ type: 'update', id: gesture.id, changes: { ...pose, props } }] : styledCreation({ type: 'create_shape', id: gesture.id, shapeType: 'text', ...pose, props }, gesture.styles))
     gesture.expected = JSON.stringify(index.getRecord(gesture.id))
     change({ mode: gesture.moved ? 'dragging' : 'pointing', selectedIds: [gesture.id] })
   }
@@ -34,7 +34,7 @@ export function createTextTool(context) {
     if (input.type === 'pointer_down' && input.button === 0 && !gesture) {
       const point = screenToCanvas(input.point, read().camera)
       session.beginGesture()
-      gesture = { pointerId: input.pointerId, point, screen: input.point, before: [...read().selectedIds], id: `shape:${globalThis.crypto.randomUUID()}`, parent: captureCreationParent(context, source === 'toolbar' ? null : point) }
+      gesture = { pointerId: input.pointerId, point, screen: input.point, styles: context.creationStyles('text'), before: [...read().selectedIds], id: `shape:${globalThis.crypto.randomUUID()}`, parent: captureCreationParent(context, source === 'toolbar' ? null : point) }
       preview(input)
     } else if (input.type === 'pointer_move') preview(input)
     else if (input.type === 'pointer_up' && gesture?.pointerId === input.pointerId) {

@@ -3,7 +3,7 @@ import { geometryVariants, creationToolIds } from './creation-presets.js'
 
 // Product choices stay in the interaction atom. They never become commands,
 // preferences in a document record, or entries in an actor's undo history.
-export function createCreationControls({ read, change, switchTool, canUseTool }) {
+export function createCreationControls({ read, change, switchTool, canUseTool, setGeo }) {
   let generation = 0, toolbarTool = null
   change({ creation: Object.freeze({ geo: 'rectangle', toolLocked: false, dynamicSize: false, recentTool: null, dragFromToolbar: false }) })
   function endToolbar() {
@@ -33,9 +33,8 @@ export function createCreationControls({ read, change, switchTool, canUseTool })
     if (!patch || typeof patch !== 'object' || Array.isArray(patch) || Object.keys(patch).some(key => !['geo', 'toolLocked', 'dynamicSize'].includes(key))) throw new Error('创建选项需要已知的属性。')
     if (Object.hasOwn(patch, 'geo') && !geometryVariants.includes(patch.geo)) throw new Error('未知的几何变体。')
     for (const key of ['toolLocked', 'dynamicSize']) if (Object.hasOwn(patch, key) && typeof patch[key] !== 'boolean') throw new Error('工具锁和动态尺寸需要布尔值。')
-    const changedGeo = Object.hasOwn(patch, 'geo') && patch.geo !== read().creation.geo
+    if (Object.hasOwn(patch, 'geo')) setGeo(patch.geo)
     change({ creation: Object.freeze({ ...read().creation, ...patch }) })
-    if (changedGeo && read().toolId === 'geo') toolChanged('geo')
   }
   function useRecentTool() {
     const recent = read().creation.recentTool || { toolId: 'geo', geo: read().creation.geo }

@@ -1,6 +1,7 @@
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { captureCreationParent } from './creation-parent.js'
 import { CanvasEditError } from '../errors.js'
+import { styledCreation } from './style-definitions.js'
 
 // Native N click(400,350) -> paper(300,250). Drag to(600,450) ->(500,350),
 // unchanged 200-square paper, then shared text editing. Pointerup adopts the
@@ -22,7 +23,7 @@ export function createNoteTool(context) {
     gesture.moved ||= Math.hypot(input.point.x - gesture.screen.x, input.point.y - gesture.screen.y) > 4
     const point = screenToCanvas(input.point, read().camera)
     gesture.parent = captureCreationParent(context, point, gesture.id)
-    session.preview([gesture.expected ? { type: 'update', id: gesture.id, changes: gesture.parent.pose({ x: point.x - 100, y: point.y - 100 }) } : { type: 'create_shape', id: gesture.id, shapeType: 'note', ...gesture.parent.pose({ x: point.x - 100, y: point.y - 100 }) }])
+    session.preview(gesture.expected ? [{ type: 'update', id: gesture.id, changes: gesture.parent.pose({ x: point.x - 100, y: point.y - 100 }) }] : styledCreation({ type: 'create_shape', id: gesture.id, shapeType: 'note', ...gesture.parent.pose({ x: point.x - 100, y: point.y - 100 }) }, gesture.styles))
     gesture.expected = JSON.stringify(index.getRecord(gesture.id))
     change({ mode: gesture.moved ? 'dragging' : 'pointing', selectedIds: [gesture.id] })
   }
@@ -30,7 +31,7 @@ export function createNoteTool(context) {
     if (input.type === 'pointer_down' && input.button === 0 && !gesture) {
       const point = screenToCanvas(input.point, read().camera)
       session.beginGesture()
-      gesture = { id: `shape:${globalThis.crypto.randomUUID()}`, pointerId: input.pointerId, screen: input.point, before: [...read().selectedIds], parent: captureCreationParent(context, point) }
+      gesture = { id: `shape:${globalThis.crypto.randomUUID()}`, pointerId: input.pointerId, screen: input.point, styles: context.creationStyles('note'), before: [...read().selectedIds], parent: captureCreationParent(context, point) }
       preview(input)
     } else if (input.type === 'pointer_move') preview(input)
     else if (input.type === 'pointer_up' && gesture?.pointerId === input.pointerId) {
