@@ -48,7 +48,7 @@ test('淡化只通知目标的订阅，不写Store；删除再恢复ID不会继�
   } finally { preview.dispose(); f.close() }
 })
 
-test('淡化解析令牌alpha并乘原opacity，清除后不残留；坏令牌明确拒绝', async () => {
+test('淡化解析令牌alpha并乘原opacity，清除后不残留；缺令牌仍可挂载，显示淡化时才明确拒绝', async () => {
   const f = await drawFixture([{ type: 'create_shape', id: 'shape:a', shapeType: 'geo' }])
   const preview = createEraserPreview(f.session.store, ' #00000052 ')
   try {
@@ -58,6 +58,16 @@ test('淡化解析令牌alpha并乘原opacity，清除后不残留；坏令牌�
     assert.equal(preview.opacity('shape:a', 0), 0)
     assert.equal(preview.opacity('shape:a'), 82 / 255)
     preview.set([]); assert.equal(preview.opacity('shape:a', .5), .5)
-    for (const color of ['', '#000000', '#000000zz', 'rgba(0,0,0,.32)']) assert.throws(() => createEraserPreview(f.session.store, color), /淡化.*令牌/)
+    for (const color of ['', '#000000', '#000000zz', 'rgba(0,0,0,.32)']) {
+      // A display-only host (content host, other products) mounts without the
+      // editing tokens; the token is required only once a preview is shown.
+      const unstyled = createEraserPreview(f.session.store, color)
+      try {
+        assert.equal(unstyled.opacity('shape:a', .5), .5)
+        unstyled.set([]); unstyled.set([{ kind: 'eraser', ids: ['shape:missing'] }])
+        assert.throws(() => unstyled.set([{ kind: 'eraser', ids: ['shape:a'] }]), /淡化.*令牌/)
+        assert.equal(unstyled.read('shape:a'), false)
+      } finally { unstyled.dispose() }
+    }
   } finally { preview.dispose(); f.close() }
 })
