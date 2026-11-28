@@ -320,6 +320,12 @@ git show 880af4c:tools/renderer-preview/clip-pixel-mask.js > .scratch/clip-guard
 HICANVAS_CLIP_BASELINE=.scratch/clip-guard-evidence/baseline-mask.js HICANVAS_CLIP_PORT=43397 node tools/renderer-preview/clip-visibility-check.mjs
 ```
 
+手动倍率诊断（#226）：在上述命令末尾加 `--zoom 0.79`。该模式保留相同的裁剪守卫及整张位图逐字节相等断言，不相等仍非零退出；CI 和 `renderer:smoke` 不运行此诊断。独立夹具默认用整数倍率1，是为了让可见性门禁保持精确还原要求，而非给差异加容差。
+
+已在合成页面证实：0.79下，临时阴影节点画过再移除，即使不调用裁剪探针、读取的DOM／相机／布局／字体图片状态完全恢复，实际离屏绘制缓冲仍可能停在另一套稳定像素。0.8、0.75、0.8125和1的同组对照未出现，因此不能归因为所有分数倍率或二进制不可精确表示。浏览器内部具体哪一层造成此历史依赖仍未知。本单只增加诊断与取证，不改产品绘制路径；这些像素差是否能被人眼辨认，尚未人工验证。
+
+每次运行保留原PNG及 `restoration.json`，分别记录相机、页面状态、视口／devicePixelRatio、截图实际倍率与严格整图差异；可取得时另记真实paint缓冲的尺寸和差异。不同分辨率只各自比较前后，不缩放后冒充同一像素来源。失败结果保留实际PID、运行时版本、源码与旧基线指纹；取证本身失败也另记，不覆盖最初失败原因。
+
 性能基线使用项目锁定版本的 Electron，在后台离屏窗口测量正式构建。先在占用白板登记专用端口，避开其他重任务，再运行（端口按实际登记替换）：
 
 ```sh

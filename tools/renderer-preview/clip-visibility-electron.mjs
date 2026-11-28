@@ -6,8 +6,10 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { checkClipPixels } from './clip-pixel-guard.mjs'
 import { prepareEmbedsProbe } from './embeds-smoke.mjs'
+import { parseClipZoom, measureClipRestoration, readClipRestorationState } from './clip-restoration.mjs'
 
 const manifest = JSON.parse(await readFile(process.argv.at(-1), 'utf8')), origin = new URL(manifest.url).origin
+const camera = { x: 20, y: 25, z: parseClipZoom(['--zoom', String(manifest.camera?.z ?? 1)]) }
 assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/)
 assert.equal(createHash('sha256').update(manifest.baseline).digest('hex'), manifest.baselineHash)
 app.setName('hiCanvas clip visibility smoke')
@@ -23,7 +25,21 @@ assert.ok(guards.has('readText') && guards.has('writeText') && [...guards].every
 assert.throws(() => clipboard.readText(), /System clipboard blocked/)
 assert.deepEqual(clipboardCalls.splice(0), ['readText'])
 let window, browserProof, oldUrl, red, closed, opened, green, shadowPoint, openedRefusal, zeroShadow
+let beforeImage, beforeState, restoration, restorationError, paintBefore, latestPaint
 const evaluate = code => window.webContents.executeJavaScript(code)
+const readState = () => evaluate(`(${readClipRestorationState.toString()})()`)
+const bitmap = image => ({ ...image.getSize(), bytes: image.toBitmap() })
+async function recordRestoration(after, stage) {
+  const afterState = await readState(), a = bitmap(beforeImage), b = bitmap(after)
+  restoration = {
+    stage, requestedCamera: camera, pixels: measureClipRestoration(a, b), beforeState, afterState,
+    stateEqual: JSON.stringify(beforeState) === JSON.stringify(afterState),
+    captureScale: { x: b.width / afterState.viewport.width, y: b.height / afterState.viewport.height },
+    rgbaHash: { before: createHash('sha256').update(a.bytes).digest('hex'), after: createHash('sha256').update(b.bytes).digest('hex') },
+    paint: paintBefore && latestPaint ? measureClipRestoration(paintBefore, latestPaint) : null,
+  }
+  await writeFile(join(manifest.output, 'restoration.json'), JSON.stringify(restoration, null, 2))
+}
 const modulePath = '/tools/renderer-preview/clip-pixel-mask.js'
 const metadata = path => evaluate(`import(${JSON.stringify(path)}).then(m=>{try{return m.beginClipPixelProbe({overflowProbe:false})}finally{if(m.endClipPixelProbe()!==true)throw Error('Probe state not restored')}})`)
 const covers = (box, x, y) => box.width > 0 && box.height > 0 && x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height
@@ -34,6 +50,10 @@ async function still(name) {
     await delay(100)
     const current = await window.webContents.capturePage()
     if (current.toBitmap().equals(previous.toBitmap())) { await writeFile(join(manifest.output, `${name}.png`), current.toPNG()); return current }
+    if (attempt === 5) {
+      await writeFile(join(manifest.output, `${name}-unstable-previous.png`), previous.toPNG())
+      await writeFile(join(manifest.output, `${name}-unstable-current.png`), current.toPNG())
+    }
     previous = current
   }
   throw new Error(`可见性截图未停稳：${name}`)
@@ -59,6 +79,7 @@ async function run() {
     app.dock?.hide()
     window = new BrowserWindow({ show: false, width: 1280, height: 800, useContentSize: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, partition: `clip-${process.pid}` } })
     const wc = window.webContents
+    wc.on('paint', (_event, _dirty, image) => { if (image && !image.isEmpty()) latestPaint = { ...image.getSize(), bytes: Buffer.from(image.toBitmap()) } })
     wc.session.webRequest.onBeforeRequest((details, callback) => {
       const url = new URL(details.url), allowed = url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
       if (!allowed) blocked.push(details.url)
@@ -81,10 +102,15 @@ async function run() {
       await delay(20)
     }
     assert.equal(await evaluate('window.__hicanvasEmbedClipboardBoundary?.check()'), true)
-    // Use an integer camera for this visibility fixture's exact restoration.
-    // Fractional-scale clip checks remain in the unmodified renderer:smoke.
-    await evaluate('window.__HICANVAS_RENDERER_PREVIEW__.resetCamera({x:20,y:25,z:1});void 0')
-    const before = await still('before'), original = await metadata(modulePath)
+    // #226: a temporary shadow can leave different stable paint pixels at0.79
+    // even without a clip probe and with identical page state. Keep the exact
+    // integer gate; --zoom is a manual diagnostic, never a noise allowance.
+    // Which browser backend layer causes this history dependence is unknown.
+    // Product rendering and renderer:smoke's fractional clip gate are unchanged.
+    await evaluate(`window.__HICANVAS_RENDERER_PREVIEW__.resetCamera(${JSON.stringify(camera)});void 0`)
+    const before = await still('before')
+    beforeImage = before; beforeState = await readState(); paintBefore = latestPaint
+    const original = await metadata(modulePath)
     oldUrl = await evaluate(`URL.createObjectURL(new Blob([${JSON.stringify(manifest.baseline)}],{type:'text/javascript'}))`)
     const dialog = await evaluate(`(()=>{
       const d=document.createElement('dialog');d.id='clip-visibility-dialog';d.style.cssText='position:fixed;left:900px;top:560px;margin:0;width:160px;height:100px;padding:0;border:0;background:rgb(8,8,8);box-shadow:20px 0px 0px 4px black;z-index:2147483647';
@@ -149,13 +175,19 @@ async function run() {
     zeroShadow = { ...zero, painted: Boolean(point), point, rejection: await refusal(wc, 'zero-shadow') }
     await evaluate("document.querySelector('#clip-zero-effect').remove();void 0")
     assert.deepEqual(await metadata(modulePath), original, '清理后元数据没有还原')
-    assert.ok((await still('restored')).toBitmap().equals(before.toBitmap()), '清理后画面没有还原')
+    const restored = await still('restored')
+    await recordRestoration(restored, 'cleaned')
+    assert.ok(restored.toBitmap().equals(before.toBitmap()), '清理后画面没有还原')
     assert.deepEqual(await evaluate('window.__embedClipboardViolations'), [])
     assert.deepEqual(clipboardCalls, []); assert.deepEqual(errors, []); assert.deepEqual(blocked, [])
-    await writeFile(manifest.result, JSON.stringify({ pid: process.pid, sourceHash: manifest.sourceHash, baselineHash: manifest.baselineHash, dialog, red, green, closed, opened, shadowPoint, openedRefusal, zeroShadow, browserProof, guarded: [...guards.keys()], clipboardCalls, errors, blocked, restored: true, runtime: process.versions }, null, 2))
+    await writeFile(manifest.result, JSON.stringify({ pid: process.pid, sourceHash: manifest.sourceHash, baselineHash: manifest.baselineHash, dialog, red, green, closed, opened, shadowPoint, openedRefusal, zeroShadow, browserProof, guarded: [...guards.keys()], clipboardCalls, errors, blocked, restoration, restored: true, runtime: process.versions }, null, 2))
     window.destroy(); app.exit(0)
   } catch (error) {
-    await writeFile(manifest.result, JSON.stringify({ error: error.stack, red, closed, opened, shadowPoint, openedRefusal, zeroShadow, errors, blocked, clipboardCalls, browserProof }, null, 2))
+    if (beforeImage && !restoration) {
+      try { const failed = await window.webContents.capturePage(); await writeFile(join(manifest.output, 'failed.png'), failed.toPNG()); await recordRestoration(failed, 'failure-before-cleanup-assertion') }
+      catch (failure) { restorationError = failure.stack }
+    }
+    await writeFile(manifest.result, JSON.stringify({ pid: process.pid, sourceHash: manifest.sourceHash, baselineHash: manifest.baselineHash, runtime: process.versions, error: error.stack, red, green, closed, opened, shadowPoint, openedRefusal, zeroShadow, errors, blocked, clipboardCalls, browserProof, restoration, restorationError }, null, 2))
     window?.destroy(); app.exit(1)
   }
 }
