@@ -100,6 +100,30 @@ test('非输入控件保留激活、四方向及Space组合，不取消普通按
   }
 })
 
+test('非输入控件上Tab与Shift+Tab留给浏览器移动焦点，不切换画布选择；画布焦点照旧切换（#230）', async () => {
+  for (const owner of ['button', 'toolbar-button', 'anchor', 'menu-trigger']) {
+    const f = await fixture()
+    try {
+      f.pointer('down', 150, 150); await f.pointer('up', 150, 150)
+      assert.deepEqual(f.interaction.state.get().selectedIds, ['shape:a'])
+      f.interaction.setInputContext({ owner })
+      for (const extra of [{}, { shiftKey: true }]) {
+        assert.equal(f.key('Tab', extra), false, `${owner} ${JSON.stringify(extra)}`)
+        assert.equal(f.key('Tab', extra, 'key_up'), false)
+        assert.deepEqual(f.interaction.state.get().selectedIds, ['shape:a'], owner)
+      }
+      assert.equal(f.commits.length, 0)
+    } finally { f.close() }
+  }
+  const f = await fixture()
+  try {
+    f.pointer('down', 150, 150); await f.pointer('up', 150, 150)
+    f.interaction.setInputContext({ owner: 'canvas' })
+    assert.equal(f.key('Tab'), true); f.key('Tab', {}, 'key_up')
+    assert.deepEqual(f.interaction.state.get().selectedIds, ['shape:b'])
+  } finally { f.close() }
+})
+
 test('真实拖动中焦点从画布转到按钮仍保留预览；只有工具栏Esc才取消并回焦', async () => {
   for (const owner of ['button', 'toolbar-button', 'anchor', 'menu-trigger']) {
     const requests = [], f = await fixture({ onRequestFocus: target => requests.push(target) })
