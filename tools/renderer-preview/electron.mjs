@@ -1,4 +1,6 @@
 import { app, BrowserWindow, nativeImage, clipboard } from 'electron'
+import { selectNativeSuite } from './native-suites.mjs'
+import { runNativeSuite } from './native-suite-runner.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -7,7 +9,6 @@ import { handleSmoke } from './handle-smoke.mjs'
 import { cameraSmoke } from './camera-smoke.mjs'
 import { minimapSmoke } from './minimap-smoke.mjs'
 import { keyboardSmoke } from './keyboard-smoke.mjs'
-import { selectionSemanticsSmoke } from './selection-semantics-smoke.mjs'
 import { selectionSmoke } from './selection-smoke.mjs'
 import { creationSmoke } from './creation-smoke.mjs'
 import { measureSelectionPointer } from './selection-perf.mjs'
@@ -17,26 +18,15 @@ import { prepareVideoProbe, videoSmoke } from './video-smoke.mjs'
 import {captureSmoke} from '../content-host/capture-smoke.mjs'
 import {filmSmoke} from '../content-host/film-smoke.mjs'
 import {channelSmoke} from '../content-host/channel-smoke.mjs'
-import { drawSmoke } from './draw-smoke.mjs'
-import { textEditingSmoke } from './text-editing-smoke.mjs'
 import { connectionSmoke } from './connection-smoke.mjs'
 import { checkShapeCompositing } from './compositing-guard.mjs'
 import { checkCameraGeometry } from './camera-geometry-guard.mjs'
 import { checkOpaqueBorderCut } from './clip-negative-guard.mjs'
-import { actionsSmoke } from './actions-smoke.mjs'
 import { noteSmoke } from './note-smoke.mjs'
-import { duplicateSmoke } from './duplicate-smoke.mjs'
-import { snappingSmoke } from './snapping-smoke.mjs'
-import { frameSmoke } from './frame-smoke.mjs'
 import { svgImportSmoke, svgSecuritySmoke } from './svg-smoke.mjs'
-import { eraserSmoke } from './eraser-smoke.mjs'
 import { mediaCleanupSmoke } from './media-cleanup-smoke.mjs'
-import { laserSmoke } from './laser-smoke.mjs'
 import { embedsSmoke, prepareEmbedsProbe } from './embeds-smoke.mjs'
 import { resolveEmbedUrl } from '../../model/index.js'
-import { focusSmoke } from './focus-smoke.mjs'
-import { prepareSlidesProbe, slidesSmoke } from './slides-smoke.mjs'
-import { shapeLinksSmoke, prepareShapeLinksProbe } from './shape-links-smoke.mjs'
 
 import { prepareNodeTextLayout } from '../../server/text-layout.mjs'
 import { measureText, layoutText } from '../../renderer/geometry.js'
@@ -129,11 +119,11 @@ async function run() {
   if (!contentPort) { const health = await fetch(origin + '/api/health'); if (health.ok) contentPort = (await health.json()).contentHost?.port }
   try {
     app.dock?.hide()
-    if (manifest.shapeLinksOnly) {
-      const probe = await prepareShapeLinksProbe({ createWindow, errors }); window = probe.window
-      await window.loadURL(`${manifest.url}/?gallery=shape-links&edgeScrolling=0`); await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ shapeLinks: await shapeLinksSmoke(window, manifest.output, probe) }); check(!errors.length && !blocked.length && !probe.blocked.length, JSON.stringify({ errors, blocked, native: probe.blocked }))
-      await writeFile(manifest.result, JSON.stringify({ pid: process.pid, fingerprint: manifest.fingerprint, samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
+    if (await runNativeSuite(selectNativeSuite(manifest), {
+      manifest, samples, errors, blocked, clipboard, cameraLayoutProbe,
+      createWindow: key => (window = createWindow(key)),
+    })) {
+      window.destroy(); app.exit(0); return
     }
     if (manifest.embedsOnly) {
       const clipboardCalls = [], guarded = [], clipboardGuards = new Map()
@@ -154,31 +144,6 @@ async function run() {
       check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
       await writeFile(manifest.result, JSON.stringify({ pid: process.pid, fingerprint: manifest.fingerprint, samples, mainProof, browserProof, guarded, errors, blocked, simulated, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }
-    if (manifest.focusOnly) {
-      window = createWindow('focus-keys')
-      await window.loadURL(`${manifest.url}/?gallery=focus-keys&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ focus: await focusSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions, sourceHash: manifest.sourceHash }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.slidesOnly) {
-      window = createWindow('slides')
-      const guard = await prepareSlidesProbe(window, clipboard)
-      await window.loadURL(`${manifest.url}/?gallery=slides&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ slides: await slidesSmoke(window, manifest.output), guards: guard.negative })
-      check(!errors.length && !blocked.length && !guard.calls.length, JSON.stringify({ errors, blocked, calls: guard.calls }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions, sourceHash: manifest.sourceHash }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.framesOnly) {
-      window = createWindow('frames')
-      await window.loadURL(`${manifest.url}/?gallery=frame-interaction&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ frames: await frameSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
     if (manifest.imagesOnly) {
       const clipboardCalls = []
       for (const name of Object.keys(clipboard)) if (typeof clipboard[name] === 'function') clipboard[name] = () => { clipboardCalls.push(name); throw new Error(`System clipboard blocked: ${name}`) }
@@ -191,106 +156,6 @@ async function run() {
       samples.push({ mediaCleanup: await mediaCleanupSmoke(window, manifest.output, manifest.imageFiles) })
       check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
       await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.videosOnly) {
-      window = createWindow('videos')
-      await prepareVideoProbe(window)
-      await window.loadURL(`${manifest.url}/?gallery=videos&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ videos: await videoSmoke(window, manifest.output, manifest.videoFiles) })
-      samples.push({ mediaCleanup: await mediaCleanupSmoke(window, manifest.output, manifest.videoFiles, 'video') })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.snappingOnly) {
-      window = createWindow('snapping')
-      await window.loadURL(`${manifest.url}/?gallery=snapping&snapping=1&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ snapping: await snappingSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.notesOnly) {
-      window = createWindow('note-editing')
-      await window.loadURL(`${manifest.url}/?gallery=note-editing&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ notes: await noteSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.connectionsOnly) {
-      window = createWindow('connection-editing')
-      await window.loadURL(`${manifest.url}/?gallery=connection-editing&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ connections: await connectionSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.textEditingOnly) {
-      window = createWindow('text-editing')
-      await window.loadURL(`${manifest.url}/?gallery=text-editing&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ textEditing: await textEditingSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.actionsOnly) {
-      window = createWindow('selection-actions')
-      await window.loadURL(`${manifest.url}/?gallery=selection-actions&edgeScrolling=0&reduceMotion=1`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ actions: await actionsSmoke(window, manifest.output) })
-      samples.push({ duplicates: await duplicateSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.lasersOnly) {
-      window = createWindow('laser')
-      await window.loadURL(`${manifest.url}/?gallery=laser&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ laser: await laserSmoke(window, manifest.output) })
-      if (errors.length || blocked.length) throw new Error(JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions, sourceHash: manifest.sourceHash }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.erasersOnly) {
-      window = createWindow('eraser')
-      await window.loadURL(`${manifest.url}/?gallery=eraser&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ eraser: await eraserSmoke(window, manifest.output, manifest.eraserColorOnly) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.drawOnly) {
-      window = createWindow('draw-input')
-      await window.loadURL(`${manifest.url}/?gallery=draw-input`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ draw: await drawSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.creationOnly) {
-      window = createWindow('creation')
-      await window.loadURL(`${manifest.url}/?gallery=creation&edgeScrolling=0`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ creation: await creationSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.keyboardOnly || manifest.selectionSemanticsOnly) {
-      const selectionOnly = manifest.selectionSemanticsOnly
-      window = createWindow(selectionOnly ? 'selection-semantics' : 'keyboard')
-      await window.loadURL(`${manifest.url}/?${selectionOnly ? 'gallery=selection-semantics' : 'count=500'}`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push(selectionOnly ? { selectionSemantics: await selectionSemanticsSmoke(window, manifest.output) } : { keyboard: await keyboardSmoke(window, manifest.output) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
-    }
-    if (manifest.handlesOnly) {
-      window = createWindow('handles')
-      await window.loadURL(`${manifest.url}/?count=500`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ handles: await handleSmoke(window, manifest.output), cameraLayout: await cameraLayoutProbe(true) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
     }
     if(manifest.contentFilmOnly){
       window=createWindow('content-film')
@@ -324,14 +189,6 @@ async function run() {
       check(blocked.length === 0, `安全门禁不应请求公网：${blocked.join('; ')}`)
       await writeFile(manifest.result, JSON.stringify({ ...result, blocked, runtime: process.versions }, null, 2))
       window.destroy(); app.exit(0); return
-    }
-    if (manifest.cameraOnly) {
-      window = createWindow('camera')
-      await window.loadURL(`${manifest.url}/?count=500`)
-      await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ camera: await cameraSmoke(window, manifest.output, { persistent: true }) })
-      check(!errors.length && !blocked.length, JSON.stringify({ errors, blocked }))
-      await writeFile(manifest.result, JSON.stringify({ samples, errors, blocked }, null, 2)); window.destroy(); app.exit(0); return
     }
     if (manifest.selectionOnly) {
       window = createWindow('selection')

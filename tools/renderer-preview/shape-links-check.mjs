@@ -19,7 +19,7 @@ async function sourceFingerprint() {
   const paths = ['model/http-url.js', 'engine/shape-links.js', 'engine/commands/shape-links.js', 'engine/commands/index.js',
     'engine/interaction/shape-links.js', 'engine/interaction/index.js', 'engine/interaction/keyboard-input.js',
     'renderer/shape-links.js', 'renderer/mount.js', 'DESIGN.md', 'src/styles/tokens.css',
-    ...['main.js', 'input.js', 'style.css', 'shape-links-ui.js', 'shape-links-fixture.js', 'shape-links-smoke.mjs', 'shape-links-check.mjs', 'embeds-smoke.mjs', 'keyboard-smoke.mjs', 'electron.mjs'].map(name => `tools/renderer-preview/${name}`)]
+    ...['main.js', 'input.js', 'style.css', 'shape-links-ui.js', 'shape-links-fixture.js', 'shape-links-smoke.mjs', 'shape-links-check.mjs', 'embeds-smoke.mjs', 'keyboard-smoke.mjs', 'electron.mjs', 'native-suites.mjs', 'native-suite-runner.mjs'].map(name => `tools/renderer-preview/${name}`)]
   for (const path of paths) hash.update(path).update(await readFile(join(root, path)))
   return hash.digest('hex')
 }

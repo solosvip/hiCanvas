@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url)), output = join(ro
 const executable = process.env.HICANVAS_TEST_ELECTRON
 if (!executable) throw new Error('先设置 HICANVAS_TEST_ELECTRON，复用已安装的 Electron，不下载运行时。')
 await access(executable, constants.X_OK); await mkdir(output, { recursive: true })
-const files = ['engine/interaction/laser.js', 'engine/interaction/pointer-trail.js', 'engine/interaction/eraser.js', 'engine/interaction/index.js', 'engine/interaction/shortcuts.js', 'renderer/laser-overlay.js', 'renderer/trail-overlay.js', 'renderer/eraser-overlay.js', 'renderer/overlays.js', 'src/styles/tokens.css', 'tools/renderer-preview/main.js', 'tools/renderer-preview/electron.mjs', 'tools/renderer-preview/laser-fixture.js', 'tools/renderer-preview/laser-smoke.mjs', 'tools/renderer-preview/laser-check.mjs']
+const files = ['engine/interaction/laser.js', 'engine/interaction/pointer-trail.js', 'engine/interaction/eraser.js', 'engine/interaction/index.js', 'engine/interaction/shortcuts.js', 'renderer/laser-overlay.js', 'renderer/trail-overlay.js', 'renderer/eraser-overlay.js', 'renderer/overlays.js', 'src/styles/tokens.css', 'tools/renderer-preview/main.js', 'tools/renderer-preview/electron.mjs', 'tools/renderer-preview/native-suites.mjs', 'tools/renderer-preview/native-suite-runner.mjs', 'tools/renderer-preview/laser-fixture.js', 'tools/renderer-preview/laser-smoke.mjs', 'tools/renderer-preview/laser-check.mjs']
 const hash = createHash('sha256')
 for (const file of files) { hash.update(file); hash.update(await readFile(join(root, file))) }
 const sourceHash = hash.digest('hex'), run = await mkdtemp(join(output, 'run-'))

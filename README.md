@@ -244,6 +244,10 @@ npm run renderer:check
 npm run renderer:smoke
 ```
 
+原生专项的共用入口由 `tools/renderer-preview/native-suites.mjs` 登记，`native-suite-runner.mjs` 统一执行；原有 check 命令及结果格式保持。新增普通专项时，在登记模块导入它的检查函数并加一项，例如 `suite('exampleOnly', 'example', 'gallery=example&edgeScrolling=0', [sample('example', exampleSmoke)])`，不再给 `electron.mjs` 加分支。普通登记项的 `prepare` 在导航前执行；shapeLinks 的 `open` 复用原准备函数，在首个窗口前安装守卫，再交回窗口及准备结果；`samples` 数组声明结果分组，对象里的字段依次求值，每个完整 sample 完成后立即保留；`report` 声明原有附加字段，camera 保持不带 runtime，focus/slides/laser 保留 sourceHash。slides 的剪贴板准备和 calls 核对、视频的两阶段媒体检查及手柄的相机布局检查也由登记项表达。
+
+表中同时保留专用入口的优先级位置；embeds、images、selection 与四种 content 协议继续走原分支。多个 manifest 标志同时启用时仍按原顺序选择，selectionSemantics 优先于 keyboard；`shapeLinksOnly` 在 embeds 前执行，保留原 pid/fingerprint 报告前缀及 native 守卫核对。runner 不负责退出应用，失败交回原入口保存已有阶段和失败截图。永久回归在 `tools/native-suites.test.mjs`，随 `npm test` 执行；迁移前后对照是 `.scratch/native-registry/` 内的一次性材料，差异字段和结论写进交付报告，不新增长期工具或替代完整 `npm run renderer:smoke`。
+
 需要验证松手保存和刷新恢复时，先登记另一个专用端口，再运行 `node tools/renderer-preview/service.mjs --port 43368`，打开 `http://127.0.0.1:43368/?count=500`（也支持 2000、5000）。这个独立宿主只监听 `127.0.0.1`，只用本工作区 `.scratch/interaction-preview/` 下的合成资料；支持点选、Shift 加减选、空白拖框、拖动移动和 Esc 取消，松手整次保存，刷新恢复位置。撤销和重做统一由后续 #82 接入。
 
 手绘验证使用同一隔离宿主的 `/?gallery=draw-input`：D/B/X 画笔，Shift+D 荧光笔，Shift 自由／直线接段，Esc 丢弃当前未提交笔画；检测到笔输入后可用「退出手写笔模式」恢复鼠标。该合成图鉴只保存在内存中，刷新还原，支持整笔撤销和重做。设置 `HICANVAS_TEST_ELECTRON` 指向已有 Electron 可执行文件并登记专用端口后，运行 `HICANVAS_DRAW_PORT=43398 node tools/renderer-preview/draw-check.mjs`；原生手绘、CDP pen 压感、真实退出按钮、叠色和三档缩放结果写入 `.scratch/draw-smoke/`。高频硬件采样与真实手写板仍需人工验收。

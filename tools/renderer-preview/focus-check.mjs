@@ -13,7 +13,7 @@ if (!executable) throw new Error('先设置 HICANVAS_TEST_ELECTRON，复用已�
 await access(executable, constants.X_OK); await mkdir(output, { recursive: true })
 const run = await mkdtemp(join(output, 'run-')), resultFile = join(run, 'result.json')
 await mkdir(join(run, 'profile'), { recursive: true })
-const files = ['engine/interaction/keyboard-input.js', 'engine/interaction/index.js', 'engine/interaction/shortcuts.js', 'tools/renderer-preview/input.js', 'tools/renderer-preview/main.js', 'tools/renderer-preview/electron.mjs', 'tools/renderer-preview/focus-fixture.js', 'tools/renderer-preview/focus-smoke.mjs', 'tools/renderer-preview/focus-check.mjs', 'tools/renderer-preview/keyboard-smoke.mjs', 'tools/renderer-preview/minimap-smoke.mjs']
+const files = ['engine/interaction/keyboard-input.js', 'engine/interaction/index.js', 'engine/interaction/shortcuts.js', 'tools/renderer-preview/input.js', 'tools/renderer-preview/main.js', 'tools/renderer-preview/electron.mjs', 'tools/renderer-preview/native-suites.mjs', 'tools/renderer-preview/native-suite-runner.mjs', 'tools/renderer-preview/focus-fixture.js', 'tools/renderer-preview/focus-smoke.mjs', 'tools/renderer-preview/focus-check.mjs', 'tools/renderer-preview/keyboard-smoke.mjs', 'tools/renderer-preview/minimap-smoke.mjs']
 const hash = createHash('sha256'), identities = {}
 for (const file of files) { const bytes = await readFile(join(root, file)); identities[file] = createHash('sha256').update(bytes).digest('hex'); hash.update(file); hash.update(bytes) }
 const sourceHash = hash.digest('hex')
