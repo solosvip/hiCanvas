@@ -4,6 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createEditorSession, createCanvasInteraction, createClipboardContent, encodeClipboardContent } from '../engine/index.js'
 import { createPreviewClipboard } from '../tools/renderer-preview/clipboard.js'
+import { creationFixture } from '../tools/creation-test-fixture.mjs'
 import { memoryHost, shape, snapshotOf } from './fixtures/editor-session-fixture.mjs'
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return { promise, resolve } }
@@ -264,4 +265,92 @@ test('未注入剪贴板端口时动作明确不可用，偏好开关仍有独�
   t.after(() => ui.dispose())
   assert.equal(ui.getActions().find(action => action.id === 'paste').available, false)
   assert.equal(ui.getActions().find(action => action.id === 'paste-at-cursor').available, true)
+})
+
+
+const controlOwners = ['button', 'toolbar-button', 'anchor', 'menu-trigger']
+for (const owner of controlOwners) test(`${owner}焦点：复制零提交、粘贴和剪切各一步历史`, async t => {
+  let formats, reads = 0, writes = 0
+  const f = await creationFixture({ commands: [shape('one'), shape('two', { x: 300 })], boardId: 'synthetic', clipboard: {
+    async read() { reads++; return structuredClone(formats) },
+    async write(value) { writes++; formats = structuredClone(value) },
+  } })
+  t.after(f.close)
+  const ui = f.interaction, initial = structuredClone(f.current())
+  ui.select('all'); ui.setInputContext({ owner })
+  assert.equal((await f.key('c', { ctrlKey: true })).status, 'copied')
+  assert.equal(f.commits.length, 0); assert.equal(writes, 1)
+  assert.deepEqual(f.current(), initial)
+  assert.equal((await f.key('v', { ctrlKey: true })).status, 'applied')
+  assert.equal(reads, 1); assert.equal(f.commits.length, 1)
+  const pasted = structuredClone(f.current()), copiedIds = [...ui.state.get().selectedIds]
+  assert.equal(copiedIds.length, 2)
+  assert.ok(copiedIds.every(id => !['shape:one', 'shape:two'].includes(id)))
+  await f.session.undo(); assert.deepEqual(f.current(), initial)
+  await f.session.redo(); assert.deepEqual(f.current(), pasted)
+  // History clears selection; use the public selection action before cut.
+  ui.select('all')
+  assert.equal((await ui.runAction('cut')).status, 'applied')
+  assert.equal(writes, 2); assert.equal(f.commits.length, 2); assert.equal(f.shapes().length, 0)
+  const cut = structuredClone(f.current())
+  await f.session.undo(); assert.deepEqual(f.current(), pasted)
+  await f.session.redo(); assert.deepEqual(f.current(), cut)
+})
+
+for (const owner of controlOwners) test(`${owner}焦点剪切写失败仍保留原件`, async t => {
+  let writes = 0
+  const { interaction: ui, session, host } = await editor(t, { async write() { writes++; throw Error('private denied') } })
+  ui.setInputContext({ owner })
+  const before = snapshotOf(session), commits = host.commits.length
+  await assert.rejects(ui.runAction('cut'), /private denied/)
+  assert.equal(writes, 1); assert.equal(host.commits.length, commits)
+  assert.deepEqual(snapshotOf(session), before)
+})
+
+test('四控件的文件粘贴落点与canvas相同，光标偏好仍生效', async t => {
+  const { interaction: ui, counts, host } = await editor(t)
+  const commits = host.commits.length
+  for (const atCursor of [false, true]) {
+    ui.setInputContext({ owner: 'canvas' })
+    if (atCursor) await ui.runAction('paste-at-cursor')
+    ui.dispatch({ type: 'pointer_move', point: { x: 800, y: 550 }, pointerId: 1, time: atCursor ? 2 : 1 })
+    const target = ui.getFilePasteTarget()
+    assert.deepEqual(target, { status: 'available', point: atCursor ? { x: 800, y: 550 } : { x: 500, y: 350 } })
+    for (const owner of controlOwners) { ui.setInputContext({ owner }); assert.deepEqual(ui.getFilePasteTarget(), target) }
+  }
+  assert.deepEqual(counts(), { reads: 0, writes: 0 }); assert.equal(host.commits.length, commits)
+})
+
+const protectedClipboardContexts = [
+  ['input', { owner: 'form' }], ['textarea', { owner: 'form' }], ['contenteditable', { owner: 'form' }],
+  ['文字编辑', { owner: 'text-editing' }], ['展开菜单', { owner: 'menu-trigger', expanded: true }],
+  ['select', { owner: 'select' }], ['video', { owner: 'form' }], ['组字', { owner: 'button', isComposing: true }],
+  ['菜单项', { owner: 'menu' }],
+]
+for (const [label, context] of protectedClipboardContexts) test(`${label}仍不读取或写入剪贴板、不接文件落点`, async t => {
+  const { interaction: ui, session, counts, host } = await editor(t)
+  const before = snapshotOf(session), commits = host.commits.length
+  ui.setInputContext(context)
+  for (const action of ['copy', 'cut', 'paste']) assert.equal((await ui.runAction(action)).status, 'unavailable')
+  assert.equal(ui.getFilePasteTarget().status, 'unavailable')
+  assert.deepEqual(counts(), { reads: 0, writes: 0 }); assert.equal(host.commits.length, commits)
+  assert.deepEqual(snapshotOf(session), before)
+})
+
+test('控件上的异步读写遇到保护焦点或选择变化取消，不提交迟到动作', async t => {
+  for (const action of ['cut', 'paste']) for (const change of ['focus', 'selection']) {
+    const gate = deferred(), entered = deferred()
+    const { interaction: ui, session, host } = await editor(t, { async [action === 'cut' ? 'write' : 'read']() { entered.resolve(); return gate.promise } })
+    const before = snapshotOf(session), commits = host.commits.length
+    const formats = encodeClipboardContent(createClipboardContent(before, ['shape:one']))
+    ui.setInputContext({ owner: 'toolbar-button' })
+    const pending = ui.runAction(action)
+    assert.equal(ui.state.get().clipboardBusy, true, '控件焦点必须先进入异步IO')
+    await entered.promise
+    if (change === 'focus') ui.setInputContext({ owner: 'form' })
+    else ui.select('clear')
+    gate.resolve(formats)
+    await assert.rejects(pending, e => e.code === 'conflict')
+    assert.equal(host.commits.length, commits); assert.deepEqual(snapshotOf(session), before)
+  }
 })

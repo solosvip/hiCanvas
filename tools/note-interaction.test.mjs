@@ -259,3 +259,55 @@ test('无输入或净空往返后收到远端署名，完成编辑不抹掉最�
   }finally{f.close()}
  }
 })
+
+
+for (const owner of ['button', 'toolbar-button', 'anchor', 'menu-trigger']) test(`${owner}焦点下便签续建入口可见、可用且只有一步历史`, async () => {
+  const f = await creationFixture({ commands: [putNote('shape:note', 300, 300, { richText: content('Source') })] })
+  try {
+    await f.click(400, 400); f.interaction.setInputContext({ owner })
+    const overlay = f.interaction.state.get().overlays.find(o => o.kind === 'note')
+    assert.ok(overlay, '控件聚焦不能隐藏续建入口')
+    const right = overlay.handles.find(h => h.id === 'right')
+    const initial = structuredClone(f.current())
+    await f.click(right.x, right.y)
+    const id = f.interaction.state.get().textEditing.id
+    assert.notEqual(id, 'shape:note'); assert.equal(f.commits.length, 0)
+    f.interaction.editText({ type: 'update', content: content('Neighbour') }); await f.key('Escape')
+    const saved = structuredClone(f.current())
+    assert.equal(f.commits.length, 1); assert.equal(f.shapes().length, 2)
+    await f.session.undo(); assert.deepEqual(f.current(), initial)
+    await f.session.redo(); assert.deepEqual(f.current(), saved)
+    await f.click(400, 400); f.interaction.setInputContext({ owner }); await f.click(right.x, right.y)
+    assert.equal(f.interaction.state.get().textEditing.id, id)
+    assert.equal(f.shapes().length, 2); assert.equal(f.commits.length, 1)
+    await f.key('Escape')
+  } finally { f.close() }
+})
+
+const protectedNoteContexts = [
+  ['input', { owner: 'form' }], ['textarea', { owner: 'form' }], ['contenteditable', { owner: 'form' }],
+  ['文字编辑', { owner: 'text-editing' }], ['展开菜单', { owner: 'menu-trigger', expanded: true }],
+  ['select', { owner: 'select' }], ['video', { owner: 'form' }], ['组字', { owner: 'canvas', isComposing: true }],
+]
+for (const [label, context] of protectedNoteContexts) test(`${label}焦点仍隐藏便签续建入口`, async () => {
+  const f = await creationFixture({ commands: [putNote('shape:note', 300, 300)] })
+  try {
+    await f.click(400, 400); f.interaction.setInputContext(context)
+    assert.equal(f.interaction.state.get().overlays.some(o => o.kind === 'note'), false)
+    assert.equal(f.previewShapes().length, 1); assert.equal(f.commits.length, 0)
+  } finally { f.close() }
+})
+
+test('文字会话里的续建提交期间焦点落到按钮，完成后也不抢回文字焦点', async () => {
+  let entered, release
+  const waiting = new Promise(resolve => entered = resolve), gate = new Promise(resolve => release = resolve)
+  const f = await creationFixture({ commands: [putNote('shape:note', 300, 300)], beforeCommit: async () => { entered(); await gate } })
+  try {
+    await begin(f); f.interaction.editText({ type: 'update', content: content('Saved source') })
+    const saving = f.key('Tab'); await waiting
+    f.interaction.setInputContext({ owner: 'button' }); release(); await saving
+    assert.equal(f.interaction.state.get().textEditing, null)
+    assert.equal(f.interaction.state.get().inputContext.owner, 'button')
+    assert.equal(f.shapes().length, 2); assert.equal(f.commits.length, 1)
+  } finally { release(); f.close() }
+})
