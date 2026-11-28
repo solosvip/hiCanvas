@@ -16,7 +16,7 @@ await access(executable, constants.X_OK); await mkdir(base, { recursive: true })
 const output = await mkdtemp(join(base, 'run-')), result = join(output, 'result.json')
 async function sourceFingerprint() {
   const hash = createHash('sha256')
-  for (const path of ['model/http-url.js', 'model/embed-services.js', 'engine/embeds.js', 'engine/commands/embeds.js', 'engine/interaction/embeds.js', 'engine/interaction/index.js', 'renderer/embed-content.js', 'renderer/embed.js', 'renderer/mount.js', ...['main.js', 'input.js', 'embeds-fixture.js', 'fake-embed.html', 'clipboard.js', 'clipboard-external.js', 'clipboard-url.js', 'embeds-ui.js', 'embeds-smoke.mjs', 'embeds-interaction-smoke.mjs', 'embeds-check.mjs', 'electron.mjs'].map(name => `tools/renderer-preview/${name}`)]) hash.update(path).update(await readFile(join(root, path)))
+  for (const path of ['model/http-url.js', 'model/embed-services.js', 'model/bookmark-metadata.js', 'engine/embeds.js', 'engine/bookmarks.js', 'engine/commands/embeds.js', 'engine/commands/bookmarks.js', 'engine/interaction/embeds.js', 'engine/interaction/bookmarks.js', 'engine/interaction/bookmark-jobs.js', 'engine/interaction/clipboard.js', 'engine/interaction/index.js', 'renderer/embed-content.js', 'renderer/embed.js', 'renderer/bookmark.js', 'renderer/mount.js', ...['main.js', 'input.js', 'embeds-fixture.js', 'fake-embed.html', 'clipboard.js', 'clipboard-external.js', 'clipboard-url.js', 'embeds-ui.js', 'embeds-smoke.mjs', 'embeds-interaction-smoke.mjs', 'bookmark-metadata-client.js', 'bookmark-metadata-fixture.js', 'bookmarks-ui.js', 'bookmark-metadata-smoke.mjs', 'embeds-check.mjs', 'electron.mjs'].map(name => `tools/renderer-preview/${name}`)]) hash.update(path).update(await readFile(join(root, path)))
   return hash.digest('hex')
 }
 const fingerprint = await sourceFingerprint(), stop = new AbortController()
@@ -61,6 +61,8 @@ try {
   report = JSON.parse(await readFile(result, 'utf8'))
   assert.equal(report.samples[0].embeds.interaction.stages.length, 23, '嵌入互动原生阶段没有完整执行。')
   assert.equal(report.samples[0].embeds.interaction.stages.at(-1).label, 'undo-delete-mounts-passive-frame')
+  assert.equal(report.samples[0].embeds.bookmarks.stages.length, 17, '书签信息原生阶段没有完整执行。')
+  assert.equal(report.samples[0].embeds.bookmarks.stages.at(-1).label, 'paste-two-undo-boundaries')
   assert.equal(report.pid, childPid); assert.equal(report.fingerprint, fingerprint)
   assert.equal(await sourceFingerprint(), fingerprint, '原生检查期间源码发生变化。')
 } finally { await cleanup() }

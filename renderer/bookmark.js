@@ -40,6 +40,6 @@ export function Bookmark({ shape, scene }) {
       h('a', { ...link, title: shape.props.url, 'aria-label': '打开链接', style: { ...linkStyle, position: 'absolute', right: 6, top: 6, padding: 8, borderRadius: 4, background: 'var(--color-surface)' } }, h(LinkIcon))) : null,
     h('div', { style: { boxSizing: 'border-box', display: 'flex', flexDirection: 'column', flex: image ? '0 0 auto' : '1 1 auto', gap: 4, padding: 12, minHeight: 0 } },
       title ? h('a', link, h('h2', { 'data-bookmark-title': '', style: { ...clamp(2), margin: 0, fontSize: 16, lineHeight: 1.6, fontWeight: 700 } }, title)) : null,
-      image && description ? h('p', { 'data-bookmark-description': '', style: { ...clamp(3), margin: 0, fontSize: 12, lineHeight: '18px' } }, description) : null,
+      description ? h('p', { 'data-bookmark-description': '', style: { ...clamp(3), margin: 0, fontSize: 12, lineHeight: '18px' } }, description) : null,
       h('a', { ...link, style: { ...linkStyle, alignItems: 'center', gap: 8, marginTop: image ? 8 : 'auto' } }, h(Favicon, { src: favicon, key: favicon || 'missing' }), h('span', { 'data-bookmark-url': '', style: { overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' } }, url?.hostname.replace(/^www\./, '') || shape.props.url))))
 }

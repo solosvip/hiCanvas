@@ -20,7 +20,12 @@ export async function runBookmarkProbe() {
     check(full.querySelector('[data-bookmark-image]') && full.querySelector('[data-bookmark-favicon]'), '预览图或网站图标缺失')
     check(full.querySelector('[data-bookmark-url]').textContent === 'very-long-synthetic-subdomain83.something.example.test', '书签没有只显示域名')
     check(!card('no-title').querySelector('[data-bookmark-title]') && card('no-title').querySelector('[data-bookmark-description]'), '缺标题回退丢了描述')
-    check(!card('no-image').querySelector('img[data-bookmark-image]') && !card('no-image').querySelector('[data-bookmark-description]'), '缺图时应省略图片及描述')
+    const noImageShape = fixture.snapshot.store['shape:bookmark-no-image']
+    check(!card('no-image').querySelector('img[data-bookmark-image]') && !card('no-image').querySelector('[data-bookmark-preview]') && card('no-image').querySelector('[data-bookmark-description]')?.textContent === fixture.snapshot.store[noImageShape.props.assetId].props.description, '无图卡必须省略图片并逐字保留描述')
+    for (const variant of ['empty', 'short']) {
+      const shape = fixture.snapshot.store[`shape:bookmark-${variant}`]
+      check(!card(variant).querySelector('[data-bookmark-preview]') && !card(variant).querySelector('[data-bookmark-description]') && card(variant).getBoundingClientRect().height === shape.props.h, `空描述的无图卡出现空节点或增高：${variant}`)
+    }
     check(!card('no-image-title').querySelector('[data-bookmark-title]') && card('no-image-title').querySelector('[data-bookmark-url]'), '缺图缺标题没有网址')
     for (const variant of ['empty', 'no-favicon', 'missing-asset']) check(card(variant).querySelector('[data-bookmark-link-icon]'), `网站图标回退缺失：${variant}`)
     check(card('short').getBoundingClientRect().height === 46, '网址条没有保留记录高度')

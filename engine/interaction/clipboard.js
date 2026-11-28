@@ -18,14 +18,14 @@ function noticeData(value) {
 
 // The port carries ordinary formats/content only. No event, clipboard API or
 // filesystem enters the editing layer. Pending IO never opens a preview gesture.
-export function createClipboardActions({ session, read, change, report, boardId }, port) {
+export function createClipboardActions({ session, read, change, report, boardId, bookmarks }, port) {
   let pending = null, disposed = false, point = null
   function reason({ own = false, menu = false } = {}) {
     const state = read(), runtime = session.state.get()
     if (disposed) return 'disposed'
     if (pending && !own) return 'clipboard-busy'
     if (runtime.isSubmitting) return 'submitting'
-    if (!menu && state.inputContext.owner !== 'canvas' || state.inputContext.isComposing || state.textEditing || state.imageAltEditing || state.embedEditing) return 'input-context'
+    if (!menu && state.inputContext.owner !== 'canvas' || state.inputContext.isComposing || state.textEditing || state.imageAltEditing || state.embedEditing || state.bookmarkEditing) return 'input-context'
     if (state.croppingId) return 'cropping'
     if (runtime.isGestureActive || state.mode !== 'idle' || state.temporaryTool) return 'pointer-gesture'
     return null
@@ -73,6 +73,7 @@ export function createClipboardActions({ session, read, change, report, boardId 
         const plan = planClipboardPaste(snapshot, content, { strategy: external ? formats.placement : 'default', boardId, viewport, point: worldPoint, atCursor: state.pasteAtCursor, selectedIds: state.selectedIds, focusedGroupId: state.focusedGroupId === Object.values(snapshot.store).find(r => r.typeName === 'page')?.id ? null : state.focusedGroupId })
         const reply = await session.commitCommands([{ type: 'paste_content', content, ...plan }], { expectedRevision: token.revision })
         if (!disposed) change({ selectedIds: reply.results[0].rootIds, selectionRotation: null, lastError: null, lastNotice: notice })
+        if (!disposed && external && content.shapes.length === 1 && content.shapes[0].type === 'bookmark') bookmarks?.auto(reply.results[0].rootIds[0])
         return { status: 'applied', reply }
       } catch (error) { if (!disposed) report(error); throw error }
       finally { if (pending === token) { pending = null; if (!disposed) change({ clipboardBusy: false }) } }

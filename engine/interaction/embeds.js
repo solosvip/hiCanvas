@@ -7,7 +7,7 @@ import { canvasOwnsFocus } from './keyboard-input.js'
 
 // Dialog drafts are session state. Only submit crosses the command boundary;
 // opening, choosing a provider, typing, back and cancellation never write Store.
-export function createEmbedEditing({ session, pageId, index, targets, read, change, report, prepare }) {
+export function createEmbedEditing({ session, pageId, index, targets, read, change, report, prepare, bookmarks }) {
   let basis = null, pending = null, disposed = false, interactionBasis = null, press = null
   const external = id => {
     const shape = session.store.get(id)
@@ -26,7 +26,7 @@ export function createEmbedEditing({ session, pageId, index, targets, read, chan
   }
   function blocked() {
     const state = read(), runtime = session.state.get()
-    return disposed || runtime.isSubmitting || runtime.isGestureActive || state.mode !== 'idle' || state.temporaryTool || state.clipboardBusy || state.textEditing || state.imageAltEditing || state.croppingId || state.inputContext.isComposing || state.inputContext.owner === 'text-editing'
+    return disposed || runtime.isSubmitting || runtime.isGestureActive || state.mode !== 'idle' || state.temporaryTool || state.clipboardBusy || state.textEditing || state.imageAltEditing || state.croppingId || state.bookmarkEditing || state.inputContext.isComposing || state.inputContext.owner === 'text-editing'
   }
   function cancel() { basis = null; if (!disposed) change({ embedEditing: null }) }
   function draft(serviceId, url) {
@@ -64,6 +64,7 @@ export function createEmbedEditing({ session, pageId, index, targets, read, chan
     try {
       const reply = await pending
       if (!disposed) change({ lastError: null })
+      if (!disposed && intent.to === 'bookmark') bookmarks?.auto(intent.id)
       return reply
     } catch (error) { if (!disposed) report(error); throw error }
     finally { pending = null }

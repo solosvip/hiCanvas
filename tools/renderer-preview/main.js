@@ -46,8 +46,11 @@ import { attachEmbedsUi } from './embeds-ui.js'
 import { createEmbedsFixture } from './embeds-fixture.js'
 import { createShapeLinksFixture } from './shape-links-fixture.js'
 import { attachShapeLinksUi } from './shape-links-ui.js'
+import { createBookmarkMetadataClient } from './bookmark-metadata-client.js'
+import { createBookmarkMetadataFixture, createBookmarkMetadataNetwork } from './bookmark-metadata-fixture.js'
+import { attachBookmarksUi } from './bookmarks-ui.js'
 
-let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0, dismissedRuntimeError = null
+let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, bookmarkNetwork, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0, dismissedRuntimeError = null
 const visibleRuntimeError = () => { const error = session?.state.get().lastError; return error !== dismissedRuntimeError ? error : null }
 const disposers = []
 const cleanup = () => { clearTimeout(cameraTimer); for (const dispose of disposers.splice(0).reverse()) { try { dispose() } catch { /* Continue releasing remaining preview resources. */ } } }
@@ -63,6 +66,8 @@ const getState = () => {
     textEditing: state?.textEditing && structuredClone(state.textEditing),
     imageAltEditing: state?.imageAltEditing && structuredClone(state.imageAltEditing),
     embedEditing: state?.embedEditing && structuredClone(state.embedEditing),
+    bookmarkEditing: state?.bookmarkEditing && structuredClone(state.bookmarkEditing), bookmarkJobs: state?.bookmarkJobs && structuredClone(state.bookmarkJobs),
+    ...(metadata?.bookmarkMetadataFixture && { bookmarkRequests: bookmarkNetwork?.inspect() }),
     interactingEmbedId: state?.interactingEmbedId || null,
     linkEditing: state?.linkEditing && structuredClone(state.linkEditing),
     ...(metadata?.shapeLinksFixture && interaction && !failure && { linkRecords: structuredClone(session.store.allRecords().filter(r => ['shape', 'asset'].includes(r.typeName))), links: structuredClone(interaction.getLinks()) }),
@@ -100,7 +105,7 @@ try {
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['videos', 'image-import'].includes(gallery)) { const response = await fetch(`/__renderer_fixture?gallery=${gallery}`); if (!response.ok) throw new Error('媒体夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
-  else if (gallery === 'embed-editing') metadata = createEmbedsFixture(params.get('embedCase'))
+  else if (gallery === 'embed-editing') metadata = params.get('embedCase') === 'bookmarks' ? createBookmarkMetadataFixture() : createEmbedsFixture(params.get('embedCase'))
   else if (gallery === 'shape-links') metadata = createShapeLinksFixture()
   else if (gallery === 'annotation') metadata = createAnnotationFixture(params.get('case') || 'drawing', Number(params.get('zoom') || 1))
   else if (gallery === 'export') metadata = createExportFixture(undefined, params.get('case') || 'static')
@@ -150,7 +155,11 @@ try {
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
   const trailTools = metadata.shapeLinksFixture ? Object.keys(canvasToolRegistry) : metadata.eraserFixture ? ['select', 'hand', 'draw', 'highlight', 'eraser'] : metadata.laserFixture ? ['select', 'hand', 'draw', 'eraser', 'laser', 'text'] : null
-  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), onRequestFocus: target => { if (target === 'canvas') host.focus({ preventScroll: true }) }, toolIds: trailTools ? (params.get('limited') === '1' ? ['select'] : trailTools) : metadata.focusFixture || metadata.annotationFixture || gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  bookmarkNetwork = createBookmarkMetadataNetwork({ empty: !metadata.bookmarkMetadataFixture })
+  disposers.push(() => bookmarkNetwork.dispose())
+  const bookmarkClient = createBookmarkMetadataClient({ fetch: bookmarkNetwork.fetch })
+  if (metadata.bookmarkMetadataFixture) Object.defineProperty(window, '__HICANVAS_BOOKMARK_NETWORK__', { value: Object.freeze({ release: () => bookmarkNetwork.release() }) })
+  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, bookmarkMetadata: bookmarkClient, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), onRequestFocus: target => { if (target === 'canvas') host.focus({ preventScroll: true }) }, toolIds: trailTools ? (params.get('limited') === '1' ? ['select'] : trailTools) : metadata.focusFixture || metadata.annotationFixture || gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   if (metadata.clipboardFixture) Object.defineProperty(window, '__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__', { value: createExternalClipboardProbe({ session, interaction, document, onError: showError }) })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), onEmbedInput: value => interaction.embed(value), textEditing: {
@@ -192,6 +201,8 @@ try {
   const linksUi = attachShapeLinksUi(navigation.element, host, interaction, showError)
   disposers.push(() => linksUi.dispose())
   disposers.push(() => embedsUi.dispose())
+  const bookmarksUi = attachBookmarksUi(navigation.element, host, interaction, showError, metadata.bookmarkMetadataFixture === true)
+  disposers.push(() => bookmarksUi.dispose())
   const textUi = metadata.textEditingFixture ? attachTextUi(creationUi.element, interaction, session.store, showError) : null
   if (textUi) disposers.push(() => textUi.dispose())
   const stop = react('preview interaction view', () => {
@@ -206,6 +217,7 @@ try {
     navigation.update(state); videos?.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); actionsUi?.update(); controls?.wake()
     minimap.update(state)
     embedsUi.update(state, session.state.get().isSubmitting)
+    bookmarksUi.update(state)
     // File I/O feedback must survive the background refresh for the same save.
     const submitting = session.state.get().isSubmitting
     // A new clipboard action dismisses the previous save's message even when
