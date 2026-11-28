@@ -52,6 +52,7 @@ import { attachBookmarksUi } from './bookmarks-ui.js'
 import { createFlattenUpload } from './flatten-upload.js'
 import { attachFlattenUi } from './flatten-ui.js'
 import { installFlattenProbe } from './flatten-probe.js'
+import { installResourceConflictsProbe } from './resource-conflicts-probe.js'
 
 let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, bookmarkNetwork, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0, dismissedRuntimeError = null
 const visibleRuntimeError = () => { const error = session?.state.get().lastError; return error !== dismissedRuntimeError ? error : null }
@@ -155,7 +156,8 @@ try {
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
   let hostError = null, wasSubmitting = false, wasClipboardBusy = false, lastEmbedId = null
   const showError = error => { hostError = error; status.textContent = `操作失败：${error.message}` }
-  clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true || metadata.slidesFixture === true, onError: showError })
+  clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true || metadata.slidesFixture === true || params.get('resourceConflicts') === '1' && metadata.imageImportFixture === true, onError: showError })
+  disposers.push(installResourceConflictsProbe({ params, metadata, transport, clipboardAdapter }))
   session = await createEditorSession({ transport, actor })
   disposers.push(() => session.dispose())
   if (metadata.persistent) { const records = session.store.allRecords(); metadata.count = records.filter(r => r.typeName === 'shape' && (!metadata.flattenFixture || r.opacity !== 0)).length; metadata.counts = records.filter(r => r.typeName === 'shape').reduce((counts, r) => ({ ...counts, [r.type]: (counts[r.type] || 0) + 1 }), {}); metadata.assetCount = records.filter(r => r.typeName === 'asset').length }

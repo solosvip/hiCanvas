@@ -12,6 +12,7 @@ import { runNativeSuite } from './renderer-preview/native-suite-runner.mjs'
 const priority = ['shapeLinksOnly', 'embedsOnly', 'focusOnly', 'slidesOnly', 'framesOnly', 'imagesOnly', 'videosOnly', 'snappingOnly', 'notesOnly', 'connectionsOnly', 'textEditingOnly', 'actionsOnly', 'lasersOnly', 'erasersOnly', 'drawOnly', 'creationOnly', 'selectionSemanticsOnly', 'keyboardOnly', 'handlesOnly', 'contentFilmOnly', 'contentCaptureOnly', 'contentChannelOnly', 'contentSecurityOnly', 'cameraOnly', 'selectionOnly']
 const legacy = new Set(['embedsOnly', 'imagesOnly', 'contentFilmOnly', 'contentCaptureOnly', 'contentChannelOnly', 'contentSecurityOnly', 'selectionOnly'])
 const contracts = [
+  ['resourceConflictsOnly', 'resource-conflicts', 'gallery=image-import&edgeScrolling=0&reduceMotion=1&resourceConflicts=1', [['resourceConflicts']]],
   ['shapeLinksOnly', 'shape-links', 'gallery=shape-links&edgeScrolling=0', [['shapeLinks']]],
   ['focusOnly', 'focus-keys', 'gallery=focus-keys&edgeScrolling=0', [['focus']], ['runtime', 'sourceHash']],
   ['slidesOnly', 'slides', 'gallery=slides&edgeScrolling=0', [['slides', 'guards']], ['runtime', 'sourceHash']],
@@ -217,6 +218,17 @@ test('shapeLinksOnly接入真实开窗准备，优先于embeds并保留报告身
   assert.equal(typeof selected.open, 'function')
   assert.deepEqual(selected.reportBefore, ['pid', 'fingerprint'])
   assert.equal(selected.guardKey, 'native')
+})
+
+test('资源冲突专项独立入表、懒加载，并先准备原生守卫再建首窗', async () => {
+  const selected = selectNativeSuite({ resourceConflictsOnly: true, recordConflictsOnly: true, shapeLinksOnly: true })
+  assert.equal(selected.flag, 'resourceConflictsOnly')
+  assert.equal(typeof selected.open, 'function'); assert.equal(selected.prepare, undefined)
+  assert.deepEqual(selected.reportBefore, ['pid', 'fingerprint']); assert.equal(selected.guardKey, 'native')
+  const source = await readFile(new URL('./renderer-preview/native-suites.mjs', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /^import .*resource-conflicts-smoke/m)
+  const probe = await readFile(new URL('./renderer-preview/resource-conflicts-smoke.mjs', import.meta.url), 'utf8')
+  assert.match(probe, /return prepareShapeLinksProbe\(context\)/)
 })
 
 test('特殊open先装守卫再建首窗，准备结果交给原sample，不能重复开窗或准备', async t => {

@@ -30,6 +30,16 @@ const source = { report: ['runtime', 'sourceHash'] }
 // Keep legacy anchors in the same ordered table: selecting only registered
 // entries would let cameraOnly leapfrog contentFilmOnly in a mixed manifest.
 const suites = [
+  suite('resourceConflictsOnly', 'resource-conflicts', 'gallery=image-import&edgeScrolling=0&reduceMotion=1&resourceConflicts=1', [{
+    resourceConflicts: async context => (await import('./resource-conflicts-smoke.mjs')).resourceConflictsSmoke(context.window, context.manifest.output, context.prepared, context.manifest.url),
+  }], {
+    open: async context => {
+      const { prepareResourceConflictsProbe } = await import('./resource-conflicts-smoke.mjs')
+      const prepared = await prepareResourceConflictsProbe({ createWindow: context.createWindow, errors: context.errors })
+      return { window: prepared.window, prepared }
+    },
+    reportBefore: ['pid', 'fingerprint'], guardKey: 'native', guardCalls: context => context.prepared.blocked,
+  }),
   suite('recordConflictsOnly', 'record-conflicts', 'gallery=image-import&edgeScrolling=0&reduceMotion=1', [{
     recordConflicts: async context => (await import('./record-conflicts-smoke.mjs')).recordConflictsSmoke(context.window, context.manifest.output, context.prepared, context.manifest.url),
   }], {

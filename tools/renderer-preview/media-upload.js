@@ -88,7 +88,7 @@ export function createMediaUpload({ session, interaction, metadata, document, on
       if (supported.filter(file => fileType(file) === 'image/svg+xml').reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) { onError(new Error('一批 SVG 合计不能超过 8 MiB。')); return false }
       const signal = AbortSignal.any([lifecycle.signal, AbortSignal.timeout(60000)])
       let ticket, primaryError, committed = false
-      const attempt = createMediaUploadAttempt({ metadata, fileCount: supported.length, signal }), request = attempt.request
+      const attempt = createMediaUploadAttempt({ metadata, fileCount: supported.length, signal, beginFields: () => ticket?.uploadGuard }), request = attempt.request
       busy = true; onBusy(true)
       try {
         ticket = media.begin({ point, replaceId })

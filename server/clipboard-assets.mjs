@@ -4,7 +4,7 @@ import { createCanvasMedia } from './canvas-media.mjs'
 import { createContentAssets, localContentAssetPath, contentAssetType } from './content-assets.mjs'
 import { contentBase, rewriteContentReferences } from './content-references.mjs'
 import { httpError } from './file-lock.mjs'
-import { createClipboardContent, validateClipboardContent, executeCanvasCommands, MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_FILES, MAX_CLIPBOARD_FILE_BYTES, MAX_CLIPBOARD_RESOURCE_BYTES } from '../engine/index.js'
+import { createClipboardContent, validateClipboardContent, MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_FILES, MAX_CLIPBOARD_FILE_BYTES, MAX_CLIPBOARD_RESOURCE_BYTES } from '../engine/index.js'
 
 const virtual = 'http://cowart.local'
 const limits = { maxFileBytes: MAX_CLIPBOARD_FILE_BYTES, maxBytes: MAX_CLIPBOARD_RESOURCE_BYTES, maxFiles: MAX_CLIPBOARD_FILES, recursiveText: true, preserveUrls: true }
@@ -66,44 +66,42 @@ function local(value, base, board, parentOrigin) {
 
 export function createClipboardAssets(workspace) {
   const media = createCanvasMedia(workspace), collect = createContentAssets(workspace, limits)
-  async function copy(id, { ids, expectedRevision, parentOrigin = virtual }) {
-    const state = await workspace.read(id)
-    if (state.revision !== expectedRevision) throw httpError('复制前画板版本已变化。', 409)
-    const content = createClipboardContent(state.snapshot, ids, { boardId: id }), roots = new Set()
-    const visit = (value, base) => {
-      const path = local(value, base, id, parentOrigin)
-      if (path) roots.add(path)
-    }
-    const canonical = (value, base) => {
-      const path = local(value, base, id, parentOrigin)
-      if (!path) return value
-      const url = new URL(value, base)
-      return virtual + path + url.search + url.hash
-    }
-    mapFields(content, (value, base) => {
-      const inline = inlineHtml(value)
-      if (inline !== null) {
-        references(inline, base, 'html', visit)
-        return `data:text/html;base64,${Buffer.from(rewriteText(inline, base, 'html', canonical)).toString('base64')}`
+  async function copy(id, { ids, expectedRevision, recordBasis, parentOrigin = virtual }) {
+    return workspace.inspectCommands(id, expectedRevision, () => [{ type: 'copy_content', ids }], async snapshot => {
+      const content = createClipboardContent(snapshot, ids, { boardId: id }), roots = new Set()
+      const visit = (value, base) => {
+        const path = local(value, base, id, parentOrigin)
+        if (path) roots.add(path)
       }
-      else {
-        if (value.startsWith('blob:')) throw httpError('临时资源不能跨画板复制。')
-        visit(value, base)
+      const canonical = (value, base) => {
+        const path = local(value, base, id, parentOrigin)
+        if (!path) return value
+        const url = new URL(value, base)
+        return virtual + path + url.search + url.hash
       }
-      return canonical(value, base)
-    })
-    // One discovery pass enforces total quotas before any target is touched.
-    const html = [...roots].map(path => `<img src="${attribute(path)}">`).join('')
-    const packed = await collect(html, { conversationId: id, parentOrigin })
-    for (const [url, file] of packed.files) if (url !== packed.path) {
-      const kind = kindOf(file.type), bytes = kind ? Buffer.from(rewriteText(file.bytes.toString('utf8'), virtual + url, kind, canonical)) : file.bytes
-      content.resources.push({ url, mimeType: file.type, data: bytes.toString('base64') })
-    }
-    const result = validateClipboardContent(content)
-    if ((await workspace.read(id)).revision !== expectedRevision) throw httpError('复制期间画板版本已变化。', 409)
-    return result
+      mapFields(content, (value, base) => {
+        const inline = inlineHtml(value)
+        if (inline !== null) {
+          references(inline, base, 'html', visit)
+          return `data:text/html;base64,${Buffer.from(rewriteText(inline, base, 'html', canonical)).toString('base64')}`
+        }
+        else {
+          if (value.startsWith('blob:')) throw httpError('临时资源不能跨画板复制。')
+          visit(value, base)
+        }
+        return canonical(value, base)
+      })
+      // One discovery pass enforces total quotas before any target is touched.
+      const html = [...roots].map(path => `<img src="${attribute(path)}">`).join('')
+      const packed = await collect(html, { conversationId: id, parentOrigin })
+      for (const [url, file] of packed.files) if (url !== packed.path) {
+        const kind = kindOf(file.type), bytes = kind ? Buffer.from(rewriteText(file.bytes.toString('utf8'), virtual + url, kind, canonical)) : file.bytes
+        content.resources.push({ url, mimeType: file.type, data: bytes.toString('base64') })
+      }
+      return validateClipboardContent(content)
+    }, { recordBasis })
   }
-  async function prepare(id, command, parentOrigin, snapshot) {
+  async function prepare(id, command, parentOrigin) {
     const content = validateClipboardContent(command.content), board = content.origin.boardId
     const resources = new Map(content.resources.map(resource => {
       const path = local(resource.url, virtual + '/', board, parentOrigin)
@@ -144,8 +142,8 @@ export function createClipboardAssets(workspace) {
     })
     content.resources = []
     const prepared = { ...command, content }
-    // Validate final record relations, IDs, placement and rewritten content before writing.
-    executeCanvasCommands(snapshot, [prepared])
+    // The shared submit path validates these commands after checking the basis,
+    // still before prepareResources can write any file.
     const files = [...resources].map(([path, resource]) => {
       const kind = kindOf(resource.mimeType)
       const bytes = kind ? Buffer.from(text(resource.bytes.toString('utf8'), virtual + path, kind)) : resource.bytes
@@ -154,15 +152,17 @@ export function createClipboardAssets(workspace) {
     if (files.some(file => file.bytes.length > MAX_CLIPBOARD_FILE_BYTES) || files.reduce((sum, file) => sum + file.bytes.length, 0) > MAX_CLIPBOARD_RESOURCE_BYTES) throw httpError('重写后的剪贴板资源超过上限。', 413)
     return { command: prepared, files }
   }
-  async function paste(id, { expectedRevision, commands, parentOrigin = virtual }, actor) {
+  async function paste(id, { expectedRevision, commands, recordBasis, parentOrigin = virtual }, actor) {
     if (!Array.isArray(commands) || commands.length !== 1 || commands[0]?.type !== 'paste_content') throw httpError('需要一次内部粘贴命令。')
     const created = createAttemptFiles((await workspace.storageFor(id)).canvasDir)
+    let prepared
     try {
-      return await workspace.submitCommands(id, expectedRevision, actor, async snapshot => {
-        const prepared = await prepare(id, commands[0], parentOrigin, snapshot)
-        for (const file of prepared.files) await created.write(file, file.bytes)
+      return await workspace.submitCommands(id, expectedRevision, actor, async () => {
+        prepared = await prepare(id, commands[0], parentOrigin)
         return [prepared.command]
-      })
+      }, { recordBasis, prepareResources: async () => {
+        for (const file of prepared.files) await created.write(file, file.bytes)
+      } })
     } catch (error) {
       // Only files created by this attempt, never a pre-existing target file.
       const { failures } = await created.rollback()

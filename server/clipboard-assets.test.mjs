@@ -156,11 +156,11 @@ test('版本冲突在落盘前拒绝；写完资源后命令被拒清掉本次�
   const dir = await f.workspace.assetsDir(f.target)
   await mkdir(dir, { recursive: true }); await writeFile(join(dir, 'existing.png'), 'keep')
   const submit = f.workspace.submitCommands
-  f.workspace.submitCommands = (id, revision, actor, prepare) => submit(id, revision, actor, async snapshot => {
-    await prepare(snapshot)
+  f.workspace.submitCommands = (id, revision, actor, prepare, options) => submit(id, revision, actor, prepare, { ...options, prepareResources: async (...args) => {
+    await options.prepareResources(...args)
     assert.equal((await files(f)).length, 6, '故障注入在全部五份新文件写完之后')
     throw new Error('injected after files')
-  })
+  } })
   const before = await f.workspace.read(f.target)
   await assert.rejects(paste(f, content), /injected after files/)
   assert.deepEqual(await files(f), ['existing.png'])

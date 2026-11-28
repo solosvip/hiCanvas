@@ -27,13 +27,13 @@ async function setup(t, mode = '') {
   t.after(() => { if (readerProperty) Object.defineProperty(globalThis, 'FileReader', readerProperty); else delete globalThis.FileReader })
   const session = await createEditorSession({ actor: 'ui:cleanup', transport: {
     read: () => workspace.read(id), subscribe: () => () => {},
-    async commit({ expectedRevision, commands, actor }) {
+    async commit({ expectedRevision, commands, actor, recordBasis }) {
       commits++
       if (mode === 'commit-timeout') { entered(); await gate }
       if (mode === 'replay' && commits === 1) await workspace.submitCommands(id, expectedRevision, 'mcp:other', () => [{ type: 'create_shape', id: 'shape:unrelated', shapeType: 'geo' }])
       if (mode === 'reject-commit') throw new Error('原始提交拒绝')
       let result
-      try { result = await workspace.submitCommands(id, expectedRevision, actor, () => commands) }
+      try { result = await workspace.submitCommands(id, expectedRevision, actor, () => commands, { recordBasis }) }
       catch (error) { if (error.status === 409) error.code = 'conflict'; throw error }
       if (mode === 'lost-commit') throw new Error('原始提交回执丢失')
       return result
@@ -108,10 +108,10 @@ test('正常成功只提交一次，销毁不取消已保存的素材', async t 
   assert.equal(f.requests.filter(r => r.purpose === 'file-import-abort').length, 0)
 })
 
-test('第一次409来自无关远端变化，重放成功才结束且素材不提前清理', async t => {
+test('无关远端变化由服务端按记录核对，一次提交成功且素材不提前清理', async t => {
   const f = await setup(t, 'replay')
   assert.equal(await f.upload.importFiles(f.files(), { x: 0, y: 0 }), true)
-  assert.equal(f.commits(), 2); assert.deepEqual(f.errors, [])
+  assert.equal(f.commits(), 1); assert.deepEqual(f.errors, [])
   assert.equal(f.requests.filter(r => r.purpose === 'file-import-abort').length, 0)
   assert.equal((await f.count()).length, 2)
   assert.equal(Object.values((await f.workspace.read(f.id)).snapshot.store).filter(r => r.typeName === 'shape').length, 3)

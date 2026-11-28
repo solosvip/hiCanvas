@@ -111,18 +111,25 @@ export function createMediaImportAttempts(workspace) {
   }
   function close(attempt) { attempt.stopping = true; clearTimeout(attempt.timer); return cleanup(attempt) }
   const api = {
-    async begin(id, actor, expectedFiles = mediaImportLimits.files) {
+    async begin(id, actor, expectedFiles = mediaImportLimits.files, guard) {
       actorValid(actor); await workspace.requireConversation(id)
       if (!Number.isInteger(expectedFiles) || expectedFiles < 1 || expectedFiles > mediaImportLimits.files) throw httpError('媒体文件数量必须在1到100之间。')
-      if (attempts.size >= mediaImportLimits.perWorkspace || [...attempts.values()].filter(a => a.id === id).length >= mediaImportLimits.perBoard) throw httpError('等待清理的媒体导入过多，请稍后重试。', 429)
-      const attempt = { id, actor, token: randomUUID(), state: 'active', files: createAttemptFiles(boardDir(root, id)), queue: Promise.resolve(), retries: 0, count: 0, expectedFiles }
-      attempt.timer = setTimeout(() => { void close(attempt).catch(() => {}) }, mediaImportLimits.leaseMs); attempt.timer.unref?.()
-      attempts.set(attempt.token, attempt)
-      return { importToken: attempt.token, expiresInMs: mediaImportLimits.leaseMs }
+      if (guard !== undefined) {
+        if (!guard || Object.keys(guard).length !== 3 || !['expectedRevision', 'recordBasis', 'intent'].every(key => Object.hasOwn(guard, key)) || !guard.recordBasis || guard.intent?.type !== 'media_import_target' || typeof guard.intent.pageId !== 'string' || guard.intent.replaceId !== undefined && typeof guard.intent.replaceId !== 'string' || Object.keys(guard.intent).some(key => !['type', 'pageId', 'replaceId'].includes(key))) throw httpError('媒体导入条件不完整或意图无效。')
+        guard = structuredClone(guard)
+      }
+      const begin = () => {
+        if (attempts.size >= mediaImportLimits.perWorkspace || [...attempts.values()].filter(a => a.id === id).length >= mediaImportLimits.perBoard) throw httpError('等待清理的媒体导入过多，请稍后重试。', 429)
+        const attempt = { id, actor, guard, token: randomUUID(), state: 'active', files: createAttemptFiles(boardDir(root, id)), queue: Promise.resolve(), retries: 0, count: 0, expectedFiles }
+        attempt.timer = setTimeout(() => { void close(attempt).catch(() => {}) }, mediaImportLimits.leaseMs); attempt.timer.unref?.()
+        attempts.set(attempt.token, attempt)
+        return { importToken: attempt.token, expiresInMs: mediaImportLimits.leaseMs }
+      }
+      return guard ? workspace.inspectCommands(id, guard.expectedRevision, () => [guard.intent], begin, { recordBasis: guard.recordBasis }) : begin()
     },
     async upload(id, token, actor, bytes, extension) {
       const attempt = lookup(id, token, actor)
-      return serial(attempt, () => boardLock(root, id, async () => {
+      const upload = async () => {
         await workspace.requireConversation(id)
         if (attempt.stopping || attempt.state !== 'active') throw httpError('本次媒体导入已结束。', 409)
         if (attempt.count >= attempt.expectedFiles) throw httpError('本次媒体导入文件数量超限。', 413)
@@ -135,7 +142,11 @@ export function createMediaImportAttempts(workspace) {
         try { await attempt.files.write(saved, bytes) } catch (error) { if (!attempt.files.has(saved.assetUrl)) owners.delete(saved.assetUrl); throw error }
         if (attempt.stopping) throw httpError('本次媒体导入已取消。', 409)
         return saved
-      }))
+      }
+      // Guarded inspection owns this same board lock; never nest boardLock.
+      return serial(attempt, () => attempt.guard
+        ? workspace.inspectCommands(id, attempt.guard.expectedRevision, () => [attempt.guard.intent], upload, { recordBasis: attempt.guard.recordBasis })
+        : boardLock(root, id, upload))
     },
     abort(id, token, actor) {
       const receipt = ended.get(token)

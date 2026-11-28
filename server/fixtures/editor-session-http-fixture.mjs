@@ -18,8 +18,10 @@ export function httpSessionTransport(base, conversationId) {
     read: () => request('/api/canvas'),
     commit({ expectedRevision, commands, actor, recordBasis }) {
       commits.push({ expectedRevision, commands: structuredClone(commands), actor })
-      return request('/api/canvas/operations', 'POST', { expectedRevision, operations: commands, recordBasis }, actor)
+      const paste = commands.some(command => command.type === 'paste_content')
+      return request(paste ? '/api/canvas/clipboard/paste' : '/api/canvas/operations', 'POST', { expectedRevision, ...(paste ? { commands } : { operations: commands }), recordBasis }, actor)
     },
+    copyContent: ({ ids, expectedRevision, recordBasis }) => request('/api/canvas/clipboard/copy', 'POST', { ids, expectedRevision, recordBasis }),
     undo: ({ expectedRevision, actor }) => request('/api/canvas/undo', 'POST', { expectedRevision, actor }),
     redo: ({ expectedRevision, actor }) => request('/api/canvas/redo', 'POST', { expectedRevision, actor }),
     subscribe(onChange) {

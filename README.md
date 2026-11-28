@@ -211,11 +211,17 @@ cp -R skills/hicanvas "$HOME/Documents/skills/"
 
 ## 检查
 
-确认类编辑的并发规则（#231，ADR 0017）：新编辑底座的新建嵌入、网址对象互转、图片描述和对象链接携带相关记录基线；AI 在其它位置写入时仍可确认，目标、完整祖先、相关资源或必要成员集合变化时拒绝并保留仍有效的草稿。一次确认只发一次修改，失败或回执不确定时仅刷新，不自动重发。图片描述现在走离散命令；连续拖动的重放规则不变。剪贴板、媒体导入和拍平接入另见 #239。
+确认类编辑的并发规则（#231，ADR 0017）：新编辑底座的新建嵌入、网址对象互转、图片描述和对象链接携带相关记录基线；AI 在其它位置写入时仍可确认，目标、完整祖先、相关资源或必要成员集合变化时拒绝并保留仍有效的草稿。一次确认只发一次修改，失败或回执不确定时仅刷新，不自动重发。图片描述现在走离散命令；连续拖动的重放规则不变。
 
 `captureRecordBasis(snapshot, getRecordDependencies(snapshot, commands))` 取得文档条件；`session.commitCommands(commands, {recordBasis})` 在出队时再核对，并用当前确认版本发送。HTTP operations 可选携带 `{recordBasis:{version:1,records:[[id,原记录或null]],memberships:[{kind,id,ids}]}}`，`expectedRevision` 仍必填；服务端在保存锁内重新推导并核对完整依赖，在当前快照执行。记录与成员条件合计最多20000条，命令与基线合计不超过50 MiB；带条件的未知命令、缺依赖、重复或非文档值明确拒绝。初版支持 `insert_url`（必须显式pageId）、`convert_url_shape`、`set_image_alt_text`、`set_shape_link`。带条件的成功回执含实际保存的 `snapshot` 和命令 `results`；旧回执继续省略 `results`。没有 `recordBasis` 的既有调用仍严格比较整板版本；撤销、重做、旧快照PUT和删除画板不改规则。
 
 登记白板及端口、设置已有 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_RECORD_CONFLICTS_PORT=43390 node tools/renderer-preview/record-conflicts-check.mjs`；专项通过登记表进入隔离持久化图鉴，三处确认各测无关放行、相关拒绝，并测本人撤销/重做保留远端。每轮证据保存在 `.scratch/record-conflicts-smoke/run-*/`，系统剪贴板、导航和原生弹窗全程拒绝。逻辑/真实HTTP回归随 `npm run check` 执行，交付另跑完整 `npm run renderer:smoke`。这条规则适用新底座，正式界面尚未切换。
+
+剪贴板和媒体导入沿用同一规则（#239）：复制/剪切保护源子树、绑定几何和删除收尾涉及的组；粘贴固定读取开始时的父容器和落点；图片/视频插入或替换携带开始基线，一次提交，不再手势重放。远处改动可继续，相关变化拒绝。剪切先等私有输出成功再删对象；复制打包完成和剪贴板输出无法跨进程原子，写后发现变化只报告失败，不清空已输出内容。
+
+`clipboard/copy`、`clipboard/paste`、图片插入及现有图片 `dryRun` 可携带 `recordBasis`。资源在画板锁内纯规划、核对、预执行通过后才落盘；失败只回滚本请求新建文件，既有 `assetUrl` 与生图结果不清理。分步上传 `file-import-begin` 可增加 `{expectedRevision,recordBasis,intent:{type:'media_import_target',pageId,replaceId?}}`，凭证固定该条件，每项上传及最终提交重新核对；旧无条件凭证不变。只读依赖查询意图不是可执行命令。
+
+资源冲突原生专项：登记白板及43390端口后，运行 `HICANVAS_RESOURCE_CONFLICTS_PORT=43390 node tools/renderer-preview/resource-conflicts-check.mjs`（设置已有 `HICANVAS_TEST_ELECTRON`）。23组覆盖私有复制/剪切/粘贴、输出失败、图片/视频插入与替换的相关/无关变化、最终相关竞态、丢回执不重发和资源保留、一次撤销重做；证据在 `.scratch/resource-conflicts-smoke/run-*/`。文件与剪贴板事件均为合成私有值，不覆盖系统剪贴板；交付仍须独立 `npm run renderer:smoke`。
 
 ```sh
 npm run check

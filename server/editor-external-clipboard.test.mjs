@@ -49,7 +49,7 @@ test('净化内容沿同一paste事务一次提交，通知独立于错误且下
   assert.equal(host.commits.length, commits)
 })
 
-test('外部内容读取期间Esc、选择、焦点、远端版本和释放均阻止迟到的粘贴', async t => {
+test('外部内容读取期间Esc、选择、焦点、目标画布变化和释放均阻止迟到的粘贴', async t => {
   for (const mode of ['escape', 'selection', 'focus', 'revision', 'dispose']) {
     let resolve, entered
     const gate = new Promise(r => { resolve = r }), started = new Promise(r => { entered = r })
@@ -61,7 +61,7 @@ test('外部内容读取期间Esc、选择、焦点、远端版本和释放均�
     if (mode === 'escape') ui.dispatch({ type: 'key_down', key: 'Escape', time: 1 })
     if (mode === 'selection') ui.select('clear')
     if (mode === 'focus') { ui.setInputContext({ owner: 'form' }); ui.setInputContext({ owner: 'canvas' }) }
-    if (mode === 'revision') { await host.remote([{ type: 'create_shape', id: 'shape:remote', shapeType: 'geo' }]); await session.refresh() }
+    if (mode === 'revision') { await host.remote([{ type: 'update', id: session.store.allRecords().find(r => r.typeName === 'page').id, changes: { name: 'Changed target' } }]); await session.refresh() }
     if (mode === 'dispose') ui.dispose()
     resolve({ kind: 'external-content', content: content(), placement: 'default', notice })
     await assert.rejects(pending, error => error.code === 'conflict')

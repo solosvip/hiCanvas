@@ -147,6 +147,23 @@ export function createConversations(root = defaultRoot) {
     validId(id)
     return lock(id, async () => { await requireConversation(id); return readState(id) })
   }
+  async function prepareCommands(snapshot, revision, expectedRevision, createCommands, recordBasis) {
+    if (typeof expectedRevision !== 'string' || !expectedRevision) throw httpError('写入前必须读取画板并提供版本。', 428)
+    if (recordBasis === undefined && expectedRevision !== revision) throw httpError('画板已被其他操作更新。请读取最新版本后合并修改。', 409, { storage: 'revision-conflict', revision })
+    const commands = structuredClone(await createCommands(snapshot))
+    if (recordBasis !== undefined) assertRecordBasis(snapshot, recordBasis, getRecordDependencies(snapshot, commands))
+    return commands
+  }
+  async function inspectCommands(id, expectedRevision, createCommands, inspect, { recordBasis } = {}) {
+    validId(id)
+    const basis = recordBasis === undefined ? undefined : structuredClone(recordBasis)
+    return lock(id, async () => {
+      await requireConversation(id)
+      const current = await readState(id), snapshot = readOnly(structuredClone(current.snapshot))
+      const commands = await prepareCommands(snapshot, current.revision, expectedRevision, createCommands, basis)
+      return inspect(snapshot, commands, current.revision)
+    })
+  }
   async function commit(id, expectedRevision, actor, prepare, checkCurrent) {
     validId(id)
     return lock(id, async () => {
@@ -156,7 +173,7 @@ export function createConversations(root = defaultRoot) {
       if (!checkCurrent && expectedRevision !== current.revision) throw httpError('画板已被其他操作更新。请读取最新版本后合并修改。', 409, { storage: 'revision-conflict', revision: current.revision })
       if (typeof actor !== 'string' || !actor.trim()) throw httpError('写入需要有效的操作者。')
       const before = readOnly(structuredClone(current.snapshot))
-      await checkCurrent?.(before)
+      await checkCurrent?.(before, current.revision)
       const edit = await prepare(before)
       const snapshot = await qualify(await checked(edit.snapshot), id)
       if (singlePageId(snapshot) !== singlePageId(current.snapshot)) throw httpError('不能替换画板的内部画布。')
@@ -193,15 +210,18 @@ export function createConversations(root = defaultRoot) {
     return null
   }
   return {
-    root, open, requireConversation, read, sidecar,
-    submitCommands(id, expectedRevision, actor, createCommands, { recordBasis } = {}) {
+    root, open, requireConversation, read, sidecar, inspectCommands,
+    submitCommands(id, expectedRevision, actor, createCommands, { recordBasis, prepareResources } = {}) {
       let commands
       const basis = recordBasis === undefined ? undefined : structuredClone(recordBasis)
       // Only semantic commands can opt in; arbitrary snapshot/history callbacks
       // never bypass the existing whole-board revision check.
-      const checkCurrent = basis === undefined ? undefined : async snapshot => {
-        commands = structuredClone(await createCommands(snapshot))
-        assertRecordBasis(snapshot, basis, getRecordDependencies(snapshot, commands))
+      const checkCurrent = async (snapshot, revision) => {
+        commands = await prepareCommands(snapshot, revision, expectedRevision, createCommands, basis)
+        if (prepareResources) {
+          executeCanvasCommands(snapshot, commands)
+          await prepareResources(snapshot, commands)
+        }
       }
       return commit(id, expectedRevision, actor, async snapshot => executeCanvasCommands(snapshot, commands ?? await createCommands(snapshot)), checkCurrent)
     },

@@ -14,7 +14,7 @@ async function setup() {
   const pageId = Object.values(snapshot.store).find(r => r.typeName === 'page').id
   return { session, media: createMediaImport({ session, interaction, pageId }), interaction,
     select: selectedIds => { state = { ...state, selectedIds } },
-    shapes: () => session.store.allRecords().filter(r => r.typeName === 'shape'), close: () => session.dispose() }
+    shapes: () => session.store.allRecords().filter(r => r.typeName === 'shape').sort((a, b) => a.x - b.x), close: () => session.dispose() }
 }
 test('文件图片按自然尺寸紧贴成行，重复落点不避障；整批一次撤销', async () => {
   const f = await setup()
@@ -47,7 +47,7 @@ test('动画标记不丢失；图片与视频共用一批事务，后项错误�
   try {
     await f.media.begin({ point: { x: 550, y: 420 } }).commit([{ ...image, mimeType: 'image/gif', isAnimated: true }, { ...image, mimeType: 'video/mp4' }])
     assert.deepEqual(f.shapes().map(s => s.type), ['image', 'video'])
-    assert.equal(f.session.store.get(f.shapes()[0].props.assetId).props.isAnimated, true)
+    assert.equal(f.session.store.get(f.shapes().find(shape => shape.type === 'image').props.assetId).props.isAnimated, true)
     const before = f.session.store.allRecords()
     await assert.rejects(f.media.begin({ point: { x: 0, y: 0 } }).commit([image, { ...image, src: '', mimeType: 'image/png' }]))
     assert.deepEqual(f.session.store.allRecords(), before)

@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join, basename } from 'node:path'
+import { join, basename, dirname } from 'node:path'
 import { decodeReference } from './image-provider.mjs'
 import { imageDimensions } from './image-dimensions.mjs'
 import { executeCanvasCommands, getMediaTarget } from '../engine/index.js'
@@ -9,6 +9,7 @@ import { decodeVideoUpload } from './video-upload.mjs'
 import { decodeImageUpload } from './image-upload.mjs'
 import { decodeSvgUpload } from './svg-sanitize.mjs'
 import { createMediaImportAttempts } from './media-import-attempts.mjs'
+import { createAttemptFiles } from './asset-attempt-files.mjs'
 
 export function createCanvasMedia(workspace) {
   async function assetDestination(id, name) {
@@ -40,7 +41,12 @@ export function createCanvasMedia(workspace) {
     return { bytes, mimeType, assetPath: join(directory, name) }
   }
   async function reference(id, args, actor = 'http') {
-    if (args.purpose === 'file-import-begin') return createMediaImportAttempts(workspace).begin(id, actor, args.fileCount)
+    const guarded = ['expectedRevision', 'recordBasis', 'intent'].some(key => Object.hasOwn(args, key))
+    if (args.purpose === 'file-import-begin') {
+      const guard = guarded ? { expectedRevision: args.expectedRevision, recordBasis: args.recordBasis, intent: args.intent } : undefined
+      return createMediaImportAttempts(workspace).begin(id, actor, args.fileCount, guard)
+    }
+    if (guarded) throw httpError('带条件的分步上传必须先申请导入凭证。')
     if (args.purpose === 'file-import-abort') return createMediaImportAttempts(workspace).abort(id, args.importToken, actor)
     if (args.purpose !== undefined && !['file-import', 'file-import-prepare'].includes(args.purpose)) throw httpError('未知资源上传用途。')
     if (args.purpose === 'file-import-prepare') {
@@ -66,10 +72,21 @@ export function createCanvasMedia(workspace) {
     const image = args.dataUrl ? decodeReference(args.dataUrl) : await readAsset(id, args.assetUrl)
     if (!image.mimeType.startsWith('image/')) throw httpError('需要图片资源。')
     const { w, h } = imageDimensions(image.bytes)
-    return commitMedia(id, args, actor, async () => {
-      const saved = args.assetUrl ? { assetUrl: args.assetUrl } : args.dryRun ? { assetUrl: '' } : await saveAsset(id, image.bytes, args.fileName || `image.${image.extension}`)
-      return { saved, command: { type: 'insert_image', args, image: { src: saved.assetUrl, name: saved.assetUrl.split('/').at(-1), w, h, mimeType: image.mimeType } } }
-    })
+    const saved = args.assetUrl ? { assetUrl: args.assetUrl } : await assetDestination(id, args.fileName || `image.${image.extension}`)
+    const { expectedRevision, recordBasis, dryRun, ...placement } = args
+    const createCommands = snapshot => {
+      getMediaTarget(snapshot, placement)
+      const src = dryRun && !args.assetUrl ? '' : saved.assetUrl
+      return [{ type: 'insert_image', args: placement, image: { src, name: src.split('/').at(-1), w, h, mimeType: image.mimeType } }]
+    }
+    if (dryRun) return workspace.inspectCommands(id, expectedRevision, createCommands, (snapshot, commands, revision) => ({ ...executeCanvasCommands(snapshot, commands).results[0], dryRun: true, actor, revision }), { recordBasis })
+    const files = createAttemptFiles(dirname(await workspace.assetsDir(id)))
+    try {
+      const { changes: _changes, results, ...result } = await workspace.submitCommands(id, expectedRevision, actor, createCommands, {
+        recordBasis, prepareResources: async () => { if (!args.assetUrl) await files.write(saved, image.bytes) },
+      })
+      return { ...result, ...results[0], ...saved, snapshot: undefined }
+    } catch (error) { await files.rollback(); throw error }
   }
   async function commitMedia(id, args, actor, prepare) {
     let saved

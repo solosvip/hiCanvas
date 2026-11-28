@@ -85,9 +85,14 @@ for (const modify of [
   modify(basis)
   assert.throws(() => check(snapshot, basis), error => error.code === 'invalid-record-basis')
 })
-test('未知动作和不支持的资源写入拒绝，删除祖先/目标仍冲突', () => {
+test('不支持的动作仍拒绝，粘贴和插图纳入目标，删除祖先/目标仍冲突', () => {
   const snapshot = initial(), basis = capture(snapshot)
-  for (const type of ['put', 'paste_content', 'insert_image', 'flatten_shapes']) assert.throws(() => capture(snapshot, [{ type }]), { code: 'unsupported-record-basis' })
+  for (const type of ['put', 'flatten_shapes']) assert.throws(() => capture(snapshot, [{ type }]), { code: 'unsupported-record-basis' })
+  const paste = { type: 'paste_content', parentId: 'shape:parent' }
+  const image = { type: 'insert_image', args: { anchorShapeId: 'shape:target', avoidOverlap: false } }
+  for (const [command, target] of [[paste, 'shape:parent'], [image, 'shape:target']]) {
+    assert.ok(engine.getRecordDependencies(snapshot, [command]).ids.includes(target))
+  }
   const deleted = engine.executeCanvasCommands(snapshot, [{ type: 'delete', ids: ['shape:parent'] }]).snapshot
   assert.throws(() => check(deleted, basis), { code: 'conflict' })
   assert.throws(() => check(changed(snapshot, 'shape:parent', { rotation: .2 }), basis), { code: 'conflict' })

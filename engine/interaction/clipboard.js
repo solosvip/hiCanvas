@@ -6,6 +6,8 @@ import { validateClipboardContent } from '../clipboard/validate.js'
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { matchesCanvasShortcut } from './shortcuts.js'
 import { canvasOwnsFocus } from './keyboard-input.js'
+import { captureRecordBasis, assertRecordBasis } from '../record-basis.js'
+import { getRecordDependencies } from '../record-dependencies.js'
 
 const unavailable = reason => ({ status: 'unavailable', reason })
 
@@ -33,7 +35,11 @@ export function createClipboardActions({ session, read, change, report, boardId,
   }
   function cancel() { if (pending) pending.cancelled = true }
   function check(token) {
-    if (token.cancelled || reason({ own: true }) || session.state.get().revision !== token.revision || JSON.stringify(read().selectedIds) !== token.selection) throw new CanvasEditError('剪贴板操作期间会话、输入归属或画板已变化。', 'conflict')
+    if (token.cancelled || reason({ own: true }) || JSON.stringify(read().selectedIds) !== token.selection) throw new CanvasEditError('剪贴板操作期间会话、输入归属或画板已变化。', 'conflict')
+    if (token.recordBasis) {
+      const current = session.store.getStoreSnapshot()
+      assertRecordBasis(current, token.recordBasis, getRecordDependencies(current, token.commands))
+    }
   }
   function run(action, ids) {
     const blocked = reason()
@@ -42,20 +48,23 @@ export function createClipboardActions({ session, read, change, report, boardId,
     if (action === 'paste-at-cursor') { change({ pasteAtCursor: !read().pasteAtCursor }); return { status: 'preference' } }
     if (!port || typeof port[action === 'paste' ? 'read' : 'write'] !== 'function') return unavailable('unsupported')
     const token = { revision: session.state.get().revision, selection: JSON.stringify(read().selectedIds), cancelled: false }
-    const state = read(), screenPoint = point || { x: state.viewport.w / 2, y: state.viewport.h / 2 }
+    const snapshot = structuredClone(session.store.getStoreSnapshot())
+    const state = { ...read(), selectedIds: [...read().selectedIds] }, screenPoint = point || { x: state.viewport.w / 2, y: state.viewport.h / 2 }
     const worldPoint = screenToCanvas(screenPoint, state.camera)
     const viewport = { x: -state.camera.x, y: -state.camera.y, w: state.viewport.w / state.camera.z, h: state.viewport.h / state.camera.z }
     pending = token; change({ clipboardBusy: true, lastError: null })
     return (async () => {
       try {
         if (action !== 'paste') {
-          const snapshot = structuredClone(session.store.getStoreSnapshot())
-          const content = port.copyContent ? await port.copyContent({ snapshot, ids, expectedRevision: token.revision, boardId }) : createClipboardContent(snapshot, ids, { boardId })
+          ids = structuredClone(ids)
+          token.commands = [{ type: 'copy_content', ids }, ...(action === 'cut' ? [{ type: 'delete', ids }] : [])]
+          token.recordBasis = captureRecordBasis(snapshot, getRecordDependencies(snapshot, token.commands))
+          const content = port.copyContent ? await port.copyContent({ snapshot, ids, expectedRevision: token.revision, recordBasis: token.recordBasis, boardId }) : createClipboardContent(snapshot, ids, { boardId })
           check(token)
           await port.write(encodeClipboardContent(content))
           check(token)
           if (action === 'copy') return { status: 'copied' }
-          const reply = await session.commitCommands([{ type: 'delete', ids }], { expectedRevision: token.revision })
+          const reply = await session.commitCommands([{ type: 'delete', ids }], { recordBasis: token.recordBasis })
           if (!disposed) change({ selectedIds: [], lastError: null })
           return { status: 'applied', reply }
         }
@@ -70,9 +79,11 @@ export function createClipboardActions({ session, read, change, report, boardId,
         }
         const content = external ? validateClipboardContent(formats.content) : decodeClipboardContent(formats)
         if (!content) return unavailable('external-content')
-        const snapshot = structuredClone(session.store.getStoreSnapshot())
         const plan = planClipboardPaste(snapshot, content, { strategy: external ? formats.placement : 'default', boardId, viewport, point: worldPoint, atCursor: state.pasteAtCursor, selectedIds: state.selectedIds, focusedGroupId: state.focusedGroupId === Object.values(snapshot.store).find(r => r.typeName === 'page')?.id ? null : state.focusedGroupId })
-        const reply = await session.commitCommands([{ type: 'paste_content', content, ...plan }], { expectedRevision: token.revision })
+        token.commands = [{ type: 'paste_content', content, ...plan }]
+        token.recordBasis = captureRecordBasis(snapshot, getRecordDependencies(snapshot, token.commands))
+        check(token)
+        const reply = await session.commitCommands(token.commands, { recordBasis: token.recordBasis })
         if (!disposed) change({ selectedIds: reply.results[0].rootIds, selectionRotation: null, lastError: null, lastNotice: notice })
         if (!disposed && external && content.shapes.length === 1 && content.shapes[0].type === 'bookmark') bookmarks?.auto(reply.results[0].rootIds[0])
         return { status: 'applied', reply }
