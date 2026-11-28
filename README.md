@@ -419,7 +419,9 @@ SVG单份输入/输出各2 MiB、单批原始合计8 MiB；树10000节点/64层�
 非输入控件聚焦时，普通按钮、工具栏按钮、链接、关闭的菜单触发器与画布共用 `canvasOwnsFocus`：复制、剪切、粘贴与文件落点仍属于画布，选中便签的邻位续建入口保持可用。input、textarea、contenteditable、文字编辑、展开菜单、select、视频和组字仍受保护；异步续建完成后不抢回控件焦点。专项回归按同样白板规则运行 `HICANVAS_CONTROL_CLIPBOARD_PORT=43390 node tools/renderer-preview/control-clipboard-check.mjs`，复用上述 Electron 环境变量，材料在 `.scratch/control-clipboard-smoke/`。其中指针、焦点、历史和文字输入使用离屏原生事件；剪贴板使用私有合成事件，系统剪贴板始终封锁。旧版系统 Mod+C/X/V 整条链路未观察，真实跨应用复制粘贴需用户集中验收。
 
 
-网址嵌入合成图鉴为 `/?gallery=embed-editing`，Mod+I或“创建嵌入”打开服务列表，选服务后输入完整HTTPS网址；返回、取消及无效输入不写画板。Enter遵循原生表单和当前按钮，Esc取消。编辑层 `embed(action)` 管草稿及提交，`canEmbed()` 查询可用性；关闭时焦点归还画布。书签文字补齐见下文；图片/图标抓取归#204，现有存档的远程预览图保持原显示方式。GitHub Gist暂作书签，安全包装归#220。
+网址嵌入合成图鉴为 `/?gallery=embed-editing`，Mod+I或“创建嵌入”打开服务列表，选服务后输入完整HTTPS网址；返回、取消及无效输入不写画板。Enter遵循原生表单和当前按钮，Esc取消。编辑层 `embed(action)` 管草稿及提交，`canEmbed()` 查询可用性；关闭时焦点归还画布。书签文字补齐见下文；图片/图标抓取归#204，现有存档的远程预览图保持原显示方式。
+
+GitHub Gist（#220）只接受 `https://gist.github.com/<十六进制ID>` 或 `/<用户名>/<ID>`，显示整份内容，丢弃query/hash，不支持单个文件或指定revision。它通过独立随机来源的固定包装加载，与生成内容共用配额、租约及回收；不接受自定义HTML/脚本地址，不获得编辑、播放、截图或消息通道。只允许本ID官方脚本、固定提示代码及官方静态样式，未知依赖明确提示失败；续租失败移除iframe并结束互动。真实GitHub脚本/CSS在线兼容性未知，本轮只验证本地合成响应。取舍见 [ADR0015](docs/adr/0015-gist-fixed-isolated-publications.md)。
 
 选一个可转换对象后，可用“转换为书签/嵌入”：一条 `convert_url_shape` 命令保留原ID、组和层序、旋转、透明度、注记及页面中心；绑定保留并按新几何重算。锁定自身/祖先、未知服务书签与生成内容不可转。宿主通过 `embed({type:'conversion-intent',to})` 捕获当前对象/选择/版本，再把不可变意图交回 `embed(intent)`；过期意图拒绝，不转移到新选区。形状及新书签asset同次撤销/重做；书签转出时，同事务清理无人引用的旧书签asset，共用资源保留。通用update仍禁止改type。双击互动见下文；超链接编辑归#205。
 
@@ -434,6 +436,8 @@ SVG单份输入/输出各2 MiB、单批原始合计8 MiB；树10000节点/64层�
 选择书签后 `bookmark({type:'open'})` 打开改址草稿，`{type:'update',url}` 更新；“保存并补齐”先读取，再以一条 `set_bookmark_url` 同时保存网址与新文字，并清掉旧文字、图片及图标。读取失败保留对话框，展示已知原因，可重试、取消或明确“仅保存网址”；后者清掉旧信息，一次撤销恢复旧网址、资源关系和信息。提交发出后不可取消，保存回执失败按当前宿主画板提示重新操作，不声称一定未保存，不重发。换选择/相机和无关改动保留准备结果，目标/资源/祖先变化、取消及销毁永久废弃并Abort；别的手势结束后才按当前确认版本提交，409只提交一次。
 
 合成书签图鉴为 `/?gallery=embed-editing&embedCase=bookmarks`，显式注入可控fetch响应，提供刷新、编辑网址和取消按钮；其他合成图鉴注入空文字响应，均不读取真实网站。上述原生入口在原18+23阶段之后执行书签专项，材料增加 `bookmark-metadata-native.json` 及截图。定向命令为 `node --test server/engine-bookmarks.test.mjs server/editor-bookmarks.test.mjs server/editor-bookmark-jobs.test.mjs tools/bookmark-metadata-client.test.mjs`；统一完整检查及独立 `renderer:smoke` 仍须执行。没有重新观察旧版修改书签网址的保存时机；线上兼容性和真实跨应用粘贴留用户集中验证。
+
+同一专项还运行Gist固定发布、CSP/sandbox、父接口二道门、相邻实例隔离、无消息能力及回收检查，证据为 `gist-native.json`。精确官方脚本和样式URL由本次独立session本地满足，报告分别列尝试、拒绝和本地满足的指纹；其他HTTPS及Node出站拒绝。通用 `renderer:smoke` 的18格external图鉴用Gist相似域名作拒绝对照，合法Gist只在上述专项验证，不能用通用图鉴代替。Electron 42.5.0的离屏/隐藏跨进程子框无法由原生点击聚焦，子目标鼠标/insertText会崩溃；专项明确区分“原生双击+真实DOM聚焦+原生字符”与获审定的“DOM焦点+父原生快捷键拒绝”后备证据，实际鼠标聚焦和子页可信打字需在真实窗口由用户验收。
 
 ### 新编辑底座的画布输出（#210，独立合成预览）
 

@@ -44,12 +44,16 @@ test('iframe边界只读唯一src；从不读取输入宽高/权限/srcdoc，未
   assert.throws(() => parseClipboardUrl({ 'text/html': html }, { document: inertFixture([iframe('https://youtu.be/demo')], { live: true }) }))
 })
 
-test('HTTP、未知网址和Gist只建无图书签；纯数据入口不接受伪造HTML或属性', () => {
-  for (const url of ['http://www.youtube.com/watch?v=demo', 'https://unknown.example.invalid', 'https://gist.github.com/demo/0123456789abcdef0123456789abcdef']) {
+test('HTTP和未知网址只建无图书签，合法Gist建嵌入；纯数据入口拒绝伪造HTML或属性', () => {
+  for (const url of ['http://www.youtube.com/watch?v=demo', 'https://unknown.example.invalid']) {
     const result = parseExternalClipboard({ 'text/plain': url })
     assert.equal(result.content.shapes[0].type, 'bookmark')
     assert.deepEqual(result.content.assets[0].props, { src: new URL(url).href, title: '', description: '', image: '', favicon: '' })
   }
+  const gist = parseExternalClipboard({ 'text/plain': 'https://gist.github.com/demo/0123456789abcdef0123456789abcdef?file=ignored.js#L1' })
+  assert.equal(gist.content.shapes[0].type, 'embed')
+  assert.deepEqual(gist.content.shapes[0].props, { w: 720, h: 500, url: 'https://gist.github.com/demo/0123456789abcdef0123456789abcdef' })
+  assert.deepEqual(gist.content.assets, [])
   assert.throws(() => createExternalClipboardContent({ type: 'url', url: 'https://youtu.be/demo', source: 'iframe', html: '<script>bad</script>' }))
   assert.throws(() => createExternalClipboardContent({ type: 'url', url: 'https://youtu.be/demo', source: 'iframe', width: 900 }))
 })

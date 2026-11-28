@@ -11,7 +11,8 @@ export async function prepareEmbedsProbe(window) {
   if (!debug.isAttached()) debug.attach('1.3')
   await window.loadURL('data:text/html,<title>isolated embed probe</title>')
   await debug.sendCommand('Page.enable')
-  await debug.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+  const source = `(() => {
+    if(window.__hicanvasEmbedClipboardBoundary?.check())return;
     window.__embedClipboardViolations = [];
     const denied = () => { window.__embedClipboardViolations.push('system clipboard'); throw new Error('System clipboard blocked by embed probe') };
     Object.defineProperty(navigator, 'clipboard', { configurable: false, get: denied });
@@ -22,7 +23,25 @@ export async function prepareEmbedsProbe(window) {
     Object.defineProperty(window, '__hicanvasEmbedClipboardBoundary', { configurable: false, writable: false, value: Object.freeze({
       check: () => Object.getOwnPropertyDescriptor(navigator, 'clipboard')?.get === denied && Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard')?.get === denied && Object.getOwnPropertyDescriptor(Document.prototype, 'execCommand')?.value === guardedExec
     }) });
-  })()` })
+  })()`
+  // Cross-origin frames may use separate renderer targets. Pause each target
+  // and install the same guard before any page script can run there.
+  const frames = [], guardErrors = []
+  async function setup(sessionId, targetId) {
+    const send = (method, params = {}) => debug.sendCommand(method, params, sessionId)
+    await send('Page.enable')
+    const registration = await send('Page.addScriptToEvaluateOnNewDocument', { source, runImmediately: true })
+    await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true, filter: [{ type: 'iframe' }, { exclude: true }] })
+    if (sessionId) {
+      check(registration.identifier, '跨进程子框未登记剪贴板守卫')
+      await send('Runtime.runIfWaitingForDebugger'); frames.push({ sessionId, targetId, registered: true, resumed: true })
+    }
+  }
+  debug.on('message', (_event, method, params) => {
+    if (method === 'Target.attachedToTarget') void setup(params.sessionId, params.targetInfo.targetId).catch(error => { guardErrors.push(error.message); if (!window.isDestroyed()) window.destroy() })
+  })
+  await setup()
+  await debug.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true })
   await window.loadURL('data:text/html,<title>embed clipboard guard proof</title>')
   const proof = await window.webContents.executeJavaScript(`(async()=>{
     if(!window.__hicanvasEmbedClipboardBoundary?.check())throw Error('Browser clipboard guard identity missing; do not call native methods');
@@ -33,12 +52,13 @@ export async function prepareEmbedsProbe(window) {
     const result={blocked,violations:window.__embedClipboardViolations.length,childBlocked,childViolations:child.__embedClipboardViolations.length};frame.remove();return result;
   })()`)
   check(proof.blocked === 2 && proof.violations === 2 && proof.childBlocked === 1 && proof.childViolations === 1, '浏览器或子框架剪贴板报错桩红例未达到预期')
-  return proof
+  return { ...proof, frames, guardErrors }
 }
 
 // Ordinary native pointer/key input plus explicitly untrusted ClipboardEvents.
 // No real clipboard, provider page or input HTML is ever loaded.
-export async function embedsSmoke(window, output) {
+export async function embedsSmoke(window, output, { createWindow, runGist } = {}) {
+  const gist = await runGist(window, output, createWindow, prepareEmbedsProbe)
   const wc = window.webContents, evaluate = code => wc.executeJavaScript(code)
   const state = () => evaluate('window.__HICANVAS_RENDERER_PREVIEW__.getState()')
   const stages = [], mod = process.platform === 'darwin' ? 'meta' : 'control'
@@ -68,7 +88,7 @@ export async function embedsSmoke(window, output) {
   const recordsSignature = records => JSON.stringify([...records].sort((a, b) => a.id.localeCompare(b.id)), (_key, value) => value && !Array.isArray(value) && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value)
   await click('[data-embed-action=open]')
   await until(s => s.embedEditing && !s.embedEditing.serviceId, '打开列表')
-  check(await evaluate('document.querySelectorAll("[data-embed-action^=service-]").length===18 && document.querySelector("[data-embed-action=service-G16]").disabled'), '服务列表或Gist状态错误')
+  check(await evaluate('document.querySelectorAll("[data-embed-action^=service-]").length===18 && !document.querySelector("[data-embed-action=service-G16]").disabled'), '服务列表或Gist状态错误')
   await capture('services-wide')
   window.setContentSize(520, 780); await flush(); await capture('services-narrow')
   check(await evaluate('(()=>{const d=document.querySelector("dialog[open]"),r=d.getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.y>=0&&r.bottom<=innerHeight})()'), '窄窗对话框越界')
@@ -152,12 +172,13 @@ export async function embedsSmoke(window, output) {
   check(await evaluate('(()=>{const f=[...document.querySelectorAll("iframe")].at(-1);return !f.hasAttribute("srcdoc")&&!f.hasAttribute("onload")&&f.getAttribute("sandbox").includes("allow-presentation")&&!f.getAttribute("sandbox").includes("allow-top-navigation")})()'), '输入权限或srcdoc进入实际iframe')
   for (const url of ['https://unknown.example.invalid/page', 'http://www.youtube.com/watch?v=synthetic83']) await paste({ 'text/html': `<iframe src="${url}"></iframe>` }, { type: 'bookmark', size: [300, 46], notice: true })
   for (const html of ['<iframe src="javascript:alert(1)"></iframe>', '<iframe src="/relative"></iframe>', '<iframe srcdoc="bad"></iframe>', '<iframe src="https://youtu.be/synthetic83"></iframe><iframe src="https://youtu.be/other"></iframe>', '<script>window.__hicanvasExternalExecuted++</script><iframe src="https://youtu.be/synthetic83"></iframe>']) await paste({ 'text/html': html }, { rejected: true })
-  for (const url of ['https://www.tldraw.com/r/synthetic83', 'https://gist.github.com/synthetic/0123456789abcdef0123456789abcdef', 'https://ordinary.example.invalid/page']) await paste({ 'text/plain': url }, { type: 'bookmark', size: [300, 46] })
+  for (const url of ['https://www.tldraw.com/r/synthetic83', 'https://ordinary.example.invalid/page']) await paste({ 'text/plain': url }, { type: 'bookmark', size: [300, 46] })
+  await paste({ 'text/plain': 'https://gist.github.com/synthetic/0123456789abcdef0123456789abcdef' }, { type: 'embed', size: [720, 500] })
   const figma = externalSamples.find(sample => sample.id === 'G06' && sample.kind === 'base')
   await paste({ 'text/plain': figma.input }, { type: 'embed', size: [720, 500] })
   await paste({ 'text/plain': 'Some prose https://ordinary.example.invalid/page tail' }, { type: 'text' })
   await record('complete'); await capture('paste-result')
   const interaction = await embedsInteractionSmoke(window, output)
   const bookmarks = await bookmarkMetadataSmoke(window, output)
-  return { stages, interaction, bookmarks, syntheticClipboardEvents: true, systemClipboardCalls: 0, inputHtmlExecutions: 0, dialog: true, history: true, sameIdConversion: true, detachedFrames: true, bookmarkAssetUndo: true }
+  return { stages, interaction, bookmarks, gist, syntheticClipboardEvents: true, systemClipboardCalls: 0, inputHtmlExecutions: 0, dialog: true, history: true, sameIdConversion: true, detachedFrames: true, bookmarkAssetUndo: true }
 }

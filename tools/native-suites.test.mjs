@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { runInNewContext } from 'node:vm'
 import { selectNativeSuite } from './renderer-preview/native-suites.mjs'
 import { runNativeSuite } from './renderer-preview/native-suite-runner.mjs'
 
@@ -265,4 +266,39 @@ test('报告保留pid/fingerprint原前缀及实际进程身份，native守卫�
   })
   assert.deepEqual(denied.context.samples, [{ sample: { checks: 1 } }])
   await assert.rejects(denied.report, { code: 'ENOENT' })
+})
+
+test('Gist扩展只在embeds登记，原特殊入口报告保持；其他组没有可选HTTPS适配器', () => {
+  const embeds = selectNativeSuite({ embedsOnly: true })
+  assert.equal(embeds.legacy, true)
+  assert.equal(typeof embeds.windowAdapter, 'function')
+  assert.equal(typeof embeds.gist, 'function')
+  for (const flag of priority.filter(flag => flag !== 'embedsOnly')) {
+    const entry = selectNativeSuite({ [flag]: true })
+    assert.equal(entry.windowAdapter, undefined, flag)
+    assert.equal(entry.gist, undefined, flag)
+  }
+  const handlers = []
+  const session = { protocol: { handle: (...args) => handlers.push(args) } }
+  assert.equal(embeds.windowAdapter({ key: 'external', manifest: { embedsOnly: true }, session }), null)
+  assert.equal(embeds.windowAdapter({ key: 'gist-security', manifest: {}, session }), null)
+  assert.equal(handlers.length, 0)
+  const adapter = embeds.windowAdapter({ key: 'gist-security', manifest: { embedsOnly: true }, session })
+  assert.ok(adapter); assert.equal(handlers.length, 1); adapter.dispose()
+})
+
+test('所有原生专项均保持离屏隐藏视图与相同沙箱权限', async () => {
+  const source = await readFile(new URL('./renderer-preview/electron.mjs', import.meta.url), 'utf8')
+  const factory = source.slice(source.indexOf('function createWindow('), source.indexOf('\nasync function run()'))
+  const stop = new Error('captured constructor options')
+  let captured
+  const createWindow = runInNewContext('(' + factory + ')', { process: { pid: 1 }, BrowserWindow: class { constructor(options) { captured = options; throw stop } } })
+  for (const key of [...priority, 'embed-editing', 'external', 'gist-security']) {
+    assert.throws(() => createWindow(key), error => error === stop)
+    assert.equal(captured.show, false, key)
+    assert.equal(captured.webPreferences.offscreen, true, key)
+    assert.equal(captured.webPreferences.sandbox, true, key)
+    assert.equal(captured.webPreferences.contextIsolation, true, key)
+    assert.equal(captured.webPreferences.nodeIntegration, false, key)
+  }
 })

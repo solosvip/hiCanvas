@@ -90,3 +90,10 @@ test('成功续租可跨过原到期点，新的到期时间仍会回收',async 
   clock=151;assert.equal((await request(one.url)).status,200)
   clock=176;assert.equal((await request(one.url)).status,403)
 })
+
+test('并发登记不能在异步通道准备期间超出实例配额',async t=>{
+  const host=createContentHost({maxInstances:1});t.after(()=>host.close())
+  const attempts=await Promise.allSettled(['one','two'].map(html=>host.register({html,parentOrigin:'http://127.0.0.1:43396'})))
+  assert.equal(attempts.filter(result=>result.status==='fulfilled').length,1)
+  assert.equal(attempts.find(result=>result.status==='rejected')?.reason.status,413)
+})

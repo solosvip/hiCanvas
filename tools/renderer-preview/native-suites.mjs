@@ -17,6 +17,8 @@ import { selectionSemanticsSmoke } from './selection-semantics-smoke.mjs'
 import { keyboardSmoke } from './keyboard-smoke.mjs'
 import { handleSmoke } from './handle-smoke.mjs'
 import { cameraSmoke } from './camera-smoke.mjs'
+import { createGistFixtureAdapter } from './gist-fixtures.mjs'
+import { gistSecuritySmoke } from './gist-security-smoke.mjs'
 
 const sample = (key, run, args = () => []) => ({
   [key]: context => run(context.window, context.manifest.output, ...args(context)),
@@ -41,7 +43,9 @@ const suites = [
     reportBefore: ['pid', 'fingerprint'], guardKey: 'native',
     guardCalls: context => context.prepared.blocked,
   }),
-  legacy('embedsOnly'),
+  // Its existing branch owns clipboard proofs and its richer report. Register
+  // the optional Gist extension here without migrating that control flow.
+  { ...legacy('embedsOnly'), windowAdapter: createGistFixtureAdapter, gist: gistSecuritySmoke },
   suite('focusOnly', 'focus-keys', 'gallery=focus-keys&edgeScrolling=0', [sample('focus', focusSmoke)], source),
   suite('slidesOnly', 'slides', 'gallery=slides&edgeScrolling=0', [{
     ...sample('slides', slidesSmoke), guards: context => context.prepared.negative,

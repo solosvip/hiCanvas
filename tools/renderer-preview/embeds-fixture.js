@@ -12,6 +12,11 @@ export function createEmbedsFixture(kind) {
     { type: 'create_shape', id: 'shape:embed-video', shapeType: 'video', x: 900, y: 410, props: { assetId: 'asset:embed-video', w: 256, h: 144 } },
     { type: 'create_shape', id: 'shape:embed-geo', shapeType: 'geo', x: 680, y: 430, props: { w: 140, h: 70, fill: 'solid' } },
   ]).snapshot
+  if (['gist', 'gist-broken'].includes(kind)) snapshot = executeCanvasCommands(snapshot, [
+    { type: 'create_shape', id: 'shape:gist-a', shapeType: 'embed', x: 80, y: 60, props: { url: kind === 'gist-broken' ? 'https://gist.github.com/abc012' : 'https://gist.github.com/synthetic/0123456789abcdef0123456789abcdef', w: 480, h: 320 } },
+    { type: 'create_shape', id: 'shape:gist-b', shapeType: 'embed', x: 680, y: 60, props: { url: 'https://gist.github.com/fedcba9876543210fedcba9876543210', w: 480, h: 320 } },
+    { type: 'create_shape', id: 'shape:gist-outside', shapeType: 'geo', x: 80, y: 500, props: { w: 140, h: 70, fill: 'solid' } },
+  ]).snapshot
   const records = Object.values(snapshot.store), shapes = records.filter(r => r.typeName === 'shape'), pageId = records.find(r => r.typeName === 'page').id
   return { snapshot, viewState: { currentPageId: pageId, camera: { x: 0, y: 0, z: 1 } }, count: shapes.length, counts: shapes.reduce((result, r) => ({ ...result, [r.type]: (result[r.type] || 0) + 1 }), {}), assetCount: kind === 'interaction' ? 1 : 0, embedsFixture: true, clipboardFixture: true }
 }

@@ -1,4 +1,5 @@
 import { normalizeHttpUrl } from './http-url.js'
+import { parseGistUrl } from './gist.js'
 
 // Model owns source recognition, canonical URLs, default sizes and constraints.
 // Renderer alone grants provider frame permissions (ADR0013).
@@ -37,7 +38,7 @@ const entry = (id, name, size, matches, convert, constraints = {}) => Object.fre
   value: Object.freeze({ id, minWidth: 200, minHeight: 200, canResize: true, lockAspectRatio: false, ...constraints }),
 })
 // Sizes were read from opaque legacy runtime records in the 52-group native
-// observation on 2026-11-27. Gist remains a bookmark until the #206 wrapper.
+// observation on 2026-11-27. Gist uses a fixed isolated publication (#220).
 const services = [
   entry('G05', 'tldraw', [720, 500], u => at(u, 'www.tldraw.com', /^\/r\/[A-Za-z0-9_-]+\/?$/), u => u.href, { minWidth: 300, minHeight: 300 }),
   entry('G06', 'Figma', [720, 500], figma, figmaSource),
@@ -50,7 +51,7 @@ const services = [
   entry('G13', 'YouTube', [800, 450], u => at(u, 'www.youtube.com', /^\/embed\/[A-Za-z0-9_-]+$/) || at(u, 'youtu.be', /^\/[A-Za-z0-9_-]+$/) || at(u, 'www.youtube.com', /^\/watch$/) && /^[A-Za-z0-9_-]+$/.test(u.searchParams.get('v') || ''), youtube, { lockAspectRatio: true }),
   entry('G14', 'Google Calendar', [720, 500], u => at(u, 'calendar.google.com', /^\/calendar\/embed$/) && !!u.searchParams.get('src') || at(u, 'calendar.google.com', /^\/calendar\/u\/0\/r$/) && !!u.searchParams.get('cid'), u => u.pathname === '/calendar/embed' ? u.href : 'https://calendar.google.com/calendar/embed?src=' + encodeURIComponent(u.searchParams.get('cid')), { minWidth: 460, minHeight: 360 }),
   entry('G15', 'Google Slides', [720, 500], u => at(u, 'docs.google.com', /^\/presentation\/d\/e\/[^/]+\/(pub|embed)$/), u => u.pathname.endsWith('/embed') ? u.href : `https://docs.google.com/presentation/d/e/${u.pathname.split('/')[4]}/embed${u.hash}`, { minWidth: 460, minHeight: 360 }),
-  entry('G16', 'GitHub Gist', [720, 500], () => false, () => null),
+  entry('G16', 'GitHub Gist', [720, 500], u => !!parseGistUrl(u.href), () => null),
   entry('G17', 'Replit', [720, 500], u => at(u, 'replit.com', /^\/@[^/]+\/[^/]+$/), u => append(u, 'embed', 'true', true)),
   entry('G18', 'Felt', [720, 500], u => at(u, 'felt.com', /^\/(?:embed\/)?map\/[^/]+$/), u => 'https://felt.com/embed/map/' + u.pathname.split('/').at(-1)),
   entry('G19', 'Spotify', [720, 500], u => at(u, 'open.spotify.com', /^\/(?:embed\/)?album\/[A-Za-z0-9]{22}$/), u => 'https://open.spotify.com/embed/album/' + u.pathname.split('/').at(-1), { minHeight: 500 }),
@@ -58,7 +59,7 @@ const services = [
   entry('G21', 'Observable', [720, 500], u => at(u, 'observablehq.com', /^\/embed\/(?:@[^/]+\/[^/]+|[^/]+)$/) || at(u, 'observablehq.com', /^\/(?:d\/[^/]+|@[^/]+\/[^/]+)$/), u => u.pathname.startsWith('/embed/') ? u.href : `https://observablehq.com/embed/${u.pathname.startsWith('/d/') ? u.pathname.slice(3) : u.pathname.slice(1)}?cell=*`),
   entry('G22', 'Desmos', [700, 450], u => at(u, 'www.desmos.com', /^\/calculator\/[a-z0-9]{10}$/) && !u.hash && ['', '?embed'].includes(u.search), u => u.search ? u.href : u.href + '?embed'),
 ]
-export const EMBED_SERVICES = Object.freeze(services.map(({ id, name, size }) => Object.freeze({ id, name, size, available: id !== 'G16' })))
+export const EMBED_SERVICES = Object.freeze(services.map(({ id, name, size }) => Object.freeze({ id, name, size, available: true })))
 export const getEmbedServiceConstraints = id => services.find(s => s.id === id)?.value || null
 
 function decoded(value) {
@@ -79,7 +80,8 @@ function checked(value) {
 }
 export function getEmbedService(value) {
   const u = checked(value)
-  return u ? services.find(s => s.matches(u))?.value || null : null
+  const service = u && services.find(s => s.matches(u))
+  return service && (service.id !== 'G16' || parseGistUrl(value)) ? service.value : null
 }
 const redirectField = /^(?:redirect(?:_?(?:uri|url))?|return(?:_?(?:to|url))?|next|target|callback|continue)$/i
 const nestedAddress = value => /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(decoded(value).trim()) || /[\u0000-\u001f\u007f]/u.test(decoded(value))
@@ -100,7 +102,12 @@ export function resolveEmbedUrl(value) {
   const u = checked(value)
   if (!u) return null
   const service = services.find(s => s.matches(u))
-  if (!service || !safeParameters(u, service.id) || !service.matches(u)) return null
+  if (!service) return null
+  if (service.id === 'G16') {
+    const gist = parseGistUrl(value)
+    return gist ? Object.freeze({ id: service.id, name: service.name, mode: 'isolated-gist', ...gist, size: service.size }) : null
+  }
+  if (!safeParameters(u, service.id) || !service.matches(u)) return null
   const src = service.convert(u)
   return src ? Object.freeze({ id: service.id, name: service.name, url: u.href, src, size: service.size }) : null
 }

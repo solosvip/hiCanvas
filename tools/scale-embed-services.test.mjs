@@ -9,6 +9,37 @@ import { resolveExternalEmbed } from '../renderer/embed-content.js'
 import { externalSamples } from './renderer-preview/external-samples.js'
 
 const baseline = JSON.parse(readFileSync(new URL('./fixtures/embed-resolution-hashes.json', import.meta.url), 'utf8'))
+test('Gist 只返回整份文档的隔离发布描述，不产生远端 iframe 地址', () => {
+  assert.deepEqual(model.resolveEmbedUrl('https://gist.github.com/synthetic/ABC012?file=private.js#L5'), {
+    id: 'G16', name: 'GitHub Gist', mode: 'isolated-gist', gistId: 'abc012',
+    url: 'https://gist.github.com/synthetic/abc012', size: [720, 500],
+  })
+  assert.equal(resolveExternalEmbed('https://gist.github.com/synthetic/ABC012?file=private.js'), null)
+  assert.equal(model.EMBED_SERVICES.find(service => service.id === 'G16').available, true)
+})
+
+test('Gist ID严格有界；只接两种完整HTTPS地址，路径不被二次解码或折叠', () => {
+  assert.equal(model.normalizeGistId('A'.repeat(64)), 'a'.repeat(64))
+  assert.equal(model.normalizeGistId('F'), 'f')
+  for (const bad of [null, 12, '', 'abc\n', 'abc\r', ' abc', 'abc ', 'ＡＢ', '0x123', 'ab.js', 'a'.repeat(65)]) assert.equal(model.normalizeGistId(bad), null, String(bad))
+  assert.deepEqual(model.parseGistUrl('https://gist.github.com/AB12/?file=a.js#x'), { gistId: 'ab12', url: 'https://gist.github.com/ab12' })
+  for (const bad of [
+    'http://gist.github.com/ab12', 'https://gist.github.com:444/ab12', 'https://user@gist.github.com/ab12',
+    'https://gist.github.com.evil.invalid/ab12', 'https://gist.github.com./ab12', '//gist.github.com/ab12',
+    'https://gist.githubusercontent.com/user/ab12/raw', 'https://gist.github.com/user/ab12.js',
+    'https://gist.github.com/user/ab12/def', 'https://gist.github.com/user//ab12',
+    'https://gist.github.com/user/%61b12', 'https://gist.github.com/user%2fab12',
+    'https://gist.github.com/user%252fab12', 'https://gist.github.com/user/../ab12',
+    'https://gist.github.com/user/%2e%2e/ab12', 'https://gist.github.com/-owner/ab12',
+    'https://gist.github.com/' + 'a'.repeat(65), 'https://gist.github.com/user/ab12\n',
+  ]) {
+    assert.equal(model.parseGistUrl(bad), null, bad)
+    assert.equal(model.resolveEmbedUrl(bad), null, bad)
+    assert.equal(model.getEmbedService(bad), null, bad)
+  }
+  assert.deepEqual(model.getEmbedService('https://gist.github.com/ab12'), { id: 'G16', minWidth: 200, minHeight: 200, canResize: true, lockAspectRatio: false })
+})
+
 test('统一地址后旧版完整嵌入结果不变，仅Figma内层URL按审定正确编码', () => {
   assert.equal(baseline.length, externalSamples.length)
   externalSamples.forEach((sample, i) => {

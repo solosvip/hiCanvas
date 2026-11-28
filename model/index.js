@@ -1,6 +1,7 @@
 import { Store } from '@tldraw/store'
 import { createTLSchema } from '@tldraw/tlschema'
 export { getEmbedService, getEmbedServiceConstraints, resolveEmbedUrl, EMBED_SERVICES } from './embed-services.js'
+export { normalizeGistId, parseGistUrl } from './gist.js'
 export { normalizeHttpUrl, MAX_HTTP_URL_BYTES } from './http-url.js'
 export { cleanBookmarkText, normalizeBookmarkMetadata } from './bookmark-metadata.js'
 

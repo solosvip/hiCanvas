@@ -39,7 +39,7 @@ export async function runExternalProbe() {
       check(node.width === String(sample.size[0]) && node.height === String(sample.size[1]), `嵌入尺寸不同：${sample.id}`)
     }
     const gist = host.querySelector('[data-shape-id="shape:external-G16"]')
-    check(gist.querySelector('[data-bookmark-url]')?.textContent === 'gist.github.com' && !gist.querySelector('iframe'), 'Gist 应退回书签，包装留待 #78')
+    check(gist.querySelector('[data-bookmark-url]')?.textContent === 'gist.github.com.example.invalid' && !gist.querySelector('iframe'), 'Gist 相似域名不能获得嵌入权限；合法 Gist 由 Gist 专项验证')
     const input = iframe('G13').contentDocument.querySelector('input'); input.value = '离屏后保留此状态'
     renderer.setCamera({ x: -20000, y: -20000, z: .05 }); await settle()
     renderer.setCamera({ x: 10, y: 15, z: 1.2 }); await settle()
@@ -57,6 +57,6 @@ export async function runExternalProbe() {
     store.put([{ ...youtube, props: { ...youtube.props, url: 'https://unknown.example.test/retained' } }]); await settle()
     check(!iframe('G13') && host.querySelector('[data-bookmark="shape:external-G13"] [data-bookmark-url]').textContent === 'unknown.example.test', '未知URL没有保留为书签')
     renderer.unmount(); check(host.children.length === 0, '卸载未释放iframe')
-    return { providers: 17, gistFallbackIssue: 78, sampledAttributes: true, geometry: true, offscreenAndCameraKeepInstance: true, childStatePreserved: true, noDocumentWrites: true, urlChangeReloadsOnlyTarget: true, unknownUrlBookmark: true, unmount: true }
+    return { providers: 17, gistLookalikeRejected: true, validGistCoverage: 'Gist专项（embedsOnly）', sampledAttributes: true, geometry: true, offscreenAndCameraKeepInstance: true, childStatePreserved: true, noDocumentWrites: true, urlChangeReloadsOnlyTarget: true, unknownUrlBookmark: true, unmount: true }
   } finally { renderer.unmount(); host.remove() }
 }

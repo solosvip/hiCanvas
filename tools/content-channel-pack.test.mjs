@@ -28,9 +28,10 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
     try {
       const instance=await host.register({html:'<h1>bundled</h1>',parentOrigin:'http://127.0.0.1:43396'});
       const url=new URL(instance.url);
-      const get=path=>new Promise((resolve,reject)=>{http.get({hostname:'127.0.0.1',port:url.port,path,headers:{host:url.host}},res=>{let text='';res.on('data',part=>{text+=part});res.on('end',()=>resolve({status:res.statusCode,text}))}).once('error',reject)});
+      const get=(path,source=url)=>new Promise((resolve,reject)=>{http.get({hostname:'127.0.0.1',port:source.port,path,headers:{host:source.host}},res=>{let text='';res.on('data',part=>{text+=part});res.on('end',()=>resolve({status:res.statusCode,text,csp:res.headers['content-security-policy']}))}).once('error',reject)});
       const page=await get(url.pathname),bootstrap=page.text.match(/src="([^"]+)"/)[1];
-      console.log(JSON.stringify({script:await get(bootstrap),capture:await get('/.hicanvas-channel/'+instance.id+'/capture.js'),edit:await get('/.hicanvas-channel/'+instance.id+'/edit.js'),film:await get('/.hicanvas-channel/'+instance.id+'/film-export.js'),privateStatus:(await get('/.hicanvas-channel/'+instance.id+'/parent.js')).status}));
+      const gist=await host.registerGist({gistId:'abc012',parentOrigin:'http://127.0.0.1:43396'}),gistUrl=new URL(gist.url);
+      console.log(JSON.stringify({script:await get(bootstrap),capture:await get('/.hicanvas-channel/'+instance.id+'/capture.js'),edit:await get('/.hicanvas-channel/'+instance.id+'/edit.js'),film:await get('/.hicanvas-channel/'+instance.id+'/film-export.js'),privateStatus:(await get('/.hicanvas-channel/'+instance.id+'/parent.js')).status,gist:await get(gistUrl.pathname,gistUrl),gistChannel:(await get('/.hicanvas-channel/'+gist.id+'/bootstrap.js',gistUrl)).status}));
     }finally{await host.close()}
   `
   const {stdout}=await promisify(execFile)(process.execPath,['--input-type=module','-e',script],{timeout:10000})
@@ -38,6 +39,11 @@ test('桌面固定模块白名单随打包服务运行，不借源码目录或�
   assert.equal(result.script.status,200)
   assert.match(result.script.text,/installContentChild/)
   assert.equal(result.privateStatus,404)
+  assert.equal(result.gist.status,200)
+  assert.match(result.gist.text,/https:\/\/gist.github.com\/abc012.js/)
+  assert.doesNotMatch(result.gist.text,/hicanvas-channel|edit-source/)
+  assert.match(result.gist.csp,/^sandbox allow-scripts allow-same-origin;/)
+  assert.equal(result.gistChannel,404)
   const {readChannelAssets}=await import('../server/content-channel-assets.mjs')
   const source=new Map(await readChannelAssets()).get('capture.js')
   assert.equal(result.capture.status,200)

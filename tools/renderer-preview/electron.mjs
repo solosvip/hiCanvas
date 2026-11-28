@@ -1,6 +1,7 @@
 import { app, BrowserWindow, nativeImage, clipboard } from 'electron'
 import { selectNativeSuite } from './native-suites.mjs'
 import { runNativeSuite } from './native-suite-runner.mjs'
+import { allowGistFixtureRequest } from './gist-fixtures.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -87,15 +88,16 @@ async function cameraLayoutProbe(selected = false) {
     return { selected, cameraLayouts: layouts }
   } finally { contents.debugger.detach() }
 }
-function createWindow(key, audit = null) {
+function createWindow(key, audit = null, adapterFactory = null) {
   const target = new BrowserWindow({ show: false, width: 1280, height: 800, useContentSize: true, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, partition: `renderer-${process.pid}-${key}` } })
+  const adapter = adapterFactory?.({ key, manifest, session: target.webContents.session })
   target.webContents.session.webRequest.onBeforeRequest((details, callback) => {
     const service = fakeSources.get(details.url)
     if (service && details.resourceType === 'subFrame') {
       simulated.push({ service, source: details.url, local: `${origin}/tools/renderer-preview/fake-embed.html?service=${service}` })
       callback({ redirectURL: `${origin}/tools/renderer-preview/fake-embed.html?service=${service}` }); return
     }
-    const url = new URL(details.url), contentAllowed = (manifest.scriptUrl && url.origin === new URL(manifest.scriptUrl).origin || /^[a-f0-9]{48}\.localhost$/.test(url.hostname) && Number(url.port) === contentPort), allowed = contentAllowed || url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol)
+    const url = new URL(details.url), contentAllowed = (manifest.scriptUrl && url.origin === new URL(manifest.scriptUrl).origin || /^[a-f0-9]{48}\.localhost$/.test(url.hostname) && Number(url.port) === contentPort), allowed = contentAllowed || url.origin === origin || url.protocol === 'ws:' && url.host === new URL(origin).host || ['data:', 'blob:'].includes(url.protocol) || allowGistFixtureRequest(adapter, details)
     if (audit && ['http:', 'https:', 'file:', 'ws:', 'wss:'].includes(url.protocol) && !(details.resourceType === 'mainFrame' && details.url === audit.expectedDocument)) audit.requests.push(details.url)
     if (!allowed) (audit?.blocked || blocked).push(details.url)
     callback({ cancel: !allowed })
@@ -135,11 +137,11 @@ async function run() {
       try { clipboard.readText() } catch { /* Explicit red probe, never a native call. */ }
       check(clipboardCalls.length === 1, '主进程剪贴板报错桩红例失败')
       const mainProof = clipboardCalls.splice(0)
-      window = createWindow('embed-editing')
+      window = createWindow('embed-editing', null, selectNativeSuite(manifest).windowAdapter)
       const browserProof = await prepareEmbedsProbe(window)
       await window.loadURL(`${manifest.url}/?gallery=embed-editing&edgeScrolling=0`)
       await until(async () => { const s = await state(); if (s?.error) throw new Error(s.error); return s?.ready })
-      samples.push({ embeds: await embedsSmoke(window, manifest.output) })
+      samples.push({ embeds: await embedsSmoke(window, manifest.output, { createWindow, runGist: selectNativeSuite(manifest).gist }) })
       check(simulated.some(item => item.service === 'G06' && item.local === `${origin}/tools/renderer-preview/fake-embed.html?service=G06`), '编码后的Figma没有指向本地假页')
       check(!errors.length && !blocked.length && !clipboardCalls.length, JSON.stringify({ errors, blocked, clipboardCalls }))
       await writeFile(manifest.result, JSON.stringify({ pid: process.pid, fingerprint: manifest.fingerprint, samples, mainProof, browserProof, guarded, errors, blocked, simulated, clipboardCalls, runtime: process.versions }, null, 2)); window.destroy(); app.exit(0); return
