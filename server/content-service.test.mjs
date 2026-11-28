@@ -37,6 +37,24 @@ test('启动信息始终提供内容宿主运行时端口，只有父来源可�
   assert.equal((await on.api('/api/content-host/instances','DELETE',created.body)).status,200)
   assert.equal((await contentGet(created.body.url)).status,403)
 })
+
+test('Gist HTTP只接固定发布参数，不把坏kind或额外能力降级成生成HTML',async t=>{
+  const on=await setup(t)
+  const created=await on.api('/api/content-host/instances','POST',{kind:'gist',gistId:'ABC012'})
+  assert.equal(created.status,201)
+  const page=await contentGet(created.body.url)
+  assert.match(page.text,/https:\/\/gist.github.com\/abc012.js/)
+  assert.match(page.headers['content-security-policy'],/frame-ancestors http:\/\/127.0.0.1:\d+$/)
+  assert.doesNotMatch(page.text,/hicanvas-channel|edit-source/)
+  for(const [key,value] of Object.entries({html:'<script>bad()</script>',scriptUrl:'https://evil.invalid/x',csp:'default-src *',sandbox:'allow-popups',parentOrigin:on.base,sourceUrl:'/assets/a.html',conversationId:'another',extra:1})){
+    assert.equal((await on.api('/api/content-host/instances','POST',{kind:'gist',gistId:'abc012',[key]:value})).status,400,key)
+  }
+  for(const body of [{kind:'unknown',html:'fallback'},{kind:null,html:'fallback'},{kind:'gist',gistId:'abc012.js'},{kind:'gist',gistId:'abc012\n'},{kind:'gist'}])assert.equal((await on.api('/api/content-host/instances','POST',body)).status,400,JSON.stringify(body))
+  assert.equal((await on.api('/api/content-host/instances','POST',{kind:'gist',gistId:'abc012'},{origin:'http://attacker.localhost:1'})).status,403)
+  assert.equal((await on.api('/api/content-host/instances','PUT',{id:created.body.id,revokeToken:created.body.revokeToken})).status,200)
+  assert.equal((await on.api('/api/content-host/instances','DELETE',{id:created.body.id,revokeToken:created.body.revokeToken})).status,200)
+  assert.equal((await contentGet(created.body.url)).status,403)
+})
 test('仅发布本页授权素材及其CSS依赖，禁止越画板、路径和符号链接，直接HTML与SVG带沙箱',async t=>{
   const {root,canvasDir,api,base}=await setup(t)
   const {conversation}= (await api('/api/conversations/open','POST',{title:'synthetic'})).body

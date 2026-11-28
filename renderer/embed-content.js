@@ -29,7 +29,6 @@ export const EXTERNAL_EMBED_SERVICES = Object.freeze([
   entry('G13', [355.556, 200], { attributes: frame('allow-popups-to-escape-sandbox allow-presentation') }),
   entry('G14', [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
   entry('G15', [460, 360], { attributes: frame('allow-popups-to-escape-sandbox') }),
-  entry('G16', [200, 200], { fallbackIssue: 78, attributes: Object.freeze({ ...frame(''), sandbox: 'allow-popups allow-scripts allow-forms', allowFullScreen: false }) }),
   entry('G17', [200, 200]),
   entry('G18', [200, 200]),
   // #83 preserves observed permissions, including provider-specific capabilities.
@@ -41,7 +40,7 @@ export const EXTERNAL_EMBED_SERVICES = Object.freeze([
 
 export function resolveExternalEmbed(value) {
   const source = resolveEmbedUrl(value)
-  if (!source) return null
+  if (!source || source.mode === 'isolated-gist') return null
   const service = EXTERNAL_EMBED_SERVICES.find(service => service.id === source.id)
   return { service, src: source.src, attributes: service.attributes }
 }

@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { resolveExternalEmbed, EXTERNAL_EMBED_SERVICES } from '../renderer/embed-content.js'
 import { externalSamples } from './renderer-preview/external-samples.js'
-import { createCanvasStore } from '../model/index.js'
+import { createCanvasStore, resolveEmbedUrl } from '../model/index.js'
 import { createExternalGallery } from './renderer-preview/external-gallery.js'
 import { createBookmarkGallery } from './renderer-preview/bookmark-gallery.js'
 
@@ -34,8 +34,8 @@ test('未知、伪造主机、凭据或未经采样的地址形式不加载外�
   for (const url of [null, '', 'not-a-url', 'javascript:alert(83)', 'data:text/html,hello', '//www.youtube.com/watch?v=synthetic83', 'https://www.youtube.com.evil.test/watch?v=synthetic83', 'https://www.youtube.com@evil.test/watch?v=synthetic83', 'https://user:pass@www.youtube.com/watch?v=synthetic83', 'https://www.youtube.com:444/watch?v=synthetic83', 'https://www.youtube.com/unknown/synthetic83']) assert.equal(resolveExternalEmbed(url), null, url)
 })
 
-test('18 项服务记录观察所得尺寸与约束；Gist 包装留待 #78', () => {
-  assert.equal(EXTERNAL_EMBED_SERVICES.length, 18)
+test('17项外站服务记录原尺寸与权限；Gist通过独立内容宿主授予更窄权限', () => {
+  assert.equal(EXTERNAL_EMBED_SERVICES.length, 17)
   const service = id => EXTERNAL_EMBED_SERVICES.find(entry => entry.id === id)
   assert.deepEqual(service('G05').size, [720, 500])
   assert.deepEqual(service('G13').size, [800, 450])
@@ -44,7 +44,7 @@ test('18 项服务记录观察所得尺寸与约束；Gist 包装留待 #78', ()
   assert.equal(service('G20').lockAspectRatio, true)
   assert.equal(service('G19').lockAspectRatio, false)
   assert.deepEqual(service('G19').minimumObserved, [200, 500])
-  assert.equal(service('G16').fallbackIssue, 78)
+  assert.equal(service('G16'), undefined)
 })
 
 test('外部服务与书签离线图鉴使用可加载的合成记录，包含缺元数据回退', () => {
@@ -57,4 +57,11 @@ test('外部服务与书签离线图鉴使用可加载的合成记录，包含�
   const gallery = createBookmarkGallery()
   assert.equal(gallery.snapshot.store['asset:bookmark-missing-asset'], undefined)
   assert.equal(gallery.snapshot.store['shape:bookmark-short'].props.h, 46)
+})
+
+test('通用外站图鉴的Gist槽位仅为相似域名反例，合法Gist留给独立专项', () => {
+  const gist = createExternalGallery().snapshot.store['shape:external-G16']
+  assert.equal(new URL(gist.props.url).hostname, 'gist.github.com.example.invalid')
+  assert.equal(resolveEmbedUrl(gist.props.url), null)
+  assert.equal(resolveExternalEmbed(gist.props.url), null)
 })

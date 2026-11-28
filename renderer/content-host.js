@@ -1,5 +1,6 @@
 // Shared loading interface for generated content. Storage URLs and HTML stay unchanged.
 import {bindContentChannel,isolatedContentSandbox} from '../content-channel/index.js'
+import {normalizeGistId} from '../model/index.js'
 const startupByFetcher=new WeakMap()
 function readStartup(fetcher){
   if(!startupByFetcher.has(fetcher))startupByFetcher.set(fetcher,(async()=>{
@@ -13,7 +14,7 @@ function readStartup(fetcher){
   return startupByFetcher.get(fetcher)
 }
 export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUrl,originalHtml,signal,fetcher=globalThis.fetch}={}) {
-  const startup=await readStartup(fetcher)
+  await readStartup(fetcher)
   signal?.throwIfAborted()
   if(originalHtml!==undefined)html=originalHtml
   if(directUrl){
@@ -22,6 +23,16 @@ export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUr
   }
   const sourcePath=sourceUrl&&new URL(sourceUrl,'http://cowart.local').pathname
   conversationId ||= sourcePath?.match(/^\/c\/([^/]+)\//)?.[1] || (sourcePath?'legacy':new URLSearchParams(globalThis.location?.search).get('conversation')) || 'legacy'
+  return loadFrame({html,sourceUrl,conversationId},{signal,fetcher})
+}
+export async function loadGistFrame(value,{signal,fetcher=globalThis.fetch,onInvalidated}={}){
+  const gistId=normalizeGistId(value)
+  if(!gistId)throw new Error('Gist ID 无效。')
+  return loadFrame({kind:'gist',gistId},{signal,fetcher,kind:'gist',onInvalidated})
+}
+async function loadFrame(body,{signal,fetcher,kind='generated',onInvalidated}){
+  const startup=await readStartup(fetcher)
+  signal?.throwIfAborted()
   const endpoint='/api/content-host/instances'
   async function request(method,body,keepalive=false){
     const response=await fetcher(endpoint,{method,credentials:'same-origin',mode:'same-origin',redirect:'error',headers:{'content-type':'application/json','x-hicanvas-client':'1'},body:JSON.stringify(body),keepalive,signal:keepalive?undefined:AbortSignal.timeout(15000)})
@@ -29,7 +40,7 @@ export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUr
     return response.json()
   }
   // Complete registration even if the mount is cancelled, so its capability can be revoked.
-  const instance=await request('POST',{html,sourceUrl,conversationId})
+  const instance=await request('POST',body)
   let disposed=false,disposal
   let timer,channel,boundIframe
   const release=()=>{
@@ -40,16 +51,29 @@ export async function loadGeneratedFrame(html,{sourceUrl,conversationId,directUr
     return disposal=request('DELETE',{id:instance.id,revokeToken:instance.revokeToken},true).catch(()=>{})
   }
   let sandbox
-  try{sandbox=isolatedContentSandbox(instance.url,{port:startup.contentHost.port,parentOrigin:globalThis.location?.origin})}catch(error){await release();throw error}
-  timer=setInterval(()=>{void request('PUT',{id:instance.id,revokeToken:instance.revokeToken}).catch(release)},Math.max(1000,instance.leaseMs/2))
+  try{
+    if(kind==='gist'){
+      const url=new URL(instance.url)
+      if(!/^[a-f0-9]{48}$/.test(instance.id)||!/^[a-f0-9]{48}$/.test(instance.revokeToken)||url.hostname!==instance.id+'.localhost'||url.pathname!=='/gist.html'||url.search||url.hash||!Number.isSafeInteger(instance.leaseMs)||instance.leaseMs<=0)throw new Error('内容宿主来源无效。')
+    }
+    sandbox=isolatedContentSandbox(instance.url,{port:startup.contentHost.port,parentOrigin:globalThis.location?.origin,kind})
+  }catch(error){await release();throw kind==='gist'?new Error('内容宿主来源无效。',{cause:error}):error}
+  const invalidate=()=>{
+    if(disposed)return
+    const pending=release()
+    onInvalidated?.('内容实例已失效，请重新加载。')
+    return pending
+  }
+  timer=setInterval(()=>{void request('PUT',{id:instance.id,revokeToken:instance.revokeToken}).catch(invalidate)},Math.max(1000,instance.leaseMs/2))
   globalThis.addEventListener?.('pagehide',release,{once:true})
   if(signal?.aborted){release();signal.throwIfAborted()}
-  return {attributes:{src:instance.url,sandbox},dispose:release,
+  const frame={attributes:{src:instance.url,sandbox},dispose:release,
     get disposed(){return disposed},
-    bind(iframe,options={}){
+  }
+  if(kind==='generated')frame.bind=(iframe,options={})=>{
       if(disposed)throw new Error('内容实例已失效。')
       if(boundIframe!==iframe){channel?.dispose();boundIframe=iframe;channel=bindContentChannel(iframe,{url:instance.url,instanceId:instance.id,...options})}
       return channel
-    },
   }
+  return frame
 }

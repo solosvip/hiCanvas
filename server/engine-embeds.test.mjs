@@ -23,7 +23,7 @@ test('网址插入只经一个语义命令创建默认嵌入或无图书签，�
     ['https://www.tldraw.com/r/demo', 'iframe', 'embed', [720, 500]],
     ['http://www.youtube.com/watch?v=demo', 'iframe', 'bookmark', [300, 46]],
     ['https://example.invalid/demo', 'iframe', 'bookmark', [300, 46]],
-    ['https://gist.github.com/demo/0123456789abcdef0123456789abcdef', 'url', 'bookmark', [300, 46]],
+    ['https://gist.github.com/demo/0123456789abcdef0123456789abcdef', 'url', 'embed', [720, 500]],
   ]) {
     const initial = model.createCanvasSnapshot(), pageId = Object.values(initial.store).find(r => r.typeName === 'page').id
     const result = engine.executeCanvasCommands(initial, [{ type: 'insert_url', id: 'shape:new-url', url, source, pageId, point: { x: 500, y: 350 } }])
@@ -54,6 +54,11 @@ test('坏地址、伪造服务、非page落点与非有限坐标拒绝整批插�
 test('服务表覆盖17家可嵌入来源，尺寸、普通参数与旧读数一致，Figma内层正确编码', () => {
   for (const sample of externalSamples) {
     const result = model.resolveEmbedUrl(sample.input)
+    if (sample.id === 'G16' && sample.kind !== 'reject') {
+      assert.deepEqual(result, { id: 'G16', name: 'GitHub Gist', mode: 'isolated-gist', gistId: '0123456789abcdef0123456789abcdef', url: 'https://gist.github.com/synthetic/0123456789abcdef0123456789abcdef', size: [720, 500] })
+      assert.equal(resolveExternalEmbed(sample.input), null)
+      continue
+    }
     if (sample.src === null) { assert.equal(result, null, sample.input); continue }
     assert.equal(result.id, sample.id)
     assert.deepEqual(result.size, sample.size)
@@ -63,6 +68,23 @@ test('服务表覆盖17家可嵌入来源，尺寸、普通参数与旧读数一
       assert.equal(new URL(result.src).hash, '')
     } else assert.equal(result.src, sample.src, sample.input)
     assert.equal(resolveExternalEmbed(sample.input)?.src, result.src, '渲染也必须使用同一规范地址')
+  }
+})
+
+test('Gist粘贴/iframe/列表走同一命令，规范URL、互转和孤立资源清理保持原子', () => {
+  for (const source of ['url', 'iframe', 'dialog']) {
+    const initial = model.createCanvasSnapshot()
+    const inserted = engine.executeCanvasCommands(initial, [{ type: 'insert_url', id: 'shape:gist', source, serviceId: 'G16', url: 'https://gist.github.com/synthetic/ABC012?file=a.js#L1' }]).snapshot
+    const shape = inserted.store['shape:gist']
+    assert.equal(shape.type, 'embed'); assert.equal(shape.props.url, 'https://gist.github.com/synthetic/abc012')
+    assert.deepEqual([shape.props.w, shape.props.h], [720, 500])
+    const bookmark = engine.executeCanvasCommands(inserted, [{ type: 'convert_url_shape', id: shape.id, to: 'bookmark' }]).snapshot
+    const assetId = bookmark.store[shape.id].props.assetId
+    assert.equal(bookmark.store[assetId].props.src, shape.props.url)
+    const converted = engine.executeCanvasCommands(bookmark, [{ type: 'convert_url_shape', id: shape.id, to: 'embed' }]).snapshot
+    assert.deepEqual(converted.store[shape.id], shape)
+    assert.equal(converted.store[assetId], undefined)
+    assert.deepEqual(Object.values(initial.store).filter(r => r.typeName === 'shape'), [])
   }
 })
 

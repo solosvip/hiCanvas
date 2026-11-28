@@ -11,7 +11,10 @@ export function createExternalGallery() {
   const bases = externalSamples.filter(sample => sample.kind === 'base')
   bases.forEach((sample, i) => {
     const id = `shape:external-${sample.id}`, [w, height] = sample.size || [720, 500]
-    store[id] = { id, typeName: 'shape', type: 'embed', x: i % 3 * 900 + 20, y: Math.floor(i / 3) * 650 + 320, rotation: i === 1 ? .1 : 0, index, parentId: pageId, isLocked: false, opacity: i === 1 ? .8 : 1, meta: {}, props: { w, h: height, url: sample.input } }
+    // Generic smoke cannot install Gist's local-response adapter. Its slot is
+    // a lookalike-host negative; valid Gist publications run in embedsOnly.
+    const url = sample.id === 'G16' ? 'https://gist.github.com.example.invalid/synthetic/0123456789abcdef0123456789abcdef' : sample.input
+    store[id] = { id, typeName: 'shape', type: 'embed', x: i % 3 * 900 + 20, y: Math.floor(i / 3) * 650 + 320, rotation: i === 1 ? .1 : 0, index, parentId: pageId, isLocked: false, opacity: i === 1 ? .8 : 1, meta: {}, props: { w, h: height, url } }
     index = getIndexAbove(index)
   })
   return { snapshot, viewState: { currentPageId: pageId, camera: { x: 10, y: 10, z: .18 } }, count: bases.length, counts: { embed: bases.length }, assetCount: 0 }

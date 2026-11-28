@@ -301,17 +301,25 @@ test('#206 第二击只在松手带来新位置时仍按拖动处理，不误入
   assert.equal(f.host.commits.length, 1)
 })
 
-test('#206 生成内容、未开放服务和组内未聚焦对象不能互动', async t => {
+test('#206 生成内容、未知服务和组内未聚焦对象不能互动', async t => {
   const f = await interactionFixture(t, [
     { type: 'create_shape', id: 'shape:generated', shapeType: 'embed', props: { url: 'https://youtu.be/demo' }, meta: { cowartHtmlDraft: true } },
-    { type: 'create_shape', id: 'shape:gist', shapeType: 'embed', props: { url: 'https://gist.github.com/0123456789abcdef' } },
     { type: 'group_shapes', ids: ['shape:embed-b', 'shape:unknown'], groupId: 'shape:closed-group' },
   ])
   f.begin()
-  for (const id of ['shape:generated', 'shape:gist', 'shape:embed-b']) {
+  for (const id of ['shape:generated', 'shape:unknown', 'shape:embed-b']) {
     assert.equal(f.begin(id), false, id); assert.equal(f.active(), 'shape:embed-a')
   }
   assert.equal(f.host.commits.length, 0)
+})
+
+test('#220 Gist复用双击互动和退出，状态不写文档且不占撤销', async t => {
+  const f = await interactionFixture(t, [{ type: 'update', id: 'shape:embed-a', changes: { props: { url: 'https://gist.github.com/abc012' } } }])
+  const before = f.document()
+  await f.click(); assert.equal(f.active(), null)
+  await f.click(); assert.equal(f.active(), 'shape:embed-a')
+  f.input({ type: 'key_down', key: 'Escape' }); assert.equal(f.active(), null)
+  assert.deepEqual(f.document(), before); assert.equal(f.host.commits.length, 0)
 })
 
 test('#206 加载代次仅由当前来源结束互动；退出/加载错误不提交且undo不复活', async t => {
