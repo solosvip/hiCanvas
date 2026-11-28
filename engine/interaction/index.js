@@ -44,6 +44,7 @@ import { createImageAlt } from './image-alt.js'
 import { createStyleSession } from './style-session.js'
 import { createAiFrameSize } from './ai-frame-size.js'
 import { createEmbedEditing } from './embeds.js'
+import { createShapeLinkEditing } from './shape-links.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -148,6 +149,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   videoInput = createVideoInteraction({ ...context, prepare: prepareText })
   imageAlt = createImageAlt({ ...context, prepare: prepareText })
   embeds = createEmbedEditing({ ...context, prepare: prepareText })
+  const links = createShapeLinkEditing({ ...context, initial, prepare: prepareText })
   const textInput = createTextInput({ ...context, prepare: prepareText, replay: dispatchCore, canCreate: () => toolIds.includes('text') }, textEditing)
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
@@ -166,6 +168,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const checkBasis = !session.state.get().isGestureActive && read().selectionRotation !== null
     const before = checkBasis && selection.expected(read().selectedIds)
     index.applyChanges(changes); targets.apply(changes); content.apply(changes); selection.apply(changes)
+    links.applyChanges(changes)
     connectionEditing.applyChanges(changes); videoInput.applyChanges(changes); embeds.applyChanges(changes); tool?.applyChanges?.(changes)
     const after = checkBasis && selection.expected(read().selectedIds)
     const affected = checkBasis && [...Object.keys(changes.added), ...Object.keys(changes.updated), ...Object.keys(changes.removed)].some(id => before.has(id) || after.has(id))
@@ -285,6 +288,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     imageAlt(action) { assertActive(); return imageAlt.action(action) },
     embed(action) { assertActive(); return embeds.action(action) },
     canEmbed() { assertActive(); return embeds.available() },
+    link(action) { assertActive(); return links.action(action) },
+    getLinks() { assertActive(); return links.get() },
     editText(action) { assertActive(); return textEditing.action(action) },
     setEdgeScrolling(enabled) { assertActive(); change({ edgeScrolling: Boolean(enabled) }); navigation.finishFrame() },
     setViewport(value) { assertActive(); minimap.cancel(); navigation.setViewport(value) },
@@ -301,6 +306,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       if (input.time < lastTime) throw new Error('输入时间必须单调递增。')
       lastTime = input.time
       try {
+        const linkEdited = links.beforeKeyboard(input)
+        if (linkEdited.handled) return linkEdited.result ?? true
         const embedEdited = embeds.beforeKeyboard(input)
         if (embedEdited.handled) return embedEdited.result ?? true
         const imageEdited = imageAlt.beforeKeyboard(input)
@@ -316,6 +323,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return result
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; links.dispose(); aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
   })
 }

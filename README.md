@@ -260,6 +260,12 @@ npm run renderer:smoke
 
 合成焦点图鉴为 `/?gallery=focus-keys`，真实视频保护夹具加 `&focusCase=video`。登记白板及专用端口、设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_FOCUS_PORT=43390 node tools/renderer-preview/focus-check.mjs`；每轮独立证据保存在 `.scratch/focus-smoke/run-*/`，不覆盖首败。入口先装静默异常与原生副作用拦截，再进入离屏预览，关闭文件监听；专项包含原样keyboardSmoke、小地图与真实TipTap/视频保护。交付前仍另跑 `npm run renderer:smoke`。系统下拉弹层、真实OS输入法和设备手感留集中体验；正式界面尚未切换。
 
+形状超链接（#205）：单选未锁定的几何、便签、图片或视频，点「编辑链接」添加、修改或清除既有 `props.url`；书签改网址归 #221，嵌入内容地址仍走原嵌入功能。宿主用 `interaction.link({type:'open'|'update'|'submit'|'clear'|'cancel',url?})` 管理草稿，订阅 `state.linkEditing`；`getLinks()` 给出 `canEdit` 和只读按钮描述，传给 `renderer.setShapeLinks(items)`。草稿不写文档，确认整次提交且一次撤销；固定目标、选区、工具或版本失效时保留草稿，不自动重试。直接和祖先锁都禁止编辑，已有合法链接仍可打开。
+
+仅交互层为无协议且非 `/` 开头的裸域名补 `https://`；公共 `set_shape_link` 命令仍只收完整 HTTP(S) 地址。相对地址、凭据、非默认端口和内部空格拒绝；空值清除，规范化等价值不写入并保留原拼写。链接为独立可访问 anchor，名称「打开链接」，Enter只打开一次，使用新窗口及 `noopener noreferrer`；不进入本体文字编辑。入口沿用旧版文档单位尺寸、形状/组旋转与画框裁切，缩小到一半时44的命中框只有22屏幕CSS px，可用Tab到达。
+
+合成图鉴为 `/?gallery=shape-links`。登记白板及端口、设置已有 `HICANVAS_TEST_ELECTRON` 后，运行 `HICANVAS_SHAPE_LINK_PORT=43390 node tools/renderer-preview/shape-links-check.mjs`；每轮证据在 `.scratch/shape-links-smoke/run-*/`。原生专项只记录打开意图，漏记红例仍始终拒绝实际导航；系统剪贴板、原生弹窗和文件操作被替身拒绝。公开接口回归纳入 `npm run check`；交付前另跑 `npm run renderer:smoke`（保留原样键盘及相邻输入守卫）、构建与完整检查。正式界面尚未切换，真实系统浏览器和设备手感留用户集中体验。
+
 文字合成图鉴用 `/?gallery=text-editing`，完整格式保留样本用 `/?gallery=text-formatted`：双击文字、几何、箭头标签或画框标题进入编辑，选中后 Enter 也可进入；双击空白直接写字，T 点击自动宽、长拖固定宽。Esc、Mod+Enter 和画布外部点击保存当前会话，画框标题也支持普通 Enter；组字期间不完成。清空普通文字会删除它，清空标签或标题只清字段；新空文字退出不留历史。一次编辑、样式切换和自动大小合为一次画板撤销；编辑内撤销由文本视图处理。保存等待期间只读，失败恢复草稿。这里的 Esc 保存与画笔 Esc 丢弃分别遵循各自事务。
 
 便签合成图鉴用 `/?gallery=note-editing`，空白创建用 `/?gallery=creation`。在 `createCanvasInteraction` 的 `toolIds` 显式开放 `note` 后，N 或工具栏创建固定纸面便签，双击编辑。选中便签四边的「+」在邻位创建并编辑；编辑时 Tab/Shift+Tab 横向续建（尊重 RTL），Mod+Enter/Mod+Shift+Enter 向下/上续建，已有邻居直接复用。源文与一次键盘续建合为一次提交/撤销；下一张便签的输入另算一次。拖动单张便签时，在同层、同角度、同比例便签的相邻位置局部吸附，半径严格小于10 CSS px，Esc 取消移动及指示；这项既有局部策略不受对象吸附偏好或 Ctrl/Meta 影响。

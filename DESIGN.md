@@ -14,6 +14,9 @@ colors:
   overlay-eraser-stroke: "#0000000a"
   overlay-laser-stroke: "#ff0000b3"
   grid-dot: "#6e6e6e"
+  shape-link-background: "#f9fafb"
+  shape-link-ink: "#2e2e2e"
+  shape-link-selected: "#3182ed"
   secondary: "#596170"
   tertiary: "#0ea5e9"
   neutral: "#f7f5ef"
@@ -34,6 +37,10 @@ typography:
     fontWeight: 500
     lineHeight: 1
 spacing:
+  shape-link-hit: 44px
+  shape-link-icon: 15px
+  shape-link-tile: 32px
+  shape-link-inset: 6px
   overlay-selection-stroke: 2px
   overlay-brush-stroke: 1px
   overlay-scribble-stroke: 12px
@@ -115,6 +122,8 @@ Cowart 与 tldraw 的既有组件是本轮沿用的上游界面。`src/styles/co
 保留 Cowart/tldraw 的圆角、图标与标注箭头。标注箭头的默认曲率、文本位置与连续标注交互保持不变。
 
 ## Components
+
+形状附加链接在局部右上角显示原生链接入口，独立于 aria-hidden 选择覆盖层，可经 Tab 聚焦，名称为「打开链接」。2026-11-27 隔离旧版 DOM 读数：命中框44、图标15、底块32、底块上/右内缩6个文档单位，圆角复用xs；底色、普通/选中色分别使用shape-link-background/ink/selected。它们跟随视角和形状/组旋转，被祖先frame裁切；缩小到0.5时命中框22屏幕像素是保留旧版的行为，以键盘可达补偿，不能宣称固定44屏幕像素。焦点环复用主色和选择描边令牌。链接表单复用既有模态、按钮和错误反馈；渲染只读，输入/保存不打开网址。
 
 激光笔复用橡皮的有限世界点列校验、外框和圆头路径绘制；使用 overlay-laser-stroke 色彩与宽度令牌，线宽固定4屏幕CSS px。两个独立白底旧版截图的中心合成色为RGB(255,77,77)，黑底为RGB(178,0,0)，永久原生守卫逐通道容差3；中心色不代表整条轮廓逐像素相同。激光路径实际显示时才校验令牌，不增加画板记录订阅；只读展示宿主可以不加载编辑令牌。点列随相机投影，消退从起点向末端收短，期间宽度和alpha不变。准确缓动未知，按已审定的1200ms等待、每16.7ms一点评估及总收短500ms上限做确定性近似，简单圆头折线与旧版末端平滑/约16px滞后有意不同。
 
