@@ -41,6 +41,10 @@ const suites = [
     reportBefore: ['pid', 'fingerprint'], guardKey: 'native',
     guardCalls: context => context.prepared.blocked,
   }),
+  suite('flattenOnly', 'flatten', 'gallery=flatten&case=static&edgeScrolling=0', [{ flatten: async context => (await import('./flatten-smoke.mjs')).flattenSmoke(context.window, context.manifest.output, context.prepared) }], {
+    open: async context => (await import('./flatten-smoke.mjs')).prepareFlattenProbe(context),
+    ...source, guardCalls: context => context.prepared.blocked,
+  }),
   suite('shapeLinksOnly', 'shape-links', 'gallery=shape-links&edgeScrolling=0', [{
     shapeLinks: async context => (await import('./shape-links-smoke.mjs')).shapeLinksSmoke(context.window, context.manifest.output, context.prepared),
   }], {

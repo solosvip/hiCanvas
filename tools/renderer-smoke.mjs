@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { runContentHostSmoke } from './content-host-smoke.mjs'
 import { startRendererPreview } from './renderer-preview.mjs'
 import { runCanvasExportSmoke } from './renderer-preview/export-check.mjs'
+import { runFlattenSmoke } from './renderer-preview/flatten-check.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const output = join(root, '.scratch/renderer-smoke')
@@ -21,6 +22,7 @@ let preview, child, childClosed
 try {
   await runContentHostSmoke()
   await runCanvasExportSmoke()
+  await runFlattenSmoke()
   preview = await startRendererPreview({ geometryFixtures: true, watch: false })
   const manifest = join(runtime, 'manifest.json')
   await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(runtime, 'profile'), output, result: join(output, 'result.json') }))

@@ -49,6 +49,9 @@ import { attachShapeLinksUi } from './shape-links-ui.js'
 import { createBookmarkMetadataClient } from './bookmark-metadata-client.js'
 import { createBookmarkMetadataFixture, createBookmarkMetadataNetwork } from './bookmark-metadata-fixture.js'
 import { attachBookmarksUi } from './bookmarks-ui.js'
+import { createFlattenUpload } from './flatten-upload.js'
+import { attachFlattenUi } from './flatten-ui.js'
+import { installFlattenProbe } from './flatten-probe.js'
 
 let ready = false, renderer, controls, metadata, interaction, session, transport, clipboardAdapter, bookmarkNetwork, cameraTimer, failure = null, decodedImages = 0, snapshotReads = 0, dismissedRuntimeError = null
 const visibleRuntimeError = () => { const error = session?.state.get().lastError; return error !== dismissedRuntimeError ? error : null }
@@ -104,6 +107,7 @@ try {
   } })
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['videos', 'image-import'].includes(gallery)) { const response = await fetch(`/__renderer_fixture?gallery=${gallery}`); if (!response.ok) throw new Error('媒体夹具不可用。'); metadata = await response.json() }
+  else if (gallery === 'flatten') { const response = await fetch(`/__renderer_fixture?gallery=flatten&case=${encodeURIComponent(params.get('case') || 'static')}`); if (!response.ok) throw new Error('扁平化夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
   else if (gallery === 'embed-editing') metadata = params.get('embedCase') === 'bookmarks' ? createBookmarkMetadataFixture() : createEmbedsFixture(params.get('embedCase'))
   else if (gallery === 'shape-links') metadata = createShapeLinksFixture()
@@ -144,13 +148,17 @@ try {
   const actor = sessionStorage.getItem(actorKey) || `preview:${crypto.randomUUID()}`
   sessionStorage.setItem(actorKey, actor)
   metadata.actor = actor
+  if (metadata.flattenFixture) {
+    const commit = transport.commit; let count = 0
+    transport.commit = request => { count++; return commit(request) }; transport.getCommitCount = () => count
+  }
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
   let hostError = null, wasSubmitting = false, wasClipboardBusy = false, lastEmbedId = null
   const showError = error => { hostError = error; status.textContent = `操作失败：${error.message}` }
   clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true || metadata.slidesFixture === true, onError: showError })
   session = await createEditorSession({ transport, actor })
   disposers.push(() => session.dispose())
-  if (metadata.persistent) { const records = session.store.allRecords(); metadata.count = records.filter(r => r.typeName === 'shape').length; metadata.counts = records.filter(r => r.typeName === 'shape').reduce((counts, r) => ({ ...counts, [r.type]: (counts[r.type] || 0) + 1 }), {}); metadata.assetCount = records.filter(r => r.typeName === 'asset').length }
+  if (metadata.persistent) { const records = session.store.allRecords(); metadata.count = records.filter(r => r.typeName === 'shape' && (!metadata.flattenFixture || r.opacity !== 0)).length; metadata.counts = records.filter(r => r.typeName === 'shape').reduce((counts, r) => ({ ...counts, [r.type]: (counts[r.type] || 0) + 1 }), {}); metadata.assetCount = records.filter(r => r.typeName === 'asset').length }
   // Observation counter proves pointer hit queries do not serialize the board.
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
@@ -159,7 +167,8 @@ try {
   disposers.push(() => bookmarkNetwork.dispose())
   const bookmarkClient = createBookmarkMetadataClient({ fetch: bookmarkNetwork.fetch })
   if (metadata.bookmarkMetadataFixture) Object.defineProperty(window, '__HICANVAS_BOOKMARK_NETWORK__', { value: Object.freeze({ release: () => bookmarkNetwork.release() }) })
-  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, bookmarkMetadata: bookmarkClient, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), onRequestFocus: target => { if (target === 'canvas') host.focus({ preventScroll: true }) }, toolIds: trailTools ? (params.get('limited') === '1' ? ['select'] : trailTools) : metadata.focusFixture || metadata.annotationFixture || gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  const flattenPort = metadata.flattenFixture ? createFlattenUpload({ metadata, document, host, format: params.get('flattenFormat') || 'png' }) : undefined
+  interaction = createCanvasInteraction({ session, flatten: flattenPort, clipboard: clipboardAdapter.port, bookmarkMetadata: bookmarkClient, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), onRequestFocus: target => { if (target === 'canvas') host.focus({ preventScroll: true }) }, toolIds: trailTools ? (params.get('limited') === '1' ? ['select'] : trailTools) : metadata.focusFixture || metadata.annotationFixture || gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   if (metadata.clipboardFixture) Object.defineProperty(window, '__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__', { value: createExternalClipboardProbe({ session, interaction, document, onError: showError }) })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), onEmbedInput: value => interaction.embed(value), textEditing: {
@@ -172,6 +181,11 @@ try {
   const instructions = `${metadata.count} 个合成元素 · D/B/X 画笔 · ⇧D 荧光笔 · Shift 接直线 · Shift 点击增减／框选追加 · Ctrl 反转框选 · Alt 涂抹 · Shift 拖动锁轴 · Enter/Esc 组导航 · Tab 顺序选择 · 拖动移动 · 角点／边线缩放 · 角外旋转 · Shift 等比／15° · Alt 中心缩放 · H 手形／空格平移 · Z 缩放 · ⇧0/1/2 · ⌘/Ctrl Z 撤销 · Esc 取消${metadata.persistent ? ' · 松手保存' : ' · 临时预览，刷新还原'}`
   const navigation = attachNavigationUi(host, interaction, showError, (...args) => controls.navigate(...args))
   disposers.push(() => navigation.dispose())
+  if (metadata.flattenFixture) {
+    const flattenUi = attachFlattenUi(navigation.element, interaction, showError)
+    disposers.push(() => flattenUi.dispose())
+    disposers.push(installFlattenProbe({ host, session, interaction, transport }))
+  }
   if (metadata.exportFixture) {
     const output = attachExportUi(navigation.element, host, session, interaction, showError)
     disposers.push(() => output.dispose())
