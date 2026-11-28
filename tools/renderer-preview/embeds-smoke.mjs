@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { externalSamples } from './external-samples.js'
 import { embedsInteractionSmoke } from './embeds-interaction-smoke.mjs'
+import { bookmarkMetadataSmoke } from './bookmark-metadata-smoke.mjs'
 
 const check = (condition, message) => { if (!condition) throw new Error(message) }
 export async function prepareEmbedsProbe(window) {
@@ -157,5 +158,6 @@ export async function embedsSmoke(window, output) {
   await paste({ 'text/plain': 'Some prose https://ordinary.example.invalid/page tail' }, { type: 'text' })
   await record('complete'); await capture('paste-result')
   const interaction = await embedsInteractionSmoke(window, output)
-  return { stages, interaction, syntheticClipboardEvents: true, systemClipboardCalls: 0, inputHtmlExecutions: 0, dialog: true, history: true, sameIdConversion: true, detachedFrames: true, bookmarkAssetUndo: true }
+  const bookmarks = await bookmarkMetadataSmoke(window, output)
+  return { stages, interaction, bookmarks, syntheticClipboardEvents: true, systemClipboardCalls: 0, inputHtmlExecutions: 0, dialog: true, history: true, sameIdConversion: true, detachedFrames: true, bookmarkAssetUndo: true }
 }

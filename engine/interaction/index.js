@@ -46,6 +46,7 @@ import { createStyleSession } from './style-session.js'
 import { createAiFrameSize } from './ai-frame-size.js'
 import { createEmbedEditing } from './embeds.js'
 import { createShapeLinkEditing } from './shape-links.js'
+import { createBookmarkEditing } from './bookmarks.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -59,7 +60,7 @@ export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, h
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
 // Hosts may supply design tokens; the engine validates and copies the values.
-export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null, clipboard: clipboardPort, boardId = '', onRequestFocus }) {
+export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null, clipboard: clipboardPort, boardId = '', onRequestFocus, bookmarkMetadata }) {
   if (!session?.store || !toolIds.length || toolIds.some(id => !Object.hasOwn(canvasToolRegistry, id))) throw new Error('交互模块需要运行时和已登记工具。')
   const metrics = checkedHandleMetrics(handleMetrics)
   if (typeof controlPointSnapping !== 'boolean') throw new Error('控制点吸附需要布尔值。')
@@ -69,7 +70,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, interactingEmbedId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null, lastNotice: null }))
-  let disposed = false, tool, laserTool, switchingTool = false, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, embeds, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
+  let disposed = false, tool, laserTool, switchingTool = false, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, embeds, bookmarks, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -111,6 +112,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     overlays.push(...next.laserTrails)
     next.overlays = Object.freeze(overlays.map(o => Object.freeze({ ...o, bounds: Object.freeze({ ...o.bounds }), ...(o.handles && { handles: Object.freeze(o.handles.map(h => Object.freeze(h))) }) })))
     if (JSON.stringify(next) !== JSON.stringify(previous)) state.set(Object.freeze(next))
+    bookmarks?.pulse()
   }
   function report(error) { change({ lastError: Object.freeze({ code: error.code || 'interaction', message: error.message }) }) }
   function cancelTool() {
@@ -149,6 +151,9 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   connectionEditing = createConnectionEditing(context)
   videoInput = createVideoInteraction({ ...context, prepare: prepareText })
   imageAlt = createImageAlt({ ...context, prepare: prepareText })
+  bookmarks = createBookmarkEditing({ ...context, prepare: prepareText }, bookmarkMetadata)
+  context.bookmarks = bookmarks
+  change({ bookmarkJobs: Object.freeze([]), bookmarkEditing: null })
   embeds = createEmbedEditing({ ...context, prepare: prepareText })
   const links = createShapeLinkEditing({ ...context, initial, prepare: prepareText })
   const textInput = createTextInput({ ...context, prepare: prepareText, replay: dispatchCore, canCreate: () => toolIds.includes('text') }, textEditing)
@@ -170,7 +175,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     const before = checkBasis && selection.expected(read().selectedIds)
     index.applyChanges(changes); targets.apply(changes); content.apply(changes); selection.apply(changes)
     links.applyChanges(changes)
-    connectionEditing.applyChanges(changes); videoInput.applyChanges(changes); embeds.applyChanges(changes); tool?.applyChanges?.(changes)
+    connectionEditing.applyChanges(changes); videoInput.applyChanges(changes); embeds.applyChanges(changes); bookmarks.applyChanges(); tool?.applyChanges?.(changes)
     const after = checkBasis && selection.expected(read().selectedIds)
     const affected = checkBasis && [...Object.keys(changes.added), ...Object.keys(changes.updated), ...Object.keys(changes.removed)].some(id => before.has(id) || after.has(id))
     change(!session.state.get().isGestureActive && affected ? { selectionRotation: null } : {})
@@ -291,6 +296,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     canEmbed() { assertActive(); return embeds.available() },
     link(action) { assertActive(); return links.action(action) },
     getLinks() { assertActive(); return links.get() },
+    bookmark(action) { assertActive(); return bookmarks.action(action) },
+    canBookmark() { assertActive(); return bookmarks.available() },
     editText(action) { assertActive(); return textEditing.action(action) },
     setEdgeScrolling(enabled) { assertActive(); change({ edgeScrolling: Boolean(enabled) }); navigation.finishFrame() },
     setViewport(value) { assertActive(); minimap.cancel(); navigation.setViewport(value) },
@@ -309,6 +316,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
       try {
         const linkEdited = links.beforeKeyboard(input)
         if (linkEdited.handled) return linkEdited.result ?? true
+        const bookmarkEdited = bookmarks.beforeKeyboard(input)
+        if (bookmarkEdited.handled) return bookmarkEdited.result ?? true
         const embedEdited = embeds.beforeKeyboard(input)
         if (embedEdited.handled) return embedEdited.result ?? true
         const imageEdited = imageAlt.beforeKeyboard(input)
@@ -324,6 +333,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return result
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; links.dispose(); aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; links.dispose(); bookmarks.dispose(); aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
   })
 }

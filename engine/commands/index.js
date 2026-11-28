@@ -24,6 +24,7 @@ import { insertVideo, replaceVideo, setVideoAltText } from './video.js'
 import { pasteContent } from './paste-content.js'
 import { insertUrl, convertUrlShape } from './embeds.js'
 import { setShapeLink } from './shape-links.js'
+import { setBookmark } from './bookmarks.js'
 
 // 新命令只增加处理函数并在此登记，不修改已有命令；一行一个，并行开发时互不冲突。
 export const commandHandlers = Object.freeze({
@@ -62,4 +63,6 @@ export const commandHandlers = Object.freeze({
   insert_url: insertUrl,
   convert_url_shape: convertUrlShape,
   set_shape_link: setShapeLink,
+  set_bookmark_metadata: setBookmark,
+  set_bookmark_url: setBookmark,
 })

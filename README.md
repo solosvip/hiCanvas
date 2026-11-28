@@ -69,7 +69,7 @@ export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
 
 ## 书签网页信息接口
 
-本机客户端可向 `POST /api/bookmark/metadata` 发送 `application/json` 的 `{"url":"https://…"}`，带现有 `x-hicanvas-client: 1` 头，并遵守父服务的本机 Host、同源 Origin 和跨站检查。只接受 url 字段，不需要画板参数；接口不读取或修改画板和设置。成功返回且只返回 `{title, description, url}` 三个字符串，响应不缓存；url 是最终响应或其同源 canonical，空标题和描述也属于有效结果。自动补齐、刷新按钮和写回画板另由 #221 接入。
+本机客户端可向 `POST /api/bookmark/metadata` 发送 `application/json` 的 `{"url":"https://…"}`，带现有 `x-hicanvas-client: 1` 头，并遵守父服务的本机 Host、同源 Origin 和跨站检查。只接受 url 字段，不需要画板参数；接口不读取或修改画板和设置。成功返回且只返回 `{title, description, url}` 三个字符串，响应不缓存；url 是最终响应或其同源 canonical，空标题和描述也属于有效结果。新底座通过独立的编辑命令写回，正式应用尚未切换。
 
 只抓取公开 HTTP/HTTPS 默认端口。每跳完整检查 DNS 并固定连接 IP，最多三次跳转，禁止 HTTPS 降级；固定发送不含个人或机器信息的 `User-Agent: Mozilla/5.0 (compatible; hiCanvas-bookmark)`，不带 Cookie、登录身份、来源或代理配置，不加载脚本、图片、图标和子资源。任务总限时5秒，整个跳转链最多1MiB，头部扫描最多128KiB；宿主最多同时4个任务、滚动60秒最多接受20个任务，没有等待队列或自动重试。客户端断开或服务关闭会取消任务。
 
@@ -407,7 +407,7 @@ SVG单份输入/输出各2 MiB、单批原始合计8 MiB；树10000节点/64层�
 原生守卫：按白板规则排队、登记专用端口并设置已有的 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_CLIPBOARD_PORT=43396 node tools/renderer-preview/clipboard-check.mjs`。入口显式关闭文件监听，先断言未由宿主建立或编造的画板被拒，再运行主进程／浏览器／子框三次预期报错和正常回归；各轮核对同一份被测源码指纹。复制粘贴使用合成ClipboardEvent及私有DataTransfer；离屏页面模拟文档焦点，再以原生指针、偏好按钮、表单点击和撤销重做检验输入归属，系统剪贴板所有入口被报错桩锁住。外部夹具另断言资源请求/导航/执行陷阱零触发，成功一次提交、整次撤销重做，拒绝和全跳过不破坏既有重做分支。超时或中断会等待自己的Electron结束后再关闭宿主、清理隔离资料。材料在 `.scratch/clipboard-smoke/`；真实系统跨应用复制粘贴、权限和设备手感留用户集中验收。
 
 
-网址嵌入合成图鉴为 `/?gallery=embed-editing`，Mod+I或“创建嵌入”打开服务列表，选服务后输入完整HTTPS网址；返回、取消及无效输入不写画板。Enter遵循原生表单和当前按钮，Esc取消。编辑层 `embed(action)` 管草稿及提交，`canEmbed()` 查询可用性；关闭时焦点归还画布。书签本轮不请求标题、描述、图片或图标，补信息归#203、图片归#204；现有存档的远程预览图保持原显示方式。GitHub Gist暂作书签，安全包装归#220。
+网址嵌入合成图鉴为 `/?gallery=embed-editing`，Mod+I或“创建嵌入”打开服务列表，选服务后输入完整HTTPS网址；返回、取消及无效输入不写画板。Enter遵循原生表单和当前按钮，Esc取消。编辑层 `embed(action)` 管草稿及提交，`canEmbed()` 查询可用性；关闭时焦点归还画布。书签文字补齐见下文；图片/图标抓取归#204，现有存档的远程预览图保持原显示方式。GitHub Gist暂作书签，安全包装归#220。
 
 选一个可转换对象后，可用“转换为书签/嵌入”：一条 `convert_url_shape` 命令保留原ID、组和层序、旋转、透明度、注记及页面中心；绑定保留并按新几何重算。锁定自身/祖先、未知服务书签与生成内容不可转。宿主通过 `embed({type:'conversion-intent',to})` 捕获当前对象/选择/版本，再把不可变意图交回 `embed(intent)`；过期意图拒绝，不转移到新选区。形状及新书签asset同次撤销/重做；书签转出时，同事务清理无人引用的旧书签asset，共用资源保留。通用update仍禁止改type。双击互动见下文；超链接编辑归#205。
 
@@ -416,6 +416,12 @@ SVG单份输入/输出各2 MiB、单批原始合计8 MiB；树10000节点/64层�
 嵌入互动（#206）：选择工具下双击支持的外部服务进入；第二击按住拖动仍只移动。一次只有一个嵌入或视频拥有互动输入。框外工具栏一直提供“退出嵌入互动”，鼠标或Tab+Enter退出后焦点回到画布；点框外先退出，再正常处理该次点击，保留表单焦点。画布焦点下Esc只退出互动，保留选区；跨来源子框内Esc由网页自己决定。状态不写画板、不占撤销。相机和无关对象变化保留iframe及子页状态；目标或祖先变化、改源、重载、换工具/选择、编辑文字或裁剪时结束互动，撤销不恢复互动。服务尺寸、沙箱与权限沿原规则，生成内容及未知网址不开放此入口。合成夹具 `/?gallery=embed-editing&embedCase=interaction`，上述专项入口保留原创建/转换/剪贴板守卫，再执行互动原生回归；材料增加 `embeds-interaction-native.json` 与截图。真实服务体验、跨来源焦点及辅助技术仍需集中验收。
 
 专项原生入口：按白板规则登记全量时段及专用端口，指定已有的 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_EMBED_PORT=43396 node tools/renderer-preview/embeds-check.mjs`。入口先核对主进程、网页和子框剪贴板报错桩身份，再做故意拒绝证明；服务嵌入转到本机假页，外站请求不得放行。材料在 `.scratch/embeds-smoke/`，含宽窄窗口及有效、无效、取消截图。粘贴使用不受信的合成ClipboardEvent和私有DataTransfer，不能替代真实跨应用粘贴验收；仍须单独运行 `npm run renderer:smoke`。正式应用尚未切换。
+
+书签信息（#221）：外部网址或独立iframe形成书签、嵌入转书签成功后，自动通过可取消的 `fetchMetadata(url,{signal})` 端口补齐文字；内部复制、载入和撤销/重做不触发抓取。`bookmark({type:'refresh',id?})` 手动刷新，`{type:'cancel',id}` 取消读取。准备阶段不写画板；只更新标题、描述及资源网址，共用资源只更新本卡，保留用户原网址、图片、图标及几何。空字段不覆盖已有文字，全空或重复结果零提交。新卡创建和后续补齐分两次撤销；窗口最多4个准备/待提交任务，满时保留卡片并提示稍后手动刷新，不排队或自动重试。
+
+选择书签后 `bookmark({type:'open'})` 打开改址草稿，`{type:'update',url}` 更新；“保存并补齐”先读取，再以一条 `set_bookmark_url` 同时保存网址与新文字，并清掉旧文字、图片及图标。读取失败保留对话框，展示已知原因，可重试、取消或明确“仅保存网址”；后者清掉旧信息，一次撤销恢复旧网址、资源关系和信息。提交发出后不可取消，保存回执失败按当前宿主画板提示重新操作，不声称一定未保存，不重发。换选择/相机和无关改动保留准备结果，目标/资源/祖先变化、取消及销毁永久废弃并Abort；别的手势结束后才按当前确认版本提交，409只提交一次。
+
+合成书签图鉴为 `/?gallery=embed-editing&embedCase=bookmarks`，显式注入可控fetch响应，提供刷新、编辑网址和取消按钮；其他合成图鉴注入空文字响应，均不读取真实网站。上述原生入口在原18+23阶段之后执行书签专项，材料增加 `bookmark-metadata-native.json` 及截图。定向命令为 `node --test server/engine-bookmarks.test.mjs server/editor-bookmarks.test.mjs server/editor-bookmark-jobs.test.mjs tools/bookmark-metadata-client.test.mjs`；统一完整检查及独立 `renderer:smoke` 仍须执行。没有重新观察旧版修改书签网址的保存时机；线上兼容性和真实跨应用粘贴留用户集中验证。
 
 ### 新编辑底座的画布输出（#210，独立合成预览）
 
