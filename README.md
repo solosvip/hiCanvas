@@ -410,6 +410,8 @@ SVG单份输入/输出各2 MiB、单批原始合计8 MiB；树10000节点/64层�
 
 原生守卫：按白板规则排队、登记专用端口并设置已有的 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_CLIPBOARD_PORT=43396 node tools/renderer-preview/clipboard-check.mjs`。入口显式关闭文件监听，先断言未由宿主建立或编造的画板被拒，再运行主进程／浏览器／子框三次预期报错和正常回归；各轮核对同一份被测源码指纹。复制粘贴使用合成ClipboardEvent及私有DataTransfer；离屏页面模拟文档焦点，再以原生指针、偏好按钮、表单点击和撤销重做检验输入归属，系统剪贴板所有入口被报错桩锁住。外部夹具另断言资源请求/导航/执行陷阱零触发，成功一次提交、整次撤销重做，拒绝和全跳过不破坏既有重做分支。超时或中断会等待自己的Electron结束后再关闭宿主、清理隔离资料。材料在 `.scratch/clipboard-smoke/`；真实系统跨应用复制粘贴、权限和设备手感留用户集中验收。
 
+非输入控件聚焦时，普通按钮、工具栏按钮、链接、关闭的菜单触发器与画布共用 `canvasOwnsFocus`：复制、剪切、粘贴与文件落点仍属于画布，选中便签的邻位续建入口保持可用。input、textarea、contenteditable、文字编辑、展开菜单、select、视频和组字仍受保护；异步续建完成后不抢回控件焦点。专项回归按同样白板规则运行 `HICANVAS_CONTROL_CLIPBOARD_PORT=43390 node tools/renderer-preview/control-clipboard-check.mjs`，复用上述 Electron 环境变量，材料在 `.scratch/control-clipboard-smoke/`。其中指针、焦点、历史和文字输入使用离屏原生事件；剪贴板使用私有合成事件，系统剪贴板始终封锁。旧版系统 Mod+C/X/V 整条链路未观察，真实跨应用复制粘贴需用户集中验收。
+
 
 网址嵌入合成图鉴为 `/?gallery=embed-editing`，Mod+I或“创建嵌入”打开服务列表，选服务后输入完整HTTPS网址；返回、取消及无效输入不写画板。Enter遵循原生表单和当前按钮，Esc取消。编辑层 `embed(action)` 管草稿及提交，`canEmbed()` 查询可用性；关闭时焦点归还画布。书签文字补齐见下文；图片/图标抓取归#204，现有存档的远程预览图保持原显示方式。GitHub Gist暂作书签，安全包装归#220。
 

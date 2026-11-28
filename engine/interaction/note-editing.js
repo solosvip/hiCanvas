@@ -1,11 +1,12 @@
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { adjacentNote, noteGeometry, noteIsRtl } from './note-geometry.js'
+import { canvasOwnsFocus } from './keyboard-input.js'
 
 export function createNoteEditing(context, editing) {
   const { index, targets, read, change, session } = context
   let pressed = null, continuing = false, disposed = false, generation = 0
   function describe(state) {
-    if (state.toolId !== 'select' || state.temporaryTool || state.inputContext.owner !== 'canvas' || state.textEditing || state.croppingId || state.selectedIds.length !== 1 || !['idle', 'pointing'].includes(state.mode)) return null
+    if (state.toolId !== 'select' || state.temporaryTool || !canvasOwnsFocus(state.inputContext) || state.inputContext.isComposing || state.textEditing || state.croppingId || state.selectedIds.length !== 1 || !['idle', 'pointing'].includes(state.mode)) return null
     const shape = index.getRecord(state.selectedIds[0])
     if (shape?.type !== 'note') return null
     return { kind: 'note', id: shape.id, bounds: { x: 0, y: 0, w: 0, h: 0 }, handles: noteGeometry(index, shape).handles.filter(handle => index.isPointVisible(shape.id, handle)) }

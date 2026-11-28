@@ -5,6 +5,7 @@ import { planClipboardPaste } from '../clipboard/placement.js'
 import { validateClipboardContent } from '../clipboard/validate.js'
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { matchesCanvasShortcut } from './shortcuts.js'
+import { canvasOwnsFocus } from './keyboard-input.js'
 
 const unavailable = reason => ({ status: 'unavailable', reason })
 
@@ -25,7 +26,7 @@ export function createClipboardActions({ session, read, change, report, boardId,
     if (disposed) return 'disposed'
     if (pending && !own) return 'clipboard-busy'
     if (runtime.isSubmitting) return 'submitting'
-    if (!menu && state.inputContext.owner !== 'canvas' || state.inputContext.isComposing || state.textEditing || state.imageAltEditing || state.embedEditing || state.bookmarkEditing) return 'input-context'
+    if (!menu && !canvasOwnsFocus(state.inputContext) || state.inputContext.isComposing || state.textEditing || state.imageAltEditing || state.embedEditing || state.bookmarkEditing) return 'input-context'
     if (state.croppingId) return 'cropping'
     if (runtime.isGestureActive || state.mode !== 'idle' || state.temporaryTool) return 'pointer-gesture'
     return null
