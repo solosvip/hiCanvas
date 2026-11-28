@@ -59,6 +59,6 @@ export function exportSize(bounds, { padding = 0, scale = 2 } = {}) {
   const x = Math.floor(bounds.x - padding), y = Math.floor(bounds.y - padding)
   const w = Math.ceil(bounds.x + bounds.w + padding) - x, h = Math.ceil(bounds.y + bounds.h + padding) - y
   const width = Math.ceil(w * scale), height = Math.ceil(h * scale)
-  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width > CANVAS_EXPORT_LIMITS.edge || height > CANVAS_EXPORT_LIMITS.edge || width * height > CANVAS_EXPORT_LIMITS.pixels) throw new Error('输出超过8192边长或1600万像素上限。')
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width > CANVAS_EXPORT_LIMITS.edge || height > CANVAS_EXPORT_LIMITS.edge || width * height > CANVAS_EXPORT_LIMITS.pixels) throw Object.assign(new Error('输出超过8192边长或1600万像素上限。'), { code: 'export-size-limit', width, height, limits: CANVAS_EXPORT_LIMITS })
   return Object.freeze({ status: 'ready', bounds: Object.freeze({ x, y, w, h }), width, height, scale })
 }

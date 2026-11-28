@@ -33,6 +33,7 @@ import { createAiSlidesTool } from './create-ai-slides.js'
 import { creationToolIds } from './creation-presets.js'
 import { createTextEditing } from './text-editing.js'
 import { createTextTool } from './create-text.js'
+import { createAnnotationTool } from './create-annotation.js'
 import { createTextInput } from './text-input.js'
 import { createArrowTool, createLineTool } from './create-connection.js'
 import { createConnectionEditing } from './connection-editing.js'
@@ -53,7 +54,7 @@ import { createShapeLinkEditing } from './shape-links.js'
 // setter on focus/composition changes; keyboard-input decides which keys reach tools.
 // Products choose allowed tools from this registry; tool state never enters the
 // document Store. Future tools get the same normalized input and context.
-export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, note: createNoteTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, eraser: createEraserTool, laser: createLaserTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
+export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, hand: createHandTool, text: createTextTool, annotation: createAnnotationTool, note: createNoteTool, line: createLineTool, arrow: createArrowTool, draw: createDrawTool, highlight: createHighlightTool, eraser: createEraserTool, laser: createLaserTool, geo: createGeoTool, frame: createFrameTool, 'ai-image': createAiImageTool, 'ai-draft': createAiDraftTool, 'ai-film': createAiFilmTool, 'ai-slides': createAiSlidesTool })
 
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
@@ -281,7 +282,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     beginToolDrag(options) { assertActive(); creation.beginToolDrag(options) },
     setWrapMode(enabled) { assertActive(); change({ isWrapMode: Boolean(enabled) }) },
     select(action) { assertActive(); if (session.state.get().isSubmitting) return false; navigation.cancel(); cancelTool(); return selectionNavigation.run(action) },
-    setInputContext(value) { assertActive(); keyboard.context(value) },
+    setInputContext(value) { assertActive(); keyboard.context(value); return textInput.contextChanged() },
     setShortcutsEnabled(enabled) { assertActive(); keyboard.shortcuts(enabled) },
     cropImage(action) { assertActive(); try { return cropTool.action(action) } catch (error) { cropTool.cancel(); report(error); throw error } },
     videoInput(action) { assertActive(); return videoInput.input(action) },

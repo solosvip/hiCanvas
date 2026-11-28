@@ -33,6 +33,9 @@ import { createFocusFixture } from './focus-fixture.js'
 import { attachActionsUi } from './actions-ui.js'
 import { memoryTransport, previewTransport } from './transport.js'
 import { createExportFixture } from './export-fixture.js'
+import { createAnnotationFixture } from './annotation-fixture.js'
+import { attachAnnotationUi } from './annotation-ui.js'
+import { installAnnotationProbe } from './annotation-probe.js'
 import { attachExportUi } from './export-ui.js'
 import { installExportProbe } from './export-probe.js'
 import { getShapeTextLayout, createConnectionContext } from '../../renderer/geometry.js'
@@ -99,6 +102,7 @@ try {
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
   else if (gallery === 'embed-editing') metadata = createEmbedsFixture(params.get('embedCase'))
   else if (gallery === 'shape-links') metadata = createShapeLinksFixture()
+  else if (gallery === 'annotation') metadata = createAnnotationFixture(params.get('case') || 'drawing', Number(params.get('zoom') || 1))
   else if (gallery === 'export') metadata = createExportFixture(undefined, params.get('case') || 'static')
   else if (gallery === 'slides') { const response = await fetch(`/__renderer_fixture?gallery=slides&case=${encodeURIComponent(params.get('case') || 'base')}`); if (!response.ok) throw new Error('Slides 夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'draw-input') metadata = createDrawGallery()
@@ -146,7 +150,7 @@ try {
   const originalSnapshot = session.store.getStoreSnapshot.bind(session.store)
   session.store.getStoreSnapshot = (...args) => { snapshotReads++; return originalSnapshot(...args) }
   const trailTools = metadata.shapeLinksFixture ? Object.keys(canvasToolRegistry) : metadata.eraserFixture ? ['select', 'hand', 'draw', 'highlight', 'eraser'] : metadata.laserFixture ? ['select', 'hand', 'draw', 'eraser', 'laser', 'text'] : null
-  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), onRequestFocus: target => { if (target === 'canvas') host.focus({ preventScroll: true }) }, toolIds: trailTools ? (params.get('limited') === '1' ? ['select'] : trailTools) : metadata.focusFixture || gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
+  interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), onRequestFocus: target => { if (target === 'canvas') host.focus({ preventScroll: true }) }, toolIds: trailTools ? (params.get('limited') === '1' ? ['select'] : trailTools) : metadata.focusFixture || metadata.annotationFixture || gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   if (metadata.clipboardFixture) Object.defineProperty(window, '__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__', { value: createExternalClipboardProbe({ session, interaction, document, onError: showError }) })
   disposers.push(() => interaction.dispose())
   renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), onEmbedInput: value => interaction.embed(value), textEditing: {
@@ -164,6 +168,11 @@ try {
     disposers.push(() => output.dispose())
     disposers.push(installExportProbe({ host, session, interaction, transport, output }))
   }
+  if (metadata.annotationFixture) {
+    const output = attachAnnotationUi(navigation.element, host, session, interaction, metadata.annotationTarget, showError)
+    disposers.push(() => output.dispose())
+    disposers.push(installAnnotationProbe({ host, session, interaction, transport, output }))
+  }
   controls = attachPreviewInput(host, interaction, { onError: showError })
   disposers.push(() => controls.dispose())
   const minimap = attachMinimapUi(navigation.element, host, interaction, { store: session.store, pageId: metadata.viewState.currentPageId, dispatch: input => controls.dispatch(input), onError: showError })
@@ -175,7 +184,7 @@ try {
   const videoPaste = videos ? createMediaUpload({ session, interaction, metadata, document, onError: showError }) : null
   if (videoPaste) disposers.push(() => videoPaste.dispose())
   disposers.push(clipboardAdapter.attach(interaction, { onFiles: images?.importFiles || videoPaste?.importFiles }))
-  const creationUi = gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? attachCreationUi(host, interaction, () => controls, showError) : null
+  const creationUi = gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture || metadata.annotationFixture ? attachCreationUi(host, interaction, () => controls, showError, { annotation: Boolean(metadata.annotationFixture) }) : null
   if (creationUi) disposers.push(() => creationUi.dispose())
   const actionsUi = gallery === 'selection-actions' || metadata.clipboardFixture ? attachActionsUi(navigation.element, host, interaction, showError, metadata.clipboardFixture) : null
   if (actionsUi) disposers.push(() => actionsUi.dispose())

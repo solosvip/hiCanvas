@@ -1,6 +1,6 @@
 // Preview-only DOM adapter. Tool choices and gestures remain in interaction;
 // this shell passes the native toolbar pointer-down into the common input path.
-export function attachCreationUi(host, interaction, controls, onError) {
+export function attachCreationUi(host, interaction, controls, onError, { annotation = false } = {}) {
   const doc = host.ownerDocument, toolbar = doc.createElement('nav'), listeners = [], buttons = new Map()
   toolbar.id = 'creation'; toolbar.dataset.creationToolbar = ''; toolbar.setAttribute('aria-label', '创建形状')
   const listen = (node, name, callback) => { node.addEventListener(name, callback); listeners.push(() => node.removeEventListener(name, callback)) }
@@ -11,7 +11,8 @@ export function attachCreationUi(host, interaction, controls, onError) {
   ]) { const option = doc.createElement('option'); option.value = value; option.textContent = label; geo.append(option) }
   listen(geo, 'change', safely(() => { interaction.setCreationOptions({ geo: geo.value }); interaction.setTool('geo'); host.focus({ preventScroll: true }) }))
   toolbar.append(geo)
-  for (const [toolId, label] of [['text','文字 T'],['note','便签 N'],['line','线条 L'],['arrow','连接箭头'],['geo','几何 G'],['frame','画框 F'],['ai-image','AI 图片 A'],['ai-draft','AI 网页'],['ai-film','AI 影片'],['ai-slides','AI 幻灯片']]) {
+  for (const [toolId, label] of [['text','文字 T'],['note','便签 N'],['line','线条 L'],['arrow','连接箭头'],['annotation','标注 C'],['geo','几何 G'],['frame','画框 F'],['ai-image','AI 图片 A'],['ai-draft','AI 网页'],['ai-film','AI 影片'],['ai-slides','AI 幻灯片']]) {
+    if (toolId === 'annotation' && !annotation) continue
     const button = doc.createElement('button'); button.type = 'button'; button.textContent = label; button.dataset.tool = toolId
     listen(button, 'pointerdown', safely(event => { if (event.button === 0) controls().beginToolDrag(event, { toolId }) }))
     // Keyboard activation arms the tool for the next canvas pointer gesture.

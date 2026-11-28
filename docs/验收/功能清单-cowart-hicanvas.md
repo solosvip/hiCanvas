@@ -29,8 +29,8 @@
 | C05 | AI 框宽高、比例与比例锁 | 旧版单AI框合成板：Mod+A保留选择，再R显示面板 | 图片、网页、影片框七档预设和锁写入同一文档meta；影片同时有draft/film标记。旧版手输已收到真实输入/确认事件但未改记录，不据此推断联动规则。新版接口和产品规则见下方#195。 | [StylePanel.jsx](../../src/editor/StylePanel.jsx) `CowartStylePanel`、`CowartAiImageStyleControls`；[holderMeta.jsx](../../src/editor/holderMeta.jsx) `isAiImageAspectLocked` | 隔离原生观察确认预设/锁/刷新持久性；手输未生效，正式新版面板未接入。 |
 | C06 | 各生成面板的提示词与参考图 | 界面：选择空图片/网页/影片/幻灯片框，输入文字、选择文件或粘贴图片 | 显示参考图缩略图、逐张移除、限制数量，发送中防重复；输入快捷键由统一处理函数管理。参考图随请求保存或附带。 | [ImageGenerationPanel.jsx](../../src/editor/ImageGenerationPanel.jsx) `CowartAiImageGenerationPanel`；[DraftGenerationPanel.jsx](../../src/editor/DraftGenerationPanel.jsx) `CowartAiDraftGenerationPanel`；[SlidesGenerationPanel.jsx](../../src/editor/SlidesGenerationPanel.jsx) `CowartAiSlidesGenerationPanel`；[generationPrompts.jsx](../../src/editor/generationPrompts.jsx) `handleGenerationPromptKeyDown` | 无：上传、粘贴、移除和快捷键界面；T07/T08 只覆盖模型请求携带参考图。 |
 | C07 | 文生图与参考图改图（适配） | 界面：图片框选择模型后「发送生成请求」 | 保存画板后提交本机后台任务，目标及框比例进入请求；结果替换目标为普通图片。hiCanvas 使用用户配置模型，上游通过宿主图片能力处理。 | [generationRequests.jsx](../../src/editor/generationRequests.jsx) `sendAiImageGenerationRequest`；[canvasImages.js](../../src/image-models/canvasImages.js) `generateOnCanvas` | 部分 T06/T07/T08/T10：接口与占位回填；无面板到模型的点击回归。 |
-| C08 | 手绘箭头与文字标注 | 界面：标注工具、快捷键 C，拖出箭头后输入文字 | 创建带标注元数据的弯箭头，完成即编辑标签；过短拖动及取消撤销本次创建。 | [annotationTools.jsx](../../src/editor/annotationTools.jsx) `CowartAnnotationTool`、`CowartAnnotationPointing`；[annotationEditing.jsx](../../src/editor/annotationEditing.jsx) `startEditingAnnotationArrowLabel` | 无。 |
-| C09 | 汇集附近标注与截图尺寸保护 | 界面：对图片/网页/幻灯片发起按标注操作时 | 将原作品及附近标注箭头/文字收进截图；图片修改前拒绝超长边或超总像素的截图，显示缩小或移近标注的提示。 | [annotationRequests.jsx](../../src/editor/annotationRequests.jsx) `collectAnnotationTargetShapeIds`、`prepareAnnotationEditRequest`；[imageToolbar.jsx](../../src/editor/imageToolbar.jsx) `CowartAnnotationEditToolbarButton` | 无：标注收集、截图及尺寸提示。 |
+| C08 | 手绘箭头与文字标注 | 界面：标注工具、快捷键 C，拖出箭头后输入文字 | 创建带标注元数据的弯箭头，完成即编辑标签；过短拖动及取消撤销本次创建。 | [annotationTools.jsx](../../src/editor/annotationTools.jsx) `CowartAnnotationTool`、`CowartAnnotationPointing`；[annotationEditing.jsx](../../src/editor/annotationEditing.jsx) `startEditingAnnotationArrowLabel` | 新底座部分覆盖：#141交互/撤销/输入与原生专项，见文末；正式界面未切换。 |
+| C09 | 汇集附近标注与截图尺寸保护 | 界面：对图片/网页/幻灯片发起按标注操作时 | 将原作品及附近标注箭头/文字收进截图；图片修改前拒绝超长边或超总像素的截图，显示缩小或移近标注的提示。 | [annotationRequests.jsx](../../src/editor/annotationRequests.jsx) `collectAnnotationTargetShapeIds`、`prepareAnnotationEditRequest`；[imageToolbar.jsx](../../src/editor/imageToolbar.jsx) `CowartAnnotationEditToolbarButton` | 新底座部分覆盖：#141公开只读截图、边界与PNG专项，见文末；模型链路未接。 |
 | C10 | 图片按标注生成新图（适配） | 界面：选图片→「按标注修改」 | 截图作为修改参考；原图和标注保留，新图片在旁边产生。独立版交给当前默认模型。 | [annotationSend.jsx](../../src/editor/annotationSend.jsx) `sendAnnotationEditRequest` | 部分 T08：参考图改图协议；T12/T27：保留结果与旁置数据逻辑。无截图到生图的整链路回归。 |
 | C11 | 图片与标注转网页 | 界面：图片工具栏→按标注生成网页 | 保存含标注截图，发送 HTML 任务，要求右侧创建同尺寸新网页；保留原图和标注。 | [annotationSend.jsx](../../src/editor/annotationSend.jsx) `sendAnnotationHtmlRequest`；[annotationRequests.jsx](../../src/editor/annotationRequests.jsx) `buildAnnotationHtmlPrompt` | 部分 T03：请求队列；无该按钮、截图和最终旁置结果回归。 |
 
@@ -298,3 +298,26 @@ CH-C01–C04四类AI框复用与普通创建相同的适用样式快照；目前
 | `tools/slides-layout.test.mjs`、`slides-commands.test.mjs`：观测字面量、中心/index反向平局、参数与极端负值、锁/提示/树、最终回执、旧适配零更新及5000无关元素零查询 → 防两套排版和历史页被收回。 | 正式界面接入后拖入、拖出、跨套、同套排序，再一次撤销 → 整套页位和框尺寸同时恢复，手感符合预期。 |
 | `tools/slides-history.test.mjs`、`slides-interaction.test.mjs`：完整记录的一撤一重做、父链/组、同父级及成员冲突 → 防重排覆盖别人或漏撤其他页；`server/editor-slides.test.mjs`覆盖真实HTTP的版本/原因码/拒绝不写入。 | 锁住中间页，删前页再在后方追加 → 删除有明确原因，追加成功；组内和旋转框的手势体验集中确认。 |
 | `tools/renderer-preview/slides-check.mjs`永久守卫覆盖真实离屏输入、私有ClipboardEvent、保存重载及整套复制树；`tools/content-slides-smoke.mjs`保留原三页基线，再把真实生成页号与中心顺序对立，重排后删除中间页；三页和两页分别核对实际演示、HTML标题/内容/文件名、断服Play.html和逐页PNG像素颜色。完整门禁运行结果以本单交付为准，不把写好守卫当已经运行。 | 正式演示器打开新旧混合图文稿、缩略图跳页、真实设备拖动与跨应用复制 → 内容与顺序正确；系统剪贴板及前台手感仍待用户集中体验。 |
+
+## 新编辑底座标注与截图接口（#141，CH-C08/CH-C09部分覆盖）
+
+C进入解锁的annotation工具，拖动至少8屏幕CSS px才成形，松手以同一事务编辑箭头起点标签。拖动中Esc/pointercancel整次取消且留在工具；标签中Esc保存并回select，空标签仍留箭头，新建+首次标签一步撤销，以后改字各自一步。弧度绝对值为长度×0.12夹16–48，横向按方向换符号、纵向为正。输入所有者、组字、普通文字Mod+Enter和失败/并发保护沿用底座；标注新建保存失败只在父链未变且ID未占用时恢复草稿，不覆写远端。原普通文字/连接箭头测试不改。
+
+公开`createCanvasAnnotationCapture`接收会话/交互和注入的预检/渲染端口；`run({targetId,origin,signal})`返回完整PNG字节和目标、集合、页面范围、倍率、实际编码宽高及资源计数。明确目标固定本次快照，与当前选择独立；新调用重新汇集。没有下载、剪贴板、文件或模型端口。CH-C10/C11/C15/C16/C34的发送、模型和新稿旁置链路仍未覆盖，本单不据只读截图接口宣称端到端完成。
+
+页面AABB附近距离是目标长边夹160–720，接触也算；箭头相关文字外扩120，不从文字继续扩散。标注meta及旧红/黄/橙兼容色参与身份，箭头红label兼容；锁定/零透明保留，父框裁剪不缩集合范围。目标按类别接受图片、生成HTML/影片与Slides，包括无素材图片和空Slides。并集外扩32后最长边≤1000用2倍、≤1600用1.5倍，其余1倍。实际预检单边4096和1600万像素均含边界，超限先拒绝再提示，不分配截图或发送请求。
+
+**与旧版的有意差异（主控13:46审定）：**
+
+- 先收全箭头再找文字，同几何换层序也不漏字；旧版单遍漏收不照搬。
+- Meta+Enter后不留下“select工具但editing挂着”，表单失焦不挂住标注编辑；完成键沿用新底座普通文字规则。
+- 编码宽高以#210向外取整后的实际预检为准。旧版观察曾有预检789/实际788、预检1502/实际1501，本实现不复制少1px，也不缩图凑数；分数起点还可能因整体范围向外取整多1px。
+
+原生检查另发现并修复新底座共用空箭头标签进入编辑时报错：布局副本以零宽字符提供光标行高，画板里的空内容保持不变；非空标签布局与修正前一致。普通文字和连接箭头原生回归保留原样。
+
+| AI已自测及防的问题 | 留用户集中验证（操作 → 期望） |
+| --- | --- |
+| `tools/annotation-interaction.test.mjs`逐帧覆盖C门禁、短拖/取消/空标签、弧度、首次与再编辑撤销、组字、失焦/点击合流、失败恢复和远端冲突；同ID远端新建即使空标签也不覆盖，重复完成/取消均保留远端。普通文字/连接箭头原测试不变 → 防双重提交、丢草稿与改坏原文字。 | 正式界面接入后用真实中文输入法与不同设备：C→拖动→组字→完成/取消，核对手感、焦点、长标签和可访问性。 |
+| `tools/annotation-plan.test.mjs`和`annotation-capture.test.mjs`经公开入口及真实预检覆盖几何、边界、身份、层序、裁剪父变换、分数范围、固定目标/快照、重试、取消与资源失败 → 防串目标、漏字、尺寸超限及截图改稿。 | 菜单内与关闭快捷键、pointercancel、窗口/表单失焦，以及网页/影片/Slides当前内容截图 → 这些旧观察子项未测，不据本单旧版观察宣称已验收；媒体当前帧沿用#210，集中核对视觉/播放状态。 |
+| 标注专项17模式通过：15红/1绿隔离探针后，以原生C/拖动/中文、emoji和协议组字验证一步历史、再编辑失焦及实际PNG像素；三组缩放/DPR输出同为1108×594，分数790×410、4096边与1600万面积边界、网页/空Slides及超限前置拒绝通过，外部请求0。原普通文字14组、连接8组原生回归原样通过，浏览器异常0。 | 正式按标注生成时核对原作品和标注保留、新稿位置与失败提示；本单不调用真实模型或系统剪贴板。 |
+| 独立`renderer:smoke`33样本通过，原创建图鉴十工具断言保留；完整`npm run check`通过，213测试文件/2196项数量核对、样式/设计令牌、正式构建、桌面bundle与936文件结构检查均通过。本地提交使用真实提交前钩子，不绕过门禁。 | 原生协议组字通过仍不能代替操作系统输入法和前台设备手感。 |

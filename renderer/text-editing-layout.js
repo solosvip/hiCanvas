@@ -16,9 +16,9 @@ export function getShapeTextLayout(shape, context, { zoom = 1, titleWidth } = {}
     return { ...layout, x: 0, y: 0, w: layout.w / layout.scale, h: layout.h / layout.scale, font: shape.props.font, align: shape.props.textAlign, autoSize: shape.props.autoSize }
   }
   if (shape.type === 'arrow') {
-    // An empty label edits at the path's midpoint too; a one-space layout
-    // supplies a caret box without changing the saved arrow record.
-    const empty = { ...shape, props: { ...shape.props, richText: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: ' ' }] }] } } }
+    // A zero-width character survives the label's blank-content guard and
+    // supplies caret line height without changing the saved arrow record.
+    const empty = { ...shape, props: { ...shape.props, richText: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '\u200b' }] }] } } }
     const label = getConnectionGeometry(shape, context).label || getConnectionGeometry(empty, context).label
     return { ...label, ...label.bounds, font: shape.props.font, scale: 1, align: 'middle', autoSize: true }
   }

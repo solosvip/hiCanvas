@@ -41,7 +41,8 @@ export function createTextEditing(context) {
     const hiddenCreation = chain && chain.at(-1)?.parentId === targets.pageId && chain.every(record => !record.isLocked && (record.opacity !== 0 || record.id === id))
     if (!canBegin(id) && !(hiddenCreation && supported.has(shape.type))) return false
     if (!adopt) { prepare(); session.beginGesture() }
-    active = { id, kind: shape.type, epoch: ++epoch, content: structuredClone(contentOf(shape)), original: structuredClone(contentOf(shape)), previewed: structuredClone(contentOf(shape)), originalAuthor: shape.props.textFirstEditedBy ?? null, previewedAuthor: shape.props.textFirstEditedBy ?? null, revision: session.state.get().revision, authorExisted: session.store.has(noteAuthor.recordId), selection: null, conflict: null, styles: {}, originalStyles: {}, previewedOpacity: shape.opacity }
+    active = { id, kind: shape.type, annotation: shape.type === 'arrow' && shape.meta?.cowartAnnotationArrow === true, epoch: ++epoch, content: structuredClone(contentOf(shape)), original: structuredClone(contentOf(shape)), previewed: structuredClone(contentOf(shape)), originalAuthor: shape.props.textFirstEditedBy ?? null, previewedAuthor: shape.props.textFirstEditedBy ?? null, revision: session.state.get().revision, authorExisted: session.store.has(noteAuthor.recordId), selection: null, conflict: null, styles: {}, originalStyles: {}, previewedOpacity: shape.opacity }
+    active.annotationSeed = adopt && active.annotation ? { record: structuredClone(shape), parents: targets.lineage(id).slice(1).map(record => [record.id, JSON.stringify(record)]) } : null
     change({ selectedIds: [id] }); publish()
     inputContext({ owner: 'text-editing' })
     return true
@@ -135,7 +136,26 @@ export function createTextEditing(context) {
     preview()
     if (active.kind === 'text' && !hasContent(active.content)) session.preview([{ type: 'delete', ids: [active.id] }])
   }
-  async function finish(extraCommands = []) {
+  function restoreAnnotationDraft() {
+    const seed = active.annotationSeed
+    // A failed first save rolled back its new record. Restore only this owned
+    // draft and only over unchanged ancestors; never resurrect saved/deleted
+    // annotations or overwrite a colliding remote ID. Ordinary text is untouched.
+    if (!seed || session.state.get().isGestureActive) return
+    if (index.getRecord(active.id)) { active.conflict = { type: 'created', revision: session.state.get().revision }; return }
+    if (seed.parents.some(([id, record]) => JSON.stringify(index.getRecord(id)) !== record) || index.getRecord(seed.record.parentId)?.typeName !== 'page' && !seed.parents.length) { active.conflict = { type: 'parent', revision: session.state.get().revision }; return }
+    session.beginGesture()
+    session.preview([{ type: 'put', record: seed.record }])
+    preview()
+  }
+  function finish(extraCommands = []) {
+    const editing = active
+    // Browser focusout precedes its canvas pointerdown. Both routes must join
+    // the same annotation save, then the pointer route replays its click.
+    if (!editing?.annotation) return finishEditing(extraCommands)
+    return editing.finishing ||= finishEditing(extraCommands).finally(() => { editing.finishing = null })
+  }
+  async function finishEditing(extraCommands = []) {
     if (!active) return false
     const editing = active
     sync()
@@ -158,6 +178,7 @@ export function createTextEditing(context) {
         } catch (error) {
           if (active !== editing) throw error
           active.saving = false
+          restoreAnnotationDraft()
           sync(); publish()
           if (error.code !== 'conflict' || attempt === 1) throw error
           if (active.conflict) return false
@@ -172,7 +193,11 @@ export function createTextEditing(context) {
     return true
   }
   const stop = react('text editing remote revision', sync)
-  return { cancel, create, canBegin, begin, finish, applyStyles, adopt: id => begin(id, true), dispose() { stop(); cancel() }, action(value) {
+  return { cancel, create, canBegin, begin, finish, applyStyles,
+    // O06 legacy leaves an orphan editing session on form blur. Only explicit
+    // annotations adopt the approved clean hand-off; ordinary text is unchanged.
+    blur() { return active?.annotation && !active.saving ? finish() : false },
+    adopt: id => begin(id, true), dispose() { stop(); cancel() }, action(value) {
     if (value?.type === 'begin') return begin(value.id)
     if (value?.type === 'update') return update(value.content, value.selection)
     if (value?.type === 'selection') { if (!active) return false; active.selection = structuredClone(value.selection); publish(); return true }
