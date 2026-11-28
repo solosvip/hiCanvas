@@ -39,6 +39,7 @@ export const canvasShortcutBindings = Object.freeze([
   binding('create-ellipse', ['o'], { ...plain, group: 'creation', tool: 'geo', geo: 'ellipse' }),
   binding('create-geo', ['g'], { ...plain, group: 'creation', tool: 'geo' }),
   binding('create-frame', ['f'], { ...plain, group: 'creation', tool: 'frame' }),
+  binding('flatten', ['f'], { ...plain, shift: true }),
   binding('create-text', ['t'], { ...plain, group: 'creation', tool: 'text' }),
   binding('create-annotation', ['c'], { ...plain, group: 'creation', tool: 'annotation' }),
   binding('create-note', ['n'], { ...plain, group: 'creation', tool: 'note' }),

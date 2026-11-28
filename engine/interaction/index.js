@@ -47,6 +47,7 @@ import { createAiFrameSize } from './ai-frame-size.js'
 import { createEmbedEditing } from './embeds.js'
 import { createShapeLinkEditing } from './shape-links.js'
 import { createBookmarkEditing } from './bookmarks.js'
+import { createFlatten } from './flatten.js'
 
 // Input contract: every event has time (monotonic host milliseconds) and modifier
 // booleans. Pointer events carry CSS host-relative point, pointerId/type, pressure,
@@ -60,7 +61,7 @@ export const canvasToolRegistry = Object.freeze({ select: createSelectionTool, h
 // Optional handleMetrics are screen CSS pixels: cornerHit/edgeHit are
 // half-extents, rotationOffset is per-axis, rotationRadius is a radius.
 // Hosts may supply design tokens; the engine validates and copies the values.
-export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null, clipboard: clipboardPort, boardId = '', onRequestFocus, bookmarkMetadata }) {
+export function createCanvasInteraction({ session, camera, pageId, toolIds = ['select', 'hand'], viewport, inputDevice = null, invertZoom = false, reduceMotion = false, edgeScrolling = true, handleMetrics, shortcutsEnabled = true, inputContext, measureFrameTitle, controlPointSnapping = false, snapping = {}, snapModifier = 'meta', displayName = null, clipboard: clipboardPort, flatten: flattenPort, boardId = '', onRequestFocus, bookmarkMetadata }) {
   if (!session?.store || !toolIds.length || toolIds.some(id => !Object.hasOwn(canvasToolRegistry, id))) throw new Error('交互模块需要运行时和已登记工具。')
   const metrics = checkedHandleMetrics(handleMetrics)
   if (typeof controlPointSnapping !== 'boolean') throw new Error('控制点吸附需要布尔值。')
@@ -70,7 +71,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const duplicates = createDuplicateMemory(index)
   const content = createCameraContent(initial, index, activePage), selection = createSelectionFrame(initial, index)
   const state = atom('canvas interaction', Object.freeze({ toolId: toolIds[0], focusedGroupId: activePage, isWrapMode: false, isPenMode: false, selectedIds: Object.freeze([]), selectionRotation: null, hoveredId: null, handleCursor: null, marquee: null, scribble: null, textEditing: null, interactingVideoId: null, interactingEmbedId: null, videoPlayback: Object.freeze({}), camera: Object.freeze(checkedCamera(camera)), mode: 'idle', viewport: checkedViewport(viewport), contentOffscreen: false, edgeScrolling: Boolean(edgeScrolling), needsFrame: false, temporaryTool: null, inputContext: checkedInputContext(inputContext), shortcutsEnabled: Boolean(shortcutsEnabled), overlays: Object.freeze([]), lastError: null, lastNotice: null }))
-  let disposed = false, tool, laserTool, switchingTool = false, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, embeds, bookmarks, aiFrameSize, selectionKeys, actions, snaps, clipboard, lastTime = -Infinity
+  let disposed = false, tool, laserTool, switchingTool = false, navigation, minimap, keyboard, cropTool, connectionEditing, noteEditing, videoInput, imageAlt, embeds, bookmarks, aiFrameSize, selectionKeys, actions, snaps, clipboard, flatten, lastTime = -Infinity
   function read() { return state.get() }
   function change(patch = {}) {
     if (disposed) return
@@ -84,6 +85,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (snaps) next.snappingPreferences = snaps.preferences()
     next.focusedGroupId = targets.validScope(next.focusedGroupId)
     next.selectedIds = Object.freeze([...next.selectedIds].filter(id => targets.isSelectable(id)))
+    flatten?.sync(next)
     next.aiFrameSizeEditing = aiFrameSize?.sync(next) || null
     duplicates.selectionChanged(next.selectedIds)
     if (JSON.stringify(next.selectedIds) !== JSON.stringify(previous.selectedIds) && !Object.hasOwn(patch, 'selectionRotation')) next.selectionRotation = null
@@ -160,6 +162,7 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
   const selectionNavigation = createSelectionNavigation(context)
   context.select = selectionNavigation.run
   clipboard = createClipboardActions({ ...context, boardId }, clipboardPort); context.clipboard = clipboard
+  flatten = createFlatten(context, flattenPort)
   change({ pasteAtCursor: false, clipboardBusy: false })
   selectionKeys = createSelectionShortcuts(context)
   actions = createSelectionActions(context)
@@ -223,6 +226,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     if (videoInput.handle(input)) { navigation.finishFrame(); return true }
     const edited = textInput.handle(input)
     if (edited.handled) { navigation.finishFrame(); return edited.result ?? true }
+    const flattened = flatten.handle(input)
+    if (flattened.handled) { navigation.finishFrame(); return flattened.result }
     const styled = styles.handle(input)
     if (styled.handled) { navigation.finishFrame(); return styled.result }
     const acted = actions.handle(input)
@@ -280,6 +285,8 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
     // transaction; defaults adopt on save, and document undo does not rewind them.
     setStyles(patch) { assertActive(); return styles.set(patch) },
     getFilePasteTarget() { assertActive(); return clipboard.fileTarget() },
+    getFlatten() { assertActive(); return flatten.get() },
+    flatten(action) { assertActive(); return flatten.action(action) },
     setTool(id) { assertActive(); setTool(id) },
     setPenMode(enabled) { assertActive(); cancelTool(); change({ isPenMode: Boolean(enabled) }) },
     setCreationOptions(patch) { assertActive(); creation.setOptions(patch) },
@@ -333,6 +340,6 @@ export function createCanvasInteraction({ session, camera, pageId, toolIds = ['s
         return result
       } catch (error) { keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.cancel(); cancelTool(); report(error); throw error }
     },
-    dispose() { if (disposed) return; links.dispose(); bookmarks.dispose(); aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
+    dispose() { if (disposed) return; flatten.dispose(); links.dispose(); bookmarks.dispose(); aiFrameSize.dispose(); styles.dispose(); imageAlt.dispose(); embeds.dispose(); clipboard.dispose(); noteEditing.dispose(); textInput.dispose(); textEditing.dispose(); keyboard.cancel(); minimap.cancel(); navigation.cancel(); cropTool.finish(); cancelTool(); laserTool?.cancel(); actions.dispose(); stop(); disposed = true },
   })
 }

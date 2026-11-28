@@ -1,5 +1,6 @@
 import { createMediaImport } from '../../engine/index.js'
 import { readVideoFile } from './video-file.js'
+import { createMediaUploadAttempt } from './media-upload-attempt.js'
 
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/apng', 'image/avif', 'image/svg+xml']
 const extensions = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', apng: 'image/apng', avif: 'image/avif', svg: 'image/svg+xml', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' }
@@ -86,23 +87,8 @@ export function createMediaUpload({ session, interaction, metadata, document, on
       if (supported.length > 100) { onError(new Error('一次最多导入 100 个媒体文件。')); return false }
       if (supported.filter(file => fileType(file) === 'image/svg+xml').reduce((sum, file) => sum + file.size, 0) > 8 * 1024 * 1024) { onError(new Error('一批 SVG 合计不能超过 8 MiB。')); return false }
       const signal = AbortSignal.any([lifecycle.signal, AbortSignal.timeout(60000)])
-      let ticket, importToken, primaryError, committed = false
-      const request = async (args, requestSignal = signal) => {
-        const headers = { 'content-type': 'application/json', 'x-hicanvas-client': '1', 'x-hicanvas-actor': metadata.actor || 'http' }
-        const post = async (body, activeSignal) => {
-          const response = await fetch(`/api/canvas/reference?conversation=${encodeURIComponent(metadata.conversationId)}`, { method: 'POST', signal: activeSignal, headers, body: JSON.stringify(body), ...(body.purpose === 'file-import-abort' && { keepalive: true }) })
-          const result = await response.json()
-          if (!response.ok) throw new Error(result.error || '媒体上传失败。')
-          return result
-        }
-        if (args.purpose !== 'file-import-prepare' && args.purpose !== 'file-import-abort' && !importToken) {
-          const started = await post({ purpose: 'file-import-begin', fileCount: supported.length }, requestSignal)
-          importToken = started.importToken
-          if (typeof importToken !== 'string' || !importToken) throw new Error('媒体导入凭证无效。')
-          requestSignal.throwIfAborted()
-        }
-        return post({ ...args, ...(args.purpose !== 'file-import-prepare' && { importToken }) }, requestSignal)
-      }
+      let ticket, primaryError, committed = false
+      const attempt = createMediaUploadAttempt({ metadata, fileCount: supported.length, signal }), request = attempt.request
       busy = true; onBusy(true)
       try {
         ticket = media.begin({ point, replaceId })
@@ -132,9 +118,9 @@ export function createMediaUpload({ session, interaction, metadata, document, on
       finally {
         // Never use the already-aborted import signal for cleanup. The server
         // also handles lost upload/commit receipts and abandoned-window leases.
-        if (importToken && !committed) {
+        if (attempt.hasToken() && !committed) {
           try {
-            const result = await request({ purpose: 'file-import-abort' }, AbortSignal.timeout(2000))
+            const result = await attempt.abort()
             if (result.remaining && !disposed) onError(new Error(`${primaryError?.message || '导入已取消'}；本次临时文件未完全清理，请稍后重试。`))
           } catch { if (!disposed) onError(new Error(`${primaryError?.message || '导入已取消'}；本次临时文件未完全清理，请稍后重试。`)) }
         }

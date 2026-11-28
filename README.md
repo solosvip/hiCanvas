@@ -475,3 +475,13 @@ Slides 容器（#142）在正式编辑事务收尾时整理直接图片/自有 H
 并集四边留白32，留白后最长边≤1000用2倍、≤1600用1.5倍、其他1倍。编码尺寸由#210实际预检向外取整；每边4096和总1600万像素均含边界，超限在渲染前拒绝并提示实际宽高及缩小/移近建议，不偷偷缩放。普通输出仍保持8192/1600万原上限；其超限Error仅附`code='export-size-limit'/width/height/limits`，原消息不变。
 
 原生专项：设置`HICANVAS_TEST_ELECTRON`复用已有Electron后，运行`HICANVAS_ANNOTATION_PORT=43392 node tools/renderer-preview/annotation-check.mjs`。它先以15项拒绝/1项允许验证主进程、父页、子框的外连/模型/剪贴板/弹窗/下载边界，再加载合成标注预览，输出在`.scratch/annotation-smoke/`。专项与原有`npm run renderer:smoke`分别执行，后者保持原样。离线三组`tools/annotation-*.test.mjs`由统一检查自动发现；独立运行也先用测试隔离入口。正式模型链路、真实输入法和最终界面由后续集中验收。
+
+### 新编辑底座的单张扁平化（#213）
+
+正式应用仍使用旧编辑器。隔离交互预览的`/?gallery=flatten&case=static`提供「扁平化成图片」按钮与Shift+F；选择同父级的连续对象后，复用画布输出渲染为一张图片，经本机媒体上传租约保存，`flatten_shapes`在一次事务中替换源项。撤销/重做包含源项、绑定和新资产记录；文件沿用保存和历史引用保护。单个已有图片不操作；跨父级或选中项之间夹着未选兄弟时整次拒绝，分多张由#236接续。
+
+宿主在`createCanvasInteraction({session,flatten:port,...})`注入`{format,preflight,render,begin}`。`preflight/render(snapshot,options)`复用公开输出，`begin({signal})`返回`{upload(result),abort()}`；上传回执必须属于本画板并匹配输出类型与尺寸。`interaction.getFlatten()`返回只读可用性，`interaction.flatten({type:'start',origin:'canvas'|'toolbar',signal})`执行，`{type:'cancel'}`只取消尚未发送的提交。格式由同一个`format:'svg'|'png'`能力参数贯穿预检、渲染与上传，默认PNG固定2倍。七格生产上传核对中，字体和文字五格SVG被CSS或文件预算拒绝，图片/裁剪两格像素一致，因此按批准后备采用PNG；与旧版SVG不同，继续放大可能变糊，不放宽SVG清理限制。
+
+准备期间不打开编辑手势；生效锁、渲染/上传失败、坏回执、目标/工具/选区或版本变化均拒绝整次替换。Esc、换工具、换选区在发送提交前可取消；一旦发送，迟到取消不能撤回。提交结果不确定时沿运行时刷新核对，不自动重发。画面按原父级局部坐标生成，保留父级旋转/透明/裁剪；单子组沿用既有解组规则，被解散层的透明度计入新图片。外部箭头仅解绑被替换端并固定原可见端点，另一端绑定保留。合成会触发Slides重新排版时请改选整个Slides框，避免移动未选页面。
+
+离线回归是`tools/flatten-*.test.mjs`、`tools/media-upload-attempt.test.mjs`及原媒体清理回归；真实隔离HTTP在`server/flatten-http.test.mjs`，统一检查自动发现。登记白板与端口、设置已有`HICANVAS_TEST_ELECTRON`后运行`HICANVAS_FLATTEN_PORT=43392 node tools/renderer-preview/flatten-check.mjs`，证据写入`.scratch/flatten-smoke/`；专项也接入`npm run renderer:smoke`。原生入口由`native-suites.mjs`登记，先验证主进程、父页、子框的17个拒绝探针和允许探针，再运行实际选择、上传、替换、撤销/重做及像素检查。
