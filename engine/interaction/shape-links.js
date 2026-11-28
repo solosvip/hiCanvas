@@ -1,3 +1,5 @@
+import { captureRecordBasis, assertRecordBasis } from '../record-basis.js'
+import { getRecordDependencies } from '../record-dependencies.js'
 import { atom } from '@tldraw/state'
 import { getShapeBounds, shapeToPagePoint, pageToShapePoint } from '../../renderer/geometry.js'
 import { checkedShapeLink, supportsShapeLink } from '../shape-links.js'
@@ -37,12 +39,14 @@ export function createShapeLinkEditing({ session, targets, initial, pageId, read
     try {
       const shape = target(), state = read()
       if (blocked() || !shape || shape.id !== expected.id || shape.props.url !== expected.url ||
-        state.toolId !== expected.toolId || session.state.get().revision !== expected.revision) throw new CanvasEditError('对象、权限、工具或画板版本已变化；草稿已保留，请重新打开。', 'conflict')
+        state.toolId !== expected.toolId) throw new CanvasEditError('对象、权限、选区或工具已变化；草稿已保留，请重新打开。', 'conflict')
       const url = clear ? '' : draftUrl(value.url)
+      const commands = [{ type: 'set_shape_link', id: expected.id, url }], snapshot = session.store.getStoreSnapshot()
+      assertRecordBasis(snapshot, expected.recordBasis, getRecordDependencies(snapshot, commands))
       let previous = null
       try { previous = checkedShapeLink(shape.props.url) } catch { /* Invalid historical URL may be repaired. */ }
       if (url === previous) { cancel(); return null }
-      pending = session.commitCommands([{ type: 'set_shape_link', id: expected.id, url }], { expectedRevision: expected.revision })
+      pending = session.commitCommands(commands, { recordBasis: expected.recordBasis })
       const reply = await pending
       if (!disposed && basis === expected) { cancel(); change({ lastError: null }) }
       return reply
@@ -90,7 +94,8 @@ export function createShapeLinkEditing({ session, targets, initial, pageId, read
         if (pending || !available()) throw new CanvasEditError('请选择一个可以编辑链接的未锁定对象。')
         prepare()
         const shape = target()
-        basis = { id: shape.id, url: shape.props.url, revision: session.state.get().revision, toolId: read().toolId }
+        const snapshot = session.store.getStoreSnapshot()
+        basis = { id: shape.id, url: shape.props.url, recordBasis: captureRecordBasis(snapshot, getRecordDependencies(snapshot, [{ type: 'set_shape_link', id: shape.id }])), toolId: read().toolId }
         change({ lastError: null }); update(shape.props.url); return true
       }
       if (value?.type === 'update' && basis && read().linkEditing && !pending) { update(value.url); return true }

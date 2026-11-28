@@ -1,5 +1,5 @@
 import { createCanvasSnapshot } from '../../model/index.js'
-import { executeCanvasCommands, CanvasEditError } from '../../engine/index.js'
+import { executeCanvasCommands, CanvasEditError, assertRecordBasis, getRecordDependencies } from '../../engine/index.js'
 
 export const shape = (name, extra = {}) => ({ type: 'create_shape', id: `shape:${name}`, shapeType: 'geo', ...extra })
 export const update = (name, changes) => ({ type: 'update', id: `shape:${name}`, changes })
@@ -13,8 +13,9 @@ export function memoryHost(snapshot = createCanvasSnapshot()) {
   let beforeCommit = null
   let canonicalize = record => record
   function notify() { for (const listener of [...listeners]) listener({ revision: current.revision }) }
-  async function write({ expectedRevision, commands, actor }) {
-    if (expectedRevision !== current.revision) throw new CanvasEditError('版本已变化。', 'conflict')
+  async function write({ expectedRevision, commands, actor, recordBasis }) {
+    if (recordBasis === undefined) { if (expectedRevision !== current.revision) throw new CanvasEditError('版本已变化。', 'conflict') }
+    else assertRecordBasis(current.snapshot, recordBasis, getRecordDependencies(current.snapshot, commands))
     const result = executeCanvasCommands(current.snapshot, commands)
     for (const record of Object.values(result.snapshot.store)) canonicalize(record)
     for (const [id, value] of Object.entries(result.changes.added)) result.changes.added[id] = structuredClone(result.snapshot.store[id])

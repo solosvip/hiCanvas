@@ -14,3 +14,5 @@ export { createClipboardContent, encodeClipboardContent, decodeClipboardContent,
 export { createExternalClipboardContent, EXTERNAL_CLIPBOARD_LIMITS } from './clipboard/index.js'
 export { createCanvasExport } from './interaction/export.js'
 export { createCanvasAnnotationCapture } from './interaction/annotation-capture.js'
+export { captureRecordBasis, assertRecordBasis } from './record-basis.js'
+export { getRecordDependencies } from './record-dependencies.js'

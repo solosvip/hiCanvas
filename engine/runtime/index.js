@@ -1,3 +1,5 @@
+import { assertRecordBasis } from '../record-basis.js'
+import { getRecordDependencies } from '../record-dependencies.js'
 import { atom } from '@tldraw/state'
 import { createCanvasStore } from '../../model/index.js'
 import { executeCanvasTransaction, MAX_TRANSACTION_COMMANDS } from '../execute.js'
@@ -10,7 +12,7 @@ import { MAX_REPLAYS, emptyChanges, changedIds, changesToCommands, netChanges, a
 export { MAX_REPLAYS } from './changes.js'
 
 /**
- * transport: read() → {snapshot, revision}; commit({expectedRevision,commands,actor})
+ * transport: read() → {snapshot, revision}; commit({expectedRevision,commands,actor,recordBasis?})
  * → {revision, changes, results, snapshot?}; subscribe(onChange) → unsubscribe。
  * 可选 undo / redo({expectedRevision,actor}) 与 commit 返回相同格式；调用时才检查支持。
  * 会话应使用随机生成的标识。撤销历史由宿主保管，不在窗口中另存。
@@ -147,17 +149,22 @@ export async function createEditorSession({ transport, actor }) {
     status({ isSubmitting: true })
     return schedule(submit)
   }
-  function commitCommands(commands, { expectedRevision = confirmed.revision } = {}) {
+  function commitCommands(commands, { expectedRevision = confirmed.revision, recordBasis } = {}) {
     idle()
     if (gesture) throw new CanvasEditError('请先结束当前手势，再提交命令。', 'busy')
-    if (expectedRevision !== confirmed.revision) throw new CanvasEditError('画板版本已变化。', 'conflict')
     if (!Array.isArray(commands) || !commands.length || commands.length > MAX_TRANSACTION_COMMANDS) throw new CanvasEditError('命令数量无效或超过上限。', 'limit')
-    const input = structuredClone(commands)
+    const input = structuredClone(commands), basis = recordBasis === undefined ? undefined : structuredClone(recordBasis)
+    const check = () => {
+      if (basis !== undefined) assertRecordBasis(confirmed.snapshot, basis, getRecordDependencies(confirmed.snapshot, input))
+      else if (expectedRevision !== confirmed.revision) throw new CanvasEditError('画板版本已变化。', 'conflict')
+    }
+    check()
     status({ isSubmitting: true, lastError: null })
     return schedule(async () => {
       try {
-        if (expectedRevision !== confirmed.revision) throw new CanvasEditError('画板版本已变化。', 'conflict')
-        const reply = await transport.commit({ expectedRevision, commands: input, actor })
+        check()
+        const reply = await transport.commit({ expectedRevision: basis === undefined ? expectedRevision : confirmed.revision, commands: input, actor, ...(basis !== undefined && { recordBasis: basis }) })
+        if (basis !== undefined && !reply.snapshot) throw new CanvasEditError('记录确认缺少实际保存快照；已刷新，请核对结果。', 'invalid-record-basis')
         open()
         const snapshot = reply.snapshot || executeCanvasTransaction(confirmed.snapshot, changesToCommands(reply.changes)).snapshot
         receive({ snapshot, revision: reply.revision })

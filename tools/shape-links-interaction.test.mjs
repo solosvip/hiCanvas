@@ -199,3 +199,20 @@ test('私有复制编码/解码和粘贴公共接口保留组孩子的链接，�
   assert.ok(child); assert.notEqual(child.id, 'shape:link-child'); assert.notEqual(child.parentId, 'shape:link-group')
   assert.equal(pasted.snapshot.store[child.parentId].type, 'group'); assert.deepEqual(source, unchanged)
 })
+
+test('#231 无关远端更新不打断网址草稿，同目标非网址属性变化仍拒绝', async () => {
+  const f = await setup()
+  try {
+    f.link({ type: 'open' }); f.link({ type: 'update', url: 'example.invalid/new' })
+    await f.remote([{ type: 'create_shape', id: 'shape:other-231', shapeType: 'geo' }])
+    await f.link({ type: 'submit' })
+    assert.equal(f.shape().props.url, 'https://example.invalid/new')
+    f.link({ type: 'open' }); f.link({ type: 'update', url: 'example.invalid/stale' })
+    await f.remote([{ type: 'update', id: 'shape:one', changes: { x: 80 } }])
+    const calls = f.transport.getCommitCount()
+    await assert.rejects(f.link({ type: 'submit' }), { code: 'conflict' })
+    assert.equal(f.transport.getCommitCount(), calls)
+    assert.equal(f.interaction.state.get().linkEditing.url, 'example.invalid/stale')
+    assert.equal(f.shape().props.url, 'https://example.invalid/new')
+  } finally { f.close() }
+})

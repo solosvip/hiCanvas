@@ -1,4 +1,4 @@
-import { executeCanvasCommands, recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction } from '../../engine/index.js'
+import { executeCanvasCommands, assertRecordBasis, getRecordDependencies, recordCanvasTransaction, undoCanvasTransaction, redoCanvasTransaction } from '../../engine/index.js'
 
 const editorReasonCodes = new Set(['slides-layout-locked'])
 
@@ -17,9 +17,11 @@ export function memoryTransport(snapshot) {
   }
   return {
     read, subscribe: () => () => {}, getCommitCount: () => commitCalls,
-    async commit({ expectedRevision, commands, actor }) {
+    async commit({ expectedRevision, commands, actor, recordBasis }) {
       commitCalls++
-      check(expectedRevision)
+      if (typeof expectedRevision !== 'string' || !expectedRevision) throw new Error('写入需要版本。')
+      if (recordBasis === undefined) check(expectedRevision)
+      else assertRecordBasis(saved, recordBasis, getRecordDependencies(saved, commands))
       const result = executeCanvasCommands(saved, commands)
       history = recordCanvasTransaction(history, actor, result.changes)
       return accept(result)
@@ -41,7 +43,7 @@ export function previewTransport(conversationId) {
     read: () => request('/api/canvas'),
     undo: ({ expectedRevision, actor }) => request('/api/canvas/undo', 'POST', { expectedRevision }, actor),
     redo: ({ expectedRevision, actor }) => request('/api/canvas/redo', 'POST', { expectedRevision }, actor),
-    commit: ({ expectedRevision, commands, actor }) => request(commands.some(command => command.type === 'paste_content') ? '/api/canvas/clipboard/paste' : '/__interaction/commit', 'POST', { expectedRevision, commands }, actor),
+    commit: ({ expectedRevision, commands, actor, recordBasis }) => request(commands.some(command => command.type === 'paste_content') ? '/api/canvas/clipboard/paste' : '/__interaction/commit', 'POST', { expectedRevision, commands, recordBasis }, actor),
     copyContent: ({ ids, expectedRevision }) => request('/api/canvas/clipboard/copy', 'POST', { ids, expectedRevision }),
     subscribe(listener) {
       const events = new EventSource('/api/canvas-events' + query)

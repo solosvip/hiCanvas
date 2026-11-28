@@ -1,5 +1,5 @@
 import { createCanvasSnapshot } from '../model/index.js'
-import { executeCanvasCommands } from '../engine/index.js'
+import { executeCanvasCommands, getRecordDependencies, assertRecordBasis } from '../engine/index.js'
 import { isEqual } from '@tldraw/utils'
 import { documentRecordTypes } from './canvas-documents.mjs'
 import { createHash, randomUUID } from 'node:crypto'
@@ -147,15 +147,17 @@ export function createConversations(root = defaultRoot) {
     validId(id)
     return lock(id, async () => { await requireConversation(id); return readState(id) })
   }
-  async function commit(id, expectedRevision, actor, prepare) {
+  async function commit(id, expectedRevision, actor, prepare, checkCurrent) {
     validId(id)
     return lock(id, async () => {
       await requireConversation(id)
       const current = await readState(id)
       if (typeof expectedRevision !== 'string' || !expectedRevision) throw httpError('写入前必须读取画板并提供版本。', 428)
-      if (expectedRevision !== current.revision) throw httpError('画板已被其他操作更新。请读取最新版本后合并修改。', 409, { storage: 'revision-conflict', revision: current.revision })
+      if (!checkCurrent && expectedRevision !== current.revision) throw httpError('画板已被其他操作更新。请读取最新版本后合并修改。', 409, { storage: 'revision-conflict', revision: current.revision })
       if (typeof actor !== 'string' || !actor.trim()) throw httpError('写入需要有效的操作者。')
-      const edit = await prepare(readOnly(structuredClone(current.snapshot)))
+      const before = readOnly(structuredClone(current.snapshot))
+      await checkCurrent?.(before)
+      const edit = await prepare(before)
       const snapshot = await qualify(await checked(edit.snapshot), id)
       if (singlePageId(snapshot) !== singlePageId(current.snapshot)) throw httpError('不能替换画板的内部画布。')
       const result = { snapshot, actor, revision: randomUUID(), updatedAt: now(), ...(current.singleCanvasMigration && { singleCanvasMigration: current.singleCanvasMigration }) }
@@ -192,8 +194,16 @@ export function createConversations(root = defaultRoot) {
   }
   return {
     root, open, requireConversation, read, sidecar,
-    submitCommands(id, expectedRevision, actor, createCommands) {
-      return commit(id, expectedRevision, actor, async snapshot => executeCanvasCommands(snapshot, await createCommands(snapshot)))
+    submitCommands(id, expectedRevision, actor, createCommands, { recordBasis } = {}) {
+      let commands
+      const basis = recordBasis === undefined ? undefined : structuredClone(recordBasis)
+      // Only semantic commands can opt in; arbitrary snapshot/history callbacks
+      // never bypass the existing whole-board revision check.
+      const checkCurrent = basis === undefined ? undefined : async snapshot => {
+        commands = structuredClone(await createCommands(snapshot))
+        assertRecordBasis(snapshot, basis, getRecordDependencies(snapshot, commands))
+      }
+      return commit(id, expectedRevision, actor, async snapshot => executeCanvasCommands(snapshot, commands ?? await createCommands(snapshot)), checkCurrent)
     },
     undo(id, expectedRevision, actor) { return commit(id, expectedRevision, actor, snapshot => history.undo(id, actor, snapshot)) },
     redo(id, expectedRevision, actor) { return commit(id, expectedRevision, actor, snapshot => history.redo(id, actor, snapshot)) },

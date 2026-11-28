@@ -98,12 +98,13 @@ test('Mod+I沿统一按键表：画布可开，表单/菜单/组字/禁快捷键
   ui.dispatch({ type: 'key_down', key: 'Escape', time: ++time }); assert.equal(ui.state.get().embedEditing, null)
 })
 
-test('打开门禁与提交前版本/选择校验阻止组字、编辑或迟到意图', async t => {
+test('打开门禁与提交前相关记录/选择校验阻止组字、编辑或迟到意图', async t => {
   const { host, session, ui } = await editor(t)
   ui.setInputContext({ owner: 'canvas', isComposing: true })
   assert.throws(() => ui.embed({ type: 'open' }))
   ui.setInputContext({ owner: 'canvas' }); ui.embed({ type: 'open' }); ui.embed({ type: 'service', serviceId: 'G13' }); ui.embed({ type: 'update', url: 'https://youtu.be/demo' })
-  await host.remote([{ type: 'create_shape', shapeType: 'geo', id: 'shape:remote' }]); await session.refresh()
+  const pageId = Object.values(session.store.getStoreSnapshot().store).find(record => record.typeName === 'page').id
+  await host.remote([{ type: 'update', id: pageId, changes: { name: '远端修改目标画布' } }, { type: 'create_shape', shapeType: 'geo', id: 'shape:selection-target' }]); await session.refresh()
   await assert.rejects(ui.embed({ type: 'submit' }), error => error.code === 'conflict')
   assert.equal(host.commits.filter(row => row.actor === 'ui:embeds').length, 0)
   ui.embed({ type: 'cancel' }); ui.embed({ type: 'open' }); ui.embed({ type: 'service', serviceId: 'G13' }); ui.embed({ type: 'update', url: 'https://youtu.be/demo' })
@@ -378,4 +379,17 @@ test('#206 宿主把iframe当form保护全部键，框外指针只退出而不�
   assert.equal(f.active(), null); assert.equal(doc.activeElement, outside)
   controls.dispose(); f.begin(); emit('pointerdown', outside)
   assert.equal(f.active(), 'shape:embed-a'); assert.deepEqual(errors, []); assert.equal(f.host.commits.length, 0)
+})
+
+test('#231 新建嵌入和互转意图遇无关远端更新仍各一次确认', async t => {
+  const { host, session, ui } = await editor(t)
+  ui.embed({ type: 'open' }); ui.embed({ type: 'service', serviceId: 'G13' }); ui.embed({ type: 'update', url: 'https://youtu.be/demo' })
+  await host.remote([{ type: 'create_shape', shapeType: 'geo', id: 'shape:other-231' }]); await session.refresh()
+  await ui.embed({ type: 'submit' })
+  const id = ui.state.get().selectedIds[0], intent = ui.embed({ type: 'conversion-intent', to: 'bookmark' })
+  await host.remote([{ type: 'update', id: 'shape:other-231', changes: { x: 231 } }]); await session.refresh()
+  await ui.embed(intent)
+  assert.equal(session.store.get(id).type, 'bookmark')
+  assert.equal(session.store.get('shape:other-231').x, 231)
+  assert.equal(host.commits.filter(row => row.actor === 'ui:embeds').length, 2)
 })
