@@ -7,8 +7,10 @@ import { access, mkdir, mkdtemp, readFile, realpath, writeFile, rm } from 'node:
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startInteractionPreview } from './service.mjs'
+import { parseClipZoom } from './clip-restoration.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url)), base = join(root, '.scratch/clip-guard-evidence')
+const camera = { x: 20, y: 25, z: parseClipZoom(process.argv.slice(2)) }
 const executable = process.env.HICANVAS_TEST_ELECTRON, baselinePath = process.env.HICANVAS_CLIP_BASELINE
 if (!executable) throw new Error('先设置 HICANVAS_TEST_ELECTRON，复用已有 Electron。')
 if (!baselinePath) throw new Error('先设置 HICANVAS_CLIP_BASELINE，指向修复前保存的第一方 clip-pixel-mask.js。')
@@ -20,7 +22,7 @@ const baselineHash = hash(baseline)
 // First-party source at 880af4c, preserved before this fix. Pin the known red
 // fixture so a replaced baseline cannot silently become a second green run.
 assert.equal(baselineHash, '6507f1f6628b9e8c0d83bca1f707dfd45b5d6d7323b7f8840b19d4ed05efb3de', '旧版副本与施工前指纹不符。')
-const sources = ['service.mjs', 'clip-visibility-check.mjs', 'clip-visibility-electron.mjs', 'clip-pixel-mask.js', 'clip-pixel-guard.mjs', 'clip-pixel-comparison.mjs', 'clip-pixel-regions.mjs', 'opaque-edge-probe.mjs', 'opaque-edge-candidates.js', 'opaque-edge-rules.mjs', 'embeds-smoke.mjs']
+const sources = ['service.mjs', 'clip-visibility-check.mjs', 'clip-visibility-electron.mjs', 'clip-restoration.mjs', 'clip-pixel-mask.js', 'clip-pixel-guard.mjs', 'clip-pixel-comparison.mjs', 'clip-pixel-regions.mjs', 'opaque-edge-probe.mjs', 'opaque-edge-candidates.js', 'opaque-edge-rules.mjs', 'embeds-smoke.mjs']
 async function fingerprint() {
   const digest = createHash('sha256')
   for (const name of sources) digest.update(name).update(await readFile(join(root, 'tools/renderer-preview', name)))
@@ -43,7 +45,7 @@ try {
   preview = await startInteractionPreview({ port: Number(process.env.HICANVAS_CLIP_PORT || 43397), dataDir: join(output, 'data'), watch: false })
   stop.signal.throwIfAborted()
   const manifest = join(output, 'manifest.json')
-  await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(output, 'profile'), output, result, sourceHash, baselineHash, baseline }))
+  await writeFile(manifest, JSON.stringify({ url: preview.url, profile: join(output, 'profile'), output, result, sourceHash, baselineHash, baseline, camera }))
   // Cancellation may arrive while either startup or manifest I/O is awaited.
   stop.signal.throwIfAborted()
   child = spawn(executable, [join(root, 'tools/renderer-preview/clip-visibility-electron.mjs'), manifest], { cwd: root, env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined }, stdio: 'inherit', detached: true })
@@ -55,10 +57,14 @@ try {
   } finally { clearTimeout(timer) }
   stop.signal.throwIfAborted()
   if (timedOut) throw new Error(`裁剪可见性检查超时，证据：${output}`)
-  assert.equal(code, 0, `裁剪可见性原生检查失败，见 ${result}`)
   report = JSON.parse(await readFile(result, 'utf8'))
   assert.equal(report.pid, child.pid); assert.equal(report.sourceHash, sourceHash); assert.equal(report.baselineHash, baselineHash)
-  assert.equal(await fingerprint(), sourceHash, '检查期间源码发生变化。')
+  const sourceHashAfter = await fingerprint()
+  await writeFile(join(output, 'execution.json'), JSON.stringify({ pid: child.pid, code, sourceHashBefore: sourceHash, sourceHashAfter, baselineHash, resultPid: report.pid }, null, 2))
+  assert.equal(sourceHashAfter, sourceHash, '检查期间源码发生变化。')
+  // Manual fractional diagnostics can legitimately fail. Verify their actual
+  // process and inputs too, before preserving the original nonzero verdict.
+  assert.equal(code, 0, `裁剪可见性原生检查失败，见 ${result}`)
 } finally {
   kill('SIGKILL'); await closed
   try { await preview?.close() } finally {
