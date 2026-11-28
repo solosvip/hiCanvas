@@ -20,7 +20,7 @@ export async function runAnnotationSmoke({port=Number(process.env.HICANVAS_ANNOT
   let preview,child,closed
   const interrupt=()=>{controller.abort(new Error('标注检查已停止。'));child?.kill('SIGKILL')}
   process.once('SIGINT',interrupt);process.once('SIGTERM',interrupt)
-  const sourceFiles=['engine/index.js','renderer/export-bounds.js','renderer/text-editing-layout.js',...['index.js','create-annotation.js','annotation-plan.js','annotation-capture.js','snapshot-output.js','export.js','text-editing.js','text-input.js','shortcuts.js','creation-controls.js','creation-presets.js'].map(name=>`engine/interaction/${name}`),...['annotation-check.mjs','annotation-smoke.mjs','annotation-fixture.js','annotation-probe.js','annotation-ui.js','main.js','creation-ui.js','electron.mjs','service.mjs'].map(name=>`tools/renderer-preview/${name}`)]
+  const sourceFiles=['engine/index.js','renderer/export-bounds.js','renderer/text-editing-layout.js',...['index.js','create-annotation.js','annotation-plan.js','annotation-capture.js','snapshot-output.js','export.js','text-editing.js','text-input.js','shortcuts.js','creation-controls.js','creation-presets.js'].map(name=>`engine/interaction/${name}`),...['annotation-check.mjs','annotation-smoke.mjs','annotation-fixture.js','annotation-probe.js','annotation-ui.js','main.js','creation-ui.js','electron.mjs','native-suites.mjs','native-suite-runner.mjs','service.mjs'].map(name=>`tools/renderer-preview/${name}`)]
   async function fingerprint(){const hash=createHash('sha256');for(const file of sourceFiles)hash.update(file).update(await readFile(join(root,file)));return hash.digest('hex')}
   const source=await fingerprint(),origins=new Set()
   const observe=({request})=>{

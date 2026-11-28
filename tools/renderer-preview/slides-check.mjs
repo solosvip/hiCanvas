@@ -25,7 +25,7 @@ async function run() {
   await access(executable, constants.X_OK)
   await mkdir(output, { recursive: true })
   const run = await mkdtemp(join(output, 'run-')), result = join(run, 'result.json')
-  const paths = ['engine/slides-layout.js', 'engine/slides-consistency.js', 'engine/execute.js', 'engine/index.js', 'engine/clipboard/placement.js', 'engine/interaction/frame-interaction.js', 'engine/media-placement.js', 'server/routes.mjs', ...['slides-check.mjs', 'slides-smoke.mjs', 'slides-fixture.js', 'main.js', 'service.mjs', 'electron.mjs', 'transport.js'].map(name => `tools/renderer-preview/${name}`)]
+  const paths = ['engine/slides-layout.js', 'engine/slides-consistency.js', 'engine/execute.js', 'engine/index.js', 'engine/clipboard/placement.js', 'engine/interaction/frame-interaction.js', 'engine/media-placement.js', 'server/routes.mjs', ...['slides-check.mjs', 'slides-smoke.mjs', 'slides-fixture.js', 'main.js', 'service.mjs', 'electron.mjs', 'native-suites.mjs', 'native-suite-runner.mjs', 'transport.js'].map(name => `tools/renderer-preview/${name}`)]
   async function fingerprint() { const hash = createHash('sha256'); for (const path of paths) hash.update(path).update(await readFile(join(root, path))); return hash.digest('hex') }
   const sourceHash = await fingerprint()
   let preview, child, closed, interrupted = false
