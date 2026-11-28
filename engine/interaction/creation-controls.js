@@ -25,6 +25,8 @@ export function createCreationControls({ read, change, switchTool, canUseTool, s
   }
   function toolChanged(id) {
     generation++
+    // Native annotation entry explicitly unlocks the global creation lock.
+    if (id === 'annotation') setOptions({ toolLocked: false })
     if (!creationToolIds.includes(id)) return
     const recentTool = Object.freeze({ toolId: id, ...(id === 'geo' && { geo: read().creation.geo }) })
     change({ creation: Object.freeze({ ...read().creation, recentTool }) })

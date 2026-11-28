@@ -117,6 +117,12 @@ function createWindow(key, audit = null) {
 }
 
 async function run() {
+  if (manifest.annotationOnly) {
+    const { annotationSmoke } = await import('./annotation-smoke.mjs')
+    const result = await annotationSmoke(manifest)
+    await writeFile(manifest.result, JSON.stringify(result, null, 2))
+    app.exit(result.ok ? 0 : 1); return
+  }
   // Only the full renderer preview hosts isolated content and answers
   // /api/health. The interaction previews behind the native *-check entries
   // refuse it (403, empty body); they have no content port to allow.

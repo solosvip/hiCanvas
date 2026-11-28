@@ -435,3 +435,15 @@ Slides 容器（#142）在正式编辑事务收尾时整理直接图片/自有 H
 唯一选中Slides或其直接作品页时，粘贴叶根以它为目标，复用原有居中/光标策略和裁切检查；框外光标仍按既有裁切策略回到可见父级。整套框/组复制保留原根落点和完整子树，后代只映射新编号、父级和已知提示。一次正式命令包含排版的所有连带改动，撤销/重做精确还原，不再另排。旧界面保留计时触发，只用相同纯计算，不再全画板按历史hint收纳。
 
 公开命令/历史/交互与纯计算回归在 `tools/slides-*.test.mjs`，HTTP回归在 `server/editor-slides.test.mjs`，随 `npm test` 执行。登记白板和专用端口、设置已有 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_SLIDES_PORT=43397 node tools/renderer-preview/slides-check.mjs`（避开43398），证据在 `.scratch/slides-native/`。保留原三页基线、重排三页和删除中间页后的两页，分别核对实际演示、逐页HTML/PNG和断服离线页序，使用 `HICANVAS_SLIDES_PORT=43397 node tools/content-slides-smoke.mjs`，证据在 `.scratch/content-slides-smoke/`；两条串行运行。正式交付另跑 `npm run renderer:smoke`、`npm run check` 和真实提交钩子。本机服务的 `CanvasEditError` 响应新增code字段，状态码映射和原有字段保留；临时预览客户端仅明确放行锁页原因码。
+
+### 新编辑底座的标注与只读截图（#141）
+
+正式应用仍使用旧编辑器；本轮接入新底座及独立合成预览`/?gallery=annotation&case=drawing`。按C或选「标注 C」后拖出箭头，松手输入起点标签；拖动中Esc/pointercancel撤掉草稿，标签中Esc或普通文字的Mod+Enter规则保存并回选择。8屏幕CSS px以下不成形，进入标注会解开工具锁，空标签保留箭头。箭头和首次文字一步撤销，后来改字各自一步；组字中不完成。标注失焦干净结束，保存失败保留草稿；普通文字和连接箭头原规则保持。
+
+`createCanvasAnnotationCapture({session,interaction,preflight,render})`从`engine/index.js`导出。宿主注入公开`preflightCanvasExport`及`renderCanvasExport`，后者可附`document/host`以沿用#210当前媒体帧和网络边界。`run({targetId,origin:'canvas'|'toolbar',signal})`固定本次明确目标和文档，返回PNG`bytes/mime`、`targetId/ids/sourceBounds/bounds/padding/scale/width/height`及资源警告/计数；不借用或改变选择、视角、工具、历史，不下载、不写剪贴板、不保存文件、不提交模型请求。每次调用重新收集；`state.get()`返回busy/lastError，`cancel()/dispose()`只取消本控制器。输入门禁与普通输出相同，工具栏来源可接受普通按钮焦点，编辑/组字/菜单/手势/提交中拒绝。
+
+目标接受图片、生成HTML/影片embed与Slides框，包括无素材图片和空Slides。身份认标注meta，兼容红/黄/橙及箭头红色label；按页面AABB汇集，目标长边夹160–720作附近距离，相关箭头外扩120找文字，不沿文字递归扩散。锁定、零透明及父框裁剪外的标注仍参与计划；渲染保留#210本身的裁剪。先收齐箭头再收文字，结果不依赖图层/创建顺序，不写targetId或自动绑定。
+
+并集四边留白32，留白后最长边≤1000用2倍、≤1600用1.5倍、其他1倍。编码尺寸由#210实际预检向外取整；每边4096和总1600万像素均含边界，超限在渲染前拒绝并提示实际宽高及缩小/移近建议，不偷偷缩放。普通输出仍保持8192/1600万原上限；其超限Error仅附`code='export-size-limit'/width/height/limits`，原消息不变。
+
+原生专项：设置`HICANVAS_TEST_ELECTRON`复用已有Electron后，运行`HICANVAS_ANNOTATION_PORT=43392 node tools/renderer-preview/annotation-check.mjs`。它先以15项拒绝/1项允许验证主进程、父页、子框的外连/模型/剪贴板/弹窗/下载边界，再加载合成标注预览，输出在`.scratch/annotation-smoke/`。专项与原有`npm run renderer:smoke`分别执行，后者保持原样。离线三组`tools/annotation-*.test.mjs`由统一检查自动发现；独立运行也先用测试隔离入口。正式模型链路、真实输入法和最终界面由后续集中验收。

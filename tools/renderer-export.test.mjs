@@ -79,3 +79,14 @@ test('全部原生导出夹具均通过真实编辑会话的数据校验，包�
     finally { session.dispose() }
   }
 })
+
+test('尺寸超限附结构化实际宽高和原上限，原消息/向外取整完全保留', () => {
+  const snapshot = fixture([rect('a', 0, 0)])
+  assert.throws(() => preflightCanvasExport(snapshot, { bounds: { x: .25, y: .5, w: 8192, h: 100 }, scale: 1 }), error => {
+    assert.equal(error.message, '输出超过8192边长或1600万像素上限。')
+    assert.equal(error.code, 'export-size-limit')
+    assert.deepEqual([error.width, error.height], [8193, 101])
+    assert.deepEqual(error.limits, { edge: 8192, pixels: 16_000_000, bytes: 64_000_000, timeout: 30_000 })
+    return true
+  })
+})

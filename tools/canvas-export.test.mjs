@@ -85,3 +85,19 @@ test('渲染与下载失败不写事务，空画板不调用下载，忙状态�
     assert.deepEqual(f.current(), before); assert.equal(f.commits.length, 0)
   } finally { exp.dispose(); f.close() }
 })
+
+test('共用生命周期保留取消信号与下载边界，普通输出不受另一控制器取消影响', async () => {
+  const f = await creationFixture({ commands: [{ type: 'create_shape', id: 'shape:a', shapeType: 'geo' }] })
+  let release, writes = 0
+  const options = { session: f.session, interaction: f.interaction, background: '#fff', download: (_result, { filename, signal }) => { signal.throwIfAborted(); assert.equal(filename, 'hiCanvas.png'); writes++ } }
+  const a = createCanvasExport({ ...options, render: () => new Promise(resolve => { release = resolve }) })
+  const b = createCanvasExport({ ...options, render: async () => ({ status: 'complete', bytes: new Uint8Array([1]) }) })
+  try {
+    const controller = new AbortController(), pending = a.run({ signal: controller.signal })
+    controller.abort(new Error('Synthetic cancellation'))
+    await b.run(); assert.equal(writes, 1)
+    release({ status: 'complete', bytes: new Uint8Array([1]) })
+    assert.equal((await pending).status, 'cancelled'); assert.equal(writes, 1)
+    assert.equal(a.state.get().busy, false); assert.equal(f.commits.length, 0)
+  } finally { a.dispose(); b.dispose(); f.close() }
+})

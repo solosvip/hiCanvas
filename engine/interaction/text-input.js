@@ -54,5 +54,12 @@ export function createTextInput(context, editing) {
     if (!id && canCreate()) return { handled: true, result: editing.create(point) }
     return { handled: false }
   }
-  return { beforeKeyboard, handle, dispose() { disposed = true; pending = null } }
+  return { beforeKeyboard, handle,
+    contextChanged() {
+      const input = read().inputContext
+      // Failed saves retain the existing draft/conflict and reported error.
+      // Focus adapters need not own an asynchronous save's rejection.
+      if (input.owner !== 'text-editing' && !input.isComposing) return Promise.resolve(editing.blur()).catch(() => false)
+    },
+    dispose() { disposed = true; pending = null } }
 }
