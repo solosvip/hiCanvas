@@ -15,7 +15,7 @@ async function setup(viewport = null) {
   let state = { camera: { x: 10, y: 20, z: 2 }, selectedIds: [], ...(viewport && { viewport }) }
   const interaction = { state: { get: () => state }, setCamera: camera => { state = { ...state, camera } } }, pageId = Object.values(snapshot.store).find(r => r.typeName === 'page').id
   const media = createMediaImport({ session, interaction, pageId })
-  return { session, transport, media, interaction, failSave: () => { failSave = true }, select: ids => { state = { ...state, selectedIds: ids } }, shapes: () => session.store.allRecords().filter(r => r.typeName === 'shape'), close: () => session.dispose() }
+  return { session, transport, media, interaction, failSave: () => { failSave = true }, select: ids => { state = { ...state, selectedIds: ids } }, shapes: () => session.store.allRecords().filter(r => r.typeName === 'shape').sort((a, b) => a.x - b.x), close: () => session.dispose() }
 }
 test('公开媒体入口：屏幕落点居中、自然尺寸，多文件一次提交/一次撤销', async () => {
   const f = await setup()
@@ -31,14 +31,19 @@ test('公开媒体入口：屏幕落点居中、自然尺寸，多文件一次�
     await f.session.redo(); assert.equal(f.shapes().length, 2)
   } finally { f.close() }
 })
-test('上传期间选择/版本变化、取消、坏媒体均拒绝，整次不留部分形状；替换保留身份位置', async () => {
+test('上传允许无关变化；选择或目标画布变化、取消、坏媒体均拒绝；替换保留身份位置', async () => {
   const f = await setup()
   try {
     let ticket = f.media.begin({ point: { x: 0, y: 0 } })
     f.select(['shape:other']); await assert.rejects(ticket.commit([video]), /选择已变化/); assert.equal(f.shapes().length, 0)
     f.select([]); ticket = f.media.begin({ point: { x: 0, y: 0 } })
     await f.transport.commit({ expectedRevision: f.session.state.get().revision, actor: 'remote', commands: [{ type: 'create_shape', shapeType: 'geo' }] }); await f.session.refresh()
-    await assert.rejects(ticket.commit([video]), /画板或选择已变化/); assert.equal(f.shapes().filter(s => s.type === 'video').length, 0)
+    await ticket.commit([video]); assert.equal(f.shapes().filter(s => s.type === 'video').length, 1)
+    await f.session.undo(); assert.equal(f.shapes().filter(s => s.type === 'video').length, 0)
+    ticket = f.media.begin({ point: { x: 0, y: 0 } })
+    const pageId = f.session.store.allRecords().find(r => r.typeName === 'page').id
+    await f.transport.commit({ expectedRevision: f.session.state.get().revision, actor: 'remote', commands: [{ type: 'update', id: pageId, changes: { name: 'Changed target page' } }] }); await f.session.refresh()
+    await assert.rejects(ticket.commit([video]), e => e.code === 'conflict')
     ticket = f.media.begin({ point: { x: 0, y: 0 } }); ticket.cancel(); await assert.rejects(ticket.commit([video]), /已结束/)
     await assert.rejects(f.media.begin({ point: { x: 0, y: 0 } }).commit([video, { ...video, w: 0 }]), /尺寸/)
     assert.equal(f.shapes().filter(s => s.type === 'video').length, 0)
@@ -77,7 +82,7 @@ test('大视频保留自然尺寸，按旧版1280×800读数居中90%视角；�
   } finally { f.close() }
 })
 
-test('已预览的批量导入遇到宿主提交失败时，资源/形状全部恢复', async () => {
+test('批量导入遇到宿主提交失败时保留原确认副本，零预览手势', async () => {
   const f = await setup()
   try {
     const before = f.session.store.allRecords()

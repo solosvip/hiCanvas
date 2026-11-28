@@ -169,7 +169,7 @@ test('剪切先等写入确认，写失败不删；成功只提交一次删除',
   assert.equal(session.store.has('shape:one'), false)
 })
 
-test('异步IO后复查版本、焦点和会话，失败不粘贴或剪切，重复动作不重复IO', { timeout: 3000 }, async t => {
+test('异步IO后复查目标画布、焦点和会话，失败不粘贴或剪切，重复动作不重复IO', { timeout: 3000 }, async t => {
   for (const mode of ['revision', 'focus', 'dispose']) {
     const gate = deferred(), entered = deferred()
     let reads = 0
@@ -178,7 +178,7 @@ test('异步IO后复查版本、焦点和会话，失败不粘贴或剪切，重
     const pending = ui.runAction('paste')
     await entered.promise
     assert.equal((await ui.runAction('paste')).status, 'unavailable')
-    if (mode === 'revision') { await host.remote([shape('remote')]); await session.refresh() }
+    if (mode === 'revision') { await host.remote([{ type: 'update', id: session.store.allRecords().find(r => r.typeName === 'page').id, changes: { name: 'Changed target' } }]); await session.refresh() }
     if (mode === 'focus') { ui.setInputContext({ owner: 'form' }); ui.setInputContext({ owner: 'canvas' }) }
     if (mode === 'dispose') ui.dispose()
     gate.resolve(encodeClipboardContent(content))
@@ -238,7 +238,7 @@ test('剪切写入后基线变化，已写入内容保留但不提交删除', as
   const { interaction: ui, host, session } = await editor(t, { async write() { entered.resolve(); await gate.promise } })
   const pending = ui.runAction('cut')
   await entered.promise
-  await host.remote([shape('remote')]); await session.refresh()
+  await host.remote([{ type: 'update', id: 'shape:one', changes: { x: 777 } }]); await session.refresh()
   gate.resolve()
   await assert.rejects(pending, e => e.code === 'conflict')
   assert.equal(session.store.has('shape:one'), true)

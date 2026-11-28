@@ -23,16 +23,23 @@ function jsonBytes(value) {
   }
 }
 const queryKey = query => `${query.kind}:${query.id}`
+const memberKinds = new Set(['children', 'asset-users', 'bindings-from', 'bindings-to'])
 function memberIndex(snapshot, queries) {
   const index = new Map()
   for (const query of queries) {
-    if (!['children', 'asset-users'].includes(query?.kind) || !validId(query.id)) invalid('未知记录成员条件。')
+    if (!memberKinds.has(query?.kind) || !validId(query.id)) invalid('未知记录成员条件。')
     index.set(queryKey(query), [])
   }
   // Client conditions must not multiply full-board scans inside the save lock.
-  if (index.size) for (const record of Object.values(snapshot.store)) if (record.typeName === 'shape') {
-    index.get(`children:${record.parentId}`)?.push(record.id)
-    index.get(`asset-users:${record.props.assetId}`)?.push(record.id)
+  if (index.size) for (const record of Object.values(snapshot.store)) {
+    if (record.typeName === 'shape') {
+      index.get(`children:${record.parentId}`)?.push(record.id)
+      index.get(`asset-users:${record.props.assetId}`)?.push(record.id)
+    }
+    if (record.typeName === 'binding') {
+      index.get(`bindings-from:${record.fromId}`)?.push(record.id)
+      index.get(`bindings-to:${record.toId}`)?.push(record.id)
+    }
   }
   for (const ids of index.values()) ids.sort()
   return index
@@ -54,7 +61,7 @@ function checked(basis, dependencies) {
   for (const query of basis.memberships) {
     fields(query, ['kind', 'id', 'ids'])
     const key = queryKey(query)
-    if (!['children', 'asset-users'].includes(query.kind) || !validId(query.id) || queries.has(key) || !Array.isArray(query.ids) || query.ids.some(id => !validId(id)) || new Set(query.ids).size !== query.ids.length) invalid('记录成员条件无效或重复。')
+    if (!memberKinds.has(query.kind) || !validId(query.id) || queries.has(key) || !Array.isArray(query.ids) || query.ids.some(id => !validId(id)) || new Set(query.ids).size !== query.ids.length) invalid('记录成员条件无效或重复。')
     queries.add(key)
     if (query.ids.length > MAX_RECORDS) throw new CanvasEditError('记录成员数量超过上限。', 'limit')
   }

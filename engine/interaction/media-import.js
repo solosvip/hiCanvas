@@ -1,5 +1,7 @@
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { clampZoom } from './camera-math.js'
+import { captureRecordBasis } from '../record-basis.js'
+import { getRecordDependencies } from '../record-dependencies.js'
 
 // Hosts prepare files and upload bytes; this public entry owns document intent.
 // A ticket captures the revision/selection/camera before asynchronous preparation.
@@ -12,9 +14,12 @@ export function createMediaImport({ session, interaction, pageId }) {
       if (!point || ![point.x, point.y].every(Number.isFinite)) throw new Error('媒体落点需要有限坐标。')
       const initial = interaction.state.get(), revision = session.state.get().revision, selection = [...initial.selectedIds]
       if (blocked(initial) || replaceId && (selection.length !== 1 || selection[0] !== replaceId)) throw new Error('请先结束当前操作并选择待替换的媒体。')
+      const intent = { type: 'media_import_target', pageId, ...(replaceId && { replaceId }) }
+      const snapshot = structuredClone(session.store.getStoreSnapshot()), recordBasis = captureRecordBasis(snapshot, getRecordDependencies(snapshot, [intent]))
       const center = screenToCanvas(point, initial.camera)
       let complete = false
       return Object.freeze({
+        get uploadGuard() { return structuredClone({ expectedRevision: revision, recordBasis, intent }) },
         cancel() { complete = true },
         async commit(items) {
           if (complete) throw new Error('这次媒体导入已结束。')
@@ -24,7 +29,7 @@ export function createMediaImport({ session, interaction, pageId }) {
           if (items.some(item => typeof item.src !== 'string' || !item.src)) throw new Error('准备好的媒体需要有效资源地址。')
           const kinds = items.map(item => item.mimeType?.startsWith('image/') ? 'image' : item.mimeType?.startsWith('video/') ? 'video' : null)
           if (kinds.some(kind => !kind) || replaceId && session.store.get(replaceId)?.type !== kinds[0]) throw new Error('媒体类型不支持或与待替换形状不一致。')
-          if (session.state.get().revision !== revision || blocked(interaction.state.get()) || JSON.stringify(interaction.state.get().selectedIds) !== JSON.stringify(selection)) throw new Error('上传期间画板或选择已变化，或开始了新的编辑操作，请重试。')
+          if (blocked(interaction.state.get()) || JSON.stringify(interaction.state.get().selectedIds) !== JSON.stringify(selection)) throw new Error('上传期间选择已变化，或开始了新的编辑操作，请重试。')
           // Native CDP chooser/drop, isolated 1280×800, 2026-11-26 (#137):
           // 320×180 + 160×320 at (550,420) → (310,260), (630,260).
           // A third 320×180 → (150,260), (470,260), (630,260). No gaps.
@@ -37,22 +42,16 @@ export function createMediaImport({ session, interaction, pageId }) {
             x += item.w
             return command
           })
-          session.beginGesture()
-          try {
-            session.preview(commands)
-            const result = await session.commitGesture()
-            const viewport = initial.viewport, camera = interaction.state.get().camera
-            // Observed old drop of a 1280×720 clip into 1280×800: 90% fit,
-            // #137 4096×256 PNG at (550,420) → z=.28125 (90% viewport fit).
-            // Never override a host camera changed
-            // while asynchronous file preparation was in flight.
-            if (!replaceId && viewport && interaction.setCamera && JSON.stringify(camera) === JSON.stringify(initial.camera) && (width * camera.z >= viewport.w || height * camera.z >= viewport.h)) {
-              const z = clampZoom(Math.min(viewport.w / width, viewport.h / height) * .9)
-              interaction.setCamera({ x: viewport.w / (2 * z) - center.x, y: viewport.h / (2 * z) - center.y, z })
-            }
-            return result
+          const result = await session.commitCommands(commands, { recordBasis })
+          const viewport = initial.viewport, camera = interaction.state.get().camera
+          // Observed old drop of a 1280×720 clip into 1280×800: 90% fit,
+          // #137 4096×256 PNG at (550,420) → z=.28125 (90% viewport fit).
+          // Never override a host camera changed during file preparation.
+          if (!replaceId && viewport && interaction.setCamera && JSON.stringify(camera) === JSON.stringify(initial.camera) && (width * camera.z >= viewport.w || height * camera.z >= viewport.h)) {
+            const z = clampZoom(Math.min(viewport.w / width, viewport.h / height) * .9)
+            interaction.setCamera({ x: viewport.w / (2 * z) - center.x, y: viewport.h / (2 * z) - center.y, z })
           }
-          catch (error) { session.cancelGesture(); throw error }
+          return result
         },
       })
     },

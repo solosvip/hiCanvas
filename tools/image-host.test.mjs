@@ -136,8 +136,10 @@ test('超出单批数量在任何上传前拒绝，伪装SVG不是栅格文件',
 test('共用文件宿主一批接图片和WebM，不丢视频类型；一次撤销', async t => {
   const f = await setup(t), webm = new File([Buffer.from('1a45dfa380', 'hex')], 'synthetic.webm', { type: 'video/webm' })
   assert.equal(await f.upload.importFiles([...f.files(['png']), webm], { x: 550, y: 420 }), true)
-  assert.deepEqual(f.shapes().map(s => s.type), ['image', 'video'])
-  assert.equal(f.session.store.get(f.shapes()[1].props.assetId).props.mimeType, 'video/webm')
+  const shapes = f.shapes().sort((a, b) => a.x - b.x), video = shapes.find(s => s.type === 'video')
+  assert.deepEqual(shapes.map(s => s.type), ['image', 'video'])
+  assert.ok(shapes[0].index < video.index, '同批图片和视频的层序保留输入顺序')
+  assert.equal(f.session.store.get(video.props.assetId).props.mimeType, 'video/webm')
   await f.session.undo(); assert.equal(f.shapes().length, 0)
 })
 test('公开剪贴板适配器：文件与HTML共存只调用一次文件回调，表单/组字/忙状态不拦粘贴', async t => {

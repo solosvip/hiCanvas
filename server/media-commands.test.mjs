@@ -53,7 +53,7 @@ test('网页预演与执行的目标替换结果相同，预演不产生文件�
   assert.equal(await readFile(actual.body.assetPath, 'utf8'), args.htmlContent)
 })
 
-test('放图中途校验失败不改变画板或版本，已保存的文件保留为未引用资源', async t => {
+test('放图中途校验失败不改变画板或版本，本次图片资源零新增', async t => {
   const { workspace, api } = await fixture(t)
   const { id } = await workspace.open()
   const current = await workspace.read(id)
@@ -68,8 +68,7 @@ test('放图中途校验失败不改变画板或版本，已保存的文件保�
   assert.equal(failed.status, 400)
   assert.deepEqual(await workspace.read(id), before, '占位框删除、标注移动和资源记录应一起撤回')
   const orphans = (await filesAt(dir)).filter(file => !files.includes(file))
-  assert.equal(orphans.length, 1, '本单保留已落盘文件，不宣称已自动清理孤儿资源')
-  assert.deepEqual(await readFile(`${dir}/${orphans[0]}`), Buffer.from(png.split(',')[1], 'base64'))
+  assert.equal(orphans.length, 0, '无效图片在资源写入之前拒绝，不留下本次孤儿文件')
 })
 
 test('目标已删返回原 409，参数无效返回原 400，版本冲突与预演均不写文件', async t => {
@@ -92,5 +91,5 @@ test('目标已删返回原 409，参数无效返回原 400，版本冲突与预
     }
   }
   assert.deepEqual(await workspace.read(id), before)
-  assert.equal((await filesAt(dir)).length, 2, '仅两个实际执行且放置参数无效的请求各留一个文件，预演、冲突和目标已删不落盘')
+  assert.equal((await filesAt(dir)).length, 1, '仅HTML旧分支的实际无效放置请求留一个文件；图片失败、预演、冲突和目标已删不落盘')
 })
