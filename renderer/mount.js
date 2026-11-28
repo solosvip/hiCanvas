@@ -13,7 +13,7 @@ import { createEraserPreview } from './eraser-preview.js'
 
 // The caller owns the Store and input events. Coordinates are CSS pixels
 // relative to element's upper-left corner. This mount never writes to the Store.
-export function mountCanvasRenderer(element, { store, camera, pageId, loadGeneratedFrame, reduceMotion = false, textEditing, onVideoInput } = {}) {
+export function mountCanvasRenderer(element, { store, camera, pageId, loadGeneratedFrame, reduceMotion = false, textEditing, onVideoInput, onEmbedInput } = {}) {
   if (!element?.ownerDocument || !store?.getStoreSnapshot) throw new Error('渲染器需要页面元素和模型 Store。')
   if (typeof reduceMotion !== 'boolean') throw new Error('减少动画偏好需要布尔值。')
   const view = atom('renderer camera', checkedCamera(camera)), overlays = atom('renderer overlays', checkedOverlays([]))
@@ -26,6 +26,8 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
   scene.editingId = atom('renderer editing text', null)
   scene.videoState = atom('renderer video state', null)
   scene.onVideoInput = onVideoInput
+  scene.embedInteraction = atom('renderer embed interaction', null)
+  scene.onEmbedInput = onEmbedInput
   scene.eraserPreview = eraserPreview
   const textView = createTextEditingView(element, store, textEditing)
   scene.loadGeneratedFrame = loadGeneratedFrame
@@ -55,6 +57,7 @@ export function mountCanvasRenderer(element, { store, camera, pageId, loadGenera
       textView.update(description, view.get())
     },
     setVideoInteraction(value) { assertActive(); scene.videoState.set(value) },
+    setEmbedInteraction(id) { assertActive(); if (id !== null && typeof id !== 'string') throw new Error('嵌入互动需要对象ID或null。'); scene.embedInteraction.set(id) },
     setOverlays(value) { assertActive(); const next = checkedOverlays(value); scene.eraserPreview.set(next); overlays.set(next) },
     setReduceMotion(value) { assertActive(); if (typeof value !== 'boolean') throw new Error('减少动画偏好需要布尔值。'); scene.reduceMotion.set(value) },
     hitTest(point) { assertActive(); return hitTestCanvas(store.getStoreSnapshot(), point, view.get(), scene.pageId) },

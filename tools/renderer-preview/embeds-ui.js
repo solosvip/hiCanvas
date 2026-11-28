@@ -16,6 +16,8 @@ export function attachEmbedsUi(toolbar, host, interaction, onError, showActions 
   const open = button(toolbar, 'open', '创建嵌入', () => interaction.embed({ type: 'open' }))
   open.hidden = !showActions
   open.setAttribute('aria-keyshortcuts', 'Control+i Meta+i')
+  const finish = button(toolbar, 'finish-interaction', '退出嵌入互动', () => { interaction.embed({ type: 'finish-interaction' }); host.focus({ preventScroll: true }) })
+  finish.hidden = true
   for (const [to, text] of [['bookmark', '转换为书签'], ['embed', '转换为嵌入']]) {
     const node = button(toolbar, `convert-${to}`, text, () => {
       const intent = conversionIntents.get(to)
@@ -44,6 +46,7 @@ export function attachEmbedsUi(toolbar, host, interaction, onError, showActions 
   listen(dialog, 'cancel', event => { event.preventDefault(); attempt(() => interaction.embed({ type: 'cancel' })) })
   function update(state, submitting = false) {
     if (disposed) return
+    finish.hidden = !state.interactingEmbedId
     open.disabled = !interaction.canEmbed()
     for (const [to, node] of conversionButtons) {
       const intent = interaction.embed({ type: 'conversion-intent', to })

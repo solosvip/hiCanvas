@@ -6,7 +6,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   const captured = new Set()
   let lastTime = 0, animation = null, disposed = false, composing = false
   const owner = target => {
-    if (target?.closest?.('[data-canvas-input-owner="video"]')) return { owner: 'form' }
+    if (target?.closest?.('[data-canvas-input-owner="video"], [data-canvas-input-owner="embed"]')) return { owner: 'form' }
     if (target?.closest?.('[data-canvas-input-owner="text-editing"]')) return { owner: 'text-editing' }
     // Canvas-owned controls outside the canvas element (the minimap) keep keys on the canvas.
     if (target?.closest?.('[data-canvas-input-owner="canvas"]')) return { owner: 'canvas' }
@@ -37,7 +37,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
     return result
   }
   const pointer = type => event => {
-    if (event.target?.closest?.('[data-canvas-input-owner="text-editing"], [data-canvas-input-owner="video"]')) return
+    if (event.target?.closest?.('[data-canvas-input-owner="text-editing"], [data-canvas-input-owner="video"], [data-canvas-input-owner="embed"]')) return
     if (type === 'pointer_down') {
       if (![0, 1].includes(event.button) || event.pointerType !== 'touch' && captured.size && !captured.has(event.pointerId)) return
       host.focus?.({ preventScroll: true }); host.setPointerCapture?.(event.pointerId); captured.add(event.pointerId)
@@ -58,6 +58,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
     send({ type: 'pointer_cancel', time: event.timeStamp, pointerId: event.pointerId, pointerType: event.pointerType })
   }
   const wheel = event => {
+    if (event.target?.closest?.('[data-canvas-input-owner="embed"]')) return
     event.preventDefault()
     const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? host.clientHeight : 1
     send({ type: 'wheel', time: event.timeStamp, point: point(event), delta: { x: event.deltaX * scale, y: event.deltaY * scale }, ...modifiers(event) })
@@ -79,10 +80,15 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
   const focusout = event => reportContext(event.relatedTarget || document?.body)
   const composition = active => event => { composing = active; reportContext(event.target) }
   const resize = () => { if (host.clientWidth && host.clientHeight) interaction.setViewport({ w: host.clientWidth, h: host.clientHeight }) }
+  const outside = event => {
+    if (!interaction.state.get().interactingEmbedId || host.contains(event.target) || event.target?.closest?.('[data-embed-action="finish-interaction"]')) return
+    interaction.embed({ type: 'finish-interaction' })
+  }
   const pointerListeners = { pointerdown: pointer('pointer_down'), pointermove: pointer('pointer_move'), pointerup: pointer('pointer_up'), pointercancel: pointer('pointer_cancel'), lostpointercapture: lost }
   const keyListeners = { keydown: key('key_down'), keyup: key('key_up'), focus, focusin: focus, focusout, compositionstart: composition(true), compositionend: composition(false), blur, resize }
   for (const [type, listener] of Object.entries(pointerListeners)) host.addEventListener(type, listener)
   for (const [type, listener] of Object.entries(keyListeners)) keys.addEventListener(type, listener, { capture: type.startsWith('key') })
+  keys.addEventListener('pointerdown', outside, { capture: true })
   host.addEventListener('wheel', wheel, { passive: false }); resize(); reportContext(document?.activeElement || host)
   return {
     wake,
@@ -102,6 +108,7 @@ export function attachPreviewInput(host, interaction, { onError = () => {} } = {
       for (const [type, listener] of Object.entries(pointerListeners)) host.removeEventListener(type, listener)
       for (const [type, listener] of Object.entries(keyListeners)) keys.removeEventListener(type, listener, { capture: type.startsWith('key') })
       host.removeEventListener('wheel', wheel)
+      keys.removeEventListener('pointerdown', outside, { capture: true })
     },
   }
 }

@@ -58,6 +58,7 @@ const getState = () => {
     textEditing: state?.textEditing && structuredClone(state.textEditing),
     imageAltEditing: state?.imageAltEditing && structuredClone(state.imageAltEditing),
     embedEditing: state?.embedEditing && structuredClone(state.embedEditing),
+    interactingEmbedId: state?.interactingEmbedId || null,
     ...(metadata?.embedsFixture && { embedRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'asset'].includes(record.typeName))) }),
     ...(metadata?.imageImportFixture && session && { imageRecords: structuredClone(session.store.allRecords().filter(r => ['shape', 'asset'].includes(r.typeName))) }),
     ...(metadata?.connectionEditingFixture && { connectionRecords: structuredClone(session.store.allRecords().filter(record => ['shape', 'binding'].includes(record.typeName))) }),
@@ -92,7 +93,7 @@ try {
   const params = new URLSearchParams(location.search), gallery = params.get('gallery')
   if (['videos', 'image-import'].includes(gallery)) { const response = await fetch(`/__renderer_fixture?gallery=${gallery}`); if (!response.ok) throw new Error('媒体夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'clipboard') metadata = await (await fetch(`/__clipboard_fixture?board=${params.get('board') === 'target' ? 'target' : 'source'}`)).json()
-  else if (gallery === 'embed-editing') metadata = createEmbedsFixture()
+  else if (gallery === 'embed-editing') metadata = createEmbedsFixture(params.get('embedCase'))
   else if (gallery === 'export') metadata = createExportFixture(undefined, params.get('case') || 'static')
   else if (gallery === 'slides') { const response = await fetch(`/__renderer_fixture?gallery=slides&case=${encodeURIComponent(params.get('case') || 'base')}`); if (!response.ok) throw new Error('Slides 夹具不可用。'); metadata = await response.json() }
   else if (gallery === 'draw-input') metadata = createDrawGallery()
@@ -130,7 +131,7 @@ try {
   sessionStorage.setItem(actorKey, actor)
   metadata.actor = actor
   const camera = await transport.loadCamera?.() || metadata.viewState.camera
-  let hostError = null, wasSubmitting = false, wasClipboardBusy = false
+  let hostError = null, wasSubmitting = false, wasClipboardBusy = false, lastEmbedId = null
   const showError = error => { hostError = error; status.textContent = `操作失败：${error.message}` }
   clipboardAdapter = createPreviewClipboard({ host, transport, sandbox: metadata.clipboardFixture === true || metadata.slidesFixture === true, onError: showError })
   session = await createEditorSession({ transport, actor })
@@ -143,7 +144,7 @@ try {
   interaction = createCanvasInteraction({ session, clipboard: clipboardAdapter.port, boardId: metadata.conversationId || '', snapping: { enabled: params.get('snapping') === '1', grid: params.get('grid') === '1' }, displayName: params.get('displayName'), onRequestFocus: target => { if (target === 'canvas') host.focus({ preventScroll: true }) }, toolIds: trailTools ? (params.get('limited') === '1' ? ['select'] : trailTools) : metadata.focusFixture || gallery === 'creation' || metadata.textEditingFixture || metadata.connectionEditingFixture || metadata.noteEditingFixture ? Object.keys(canvasToolRegistry) : ['select', 'hand', 'draw', 'highlight'], camera, pageId: metadata.viewState.currentPageId, viewport: { w: host.clientWidth, h: host.clientHeight }, inputDevice: params.get('device') || null, invertZoom: params.get('invertZoom') === '1', reduceMotion: params.get('reduceMotion') === '1', edgeScrolling: params.get('edgeScrolling') !== '0', shortcutsEnabled: params.get('shortcuts') !== '0', controlPointSnapping: params.get('controlSnapping') === '1', measureFrameTitle, handleMetrics: { cornerHit: handleCornerHitSize / 2, edgeHit: handleEdgeHitSize / 2, rotationOffset: handleRotationOffset, rotationRadius: handleRotationRadius } })
   if (metadata.clipboardFixture) Object.defineProperty(window, '__HICANVAS_EXTERNAL_CLIPBOARD_PROBE__', { value: createExternalClipboardProbe({ session, interaction, document, onError: showError }) })
   disposers.push(() => interaction.dispose())
-  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), textEditing: {
+  renderer = mountCanvasRenderer(host, { store: session.store, camera, pageId: metadata.viewState.currentPageId, loadGeneratedFrame, reduceMotion: params.get('reduceMotion') === '1', onVideoInput: value => interaction.videoInput(value), onEmbedInput: value => interaction.embed(value), textEditing: {
     onChange: (content, selection) => interaction.editText({ type: 'update', content, selection }),
     onSelection: selection => interaction.editText({ type: 'selection', selection }),
     onInputContext: value => interaction.setInputContext(value),
@@ -179,7 +180,12 @@ try {
   if (textUi) disposers.push(() => textUi.dispose())
   const stop = react('preview interaction view', () => {
     const state = interaction.state.get()
-    renderer.setCamera(state.camera); renderer.setOverlays(state.overlays); renderer.setTextEditing(state.textEditing); renderer.setVideoInteraction(state)
+    const endedEmbed = lastEmbedId && lastEmbedId !== state.interactingEmbedId ? lastEmbedId : null
+    lastEmbedId = state.interactingEmbedId
+    // Reclaim only the former frame's focus. An outside form already focused
+    // by its native pointer/default action keeps its own input context.
+    if (endedEmbed && document.activeElement?.dataset.embedContent === endedEmbed) host.focus({ preventScroll: true })
+    renderer.setCamera(state.camera); renderer.setOverlays(state.overlays); renderer.setTextEditing(state.textEditing); renderer.setVideoInteraction(state); renderer.setEmbedInteraction(state.interactingEmbedId)
     navigation.update(state); videos?.update(state); images?.update(state); creationUi?.update(state, session.state.get().isSubmitting); textUi?.update(state, session.state.get().isSubmitting); actionsUi?.update(); controls?.wake()
     minimap.update(state)
     embedsUi.update(state, session.state.get().isSubmitting)

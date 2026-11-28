@@ -1,5 +1,5 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><title>离线合成嵌入</title>
-<body><h1>本机假页面</h1><p id="service"></p><input aria-label="合成输入" value="本机初始状态">
-<script>document.documentElement.dataset.instance = crypto.randomUUID(); document.querySelector('#service').textContent = new URLSearchParams(location.search).get('service') || 'offline';</script>
+<body><h1>本机假页面</h1><p id="service"></p><input aria-label="合成输入" value="本机初始状态"><button type="button" id="reload">重新加载合成页</button>
+<script>document.documentElement.dataset.instance = crypto.randomUUID(); document.querySelector('#service').textContent = new URLSearchParams(location.search).get('service') || 'offline'; document.querySelector('#reload').addEventListener('click', () => location.reload()); for (let i = 0; i < 80; i++) { const p = document.createElement('p'); p.textContent = `本机滚动区 ${i}`; document.body.append(p) }</script>
 </body></html>
