@@ -87,3 +87,16 @@ test('描述提交失败保留草稿，恢复后可以原样重试', async () =>
     await f.session.undo(); assert.equal(f.shape().props.altText, '')
   } finally { f.close() }
 })
+
+test('#231 输入描述期间无关远端改动允许确认，只发一次且一次撤销保留远端', async () => {
+  const f = await setup()
+  try {
+    f.alt({ type: 'start' }); f.alt({ type: 'update', text: '不被无关更新打断' })
+    await f.remote([{ type: 'create_shape', id: 'shape:unrelated-231', shapeType: 'geo' }])
+    await f.alt({ type: 'finish' })
+    assert.equal(f.shape().props.altText, '不被无关更新打断'); assert.equal(f.commits.length, 1)
+    assert.equal(f.session.state.get().isGestureActive, false)
+    await f.session.undo(); assert.equal(f.shape().props.altText, '')
+    assert.ok(f.session.store.has('shape:unrelated-231'))
+  } finally { f.close() }
+})

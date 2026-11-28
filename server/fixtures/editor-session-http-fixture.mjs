@@ -16,9 +16,9 @@ export function httpSessionTransport(base, conversationId) {
   return {
     ready, commits,
     read: () => request('/api/canvas'),
-    commit({ expectedRevision, commands, actor }) {
+    commit({ expectedRevision, commands, actor, recordBasis }) {
       commits.push({ expectedRevision, commands: structuredClone(commands), actor })
-      return request('/api/canvas/operations', 'POST', { expectedRevision, operations: commands }, actor)
+      return request('/api/canvas/operations', 'POST', { expectedRevision, operations: commands, recordBasis }, actor)
     },
     undo: ({ expectedRevision, actor }) => request('/api/canvas/undo', 'POST', { expectedRevision, actor }),
     redo: ({ expectedRevision, actor }) => request('/api/canvas/redo', 'POST', { expectedRevision, actor }),

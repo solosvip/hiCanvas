@@ -1,14 +1,18 @@
+import { captureRecordBasis, assertRecordBasis } from '../record-basis.js'
+import { getRecordDependencies } from '../record-dependencies.js'
 import { editableImage } from '../commands/crop-image.js'
 
 // Native toolbar input (#137, isolated CDP, 2026-11-26): Enter/outside save;
 // Escape preserves the original text. Drafts stay outside Store and history.
 export function createImageAlt({ session, read, change, prepare }) {
-  let basis = null, revision = null, disposed = false, pending = null
+  let basis = null, disposed = false, pending = null
   const cancel = () => { basis = null; if (!disposed && read().imageAltEditing) change({ imageAltEditing: null }) }
   function start(id = read().selectedIds.length === 1 && read().selectedIds[0]) {
     if (session.state.get().isSubmitting || session.state.get().isGestureActive || read().toolId !== 'select' || read().selectedIds.length !== 1 || read().selectedIds[0] !== id) throw new Error('请先结束当前操作并选择一张未锁定图片。')
     const shape = editableImage(session.store, id)
-    prepare(); basis = JSON.stringify(shape); revision = session.state.get().revision
+    prepare()
+    const snapshot = session.store.getStoreSnapshot()
+    basis = captureRecordBasis(snapshot, getRecordDependencies(snapshot, [{ type: 'set_image_alt_text', id }]))
     change({ imageAltEditing: Object.freeze({ id, text: shape.props.altText || '' }) })
     return true
   }
@@ -17,12 +21,11 @@ export function createImageAlt({ session, read, change, prepare }) {
     const draft = read().imageAltEditing, expected = basis
     if (!draft || disposed) return false
     const shape = editableImage(session.store, draft.id)
-    if (session.state.get().revision !== revision || JSON.stringify(shape) !== expected || session.state.get().isSubmitting || session.state.get().isGestureActive) throw new Error('编辑描述期间画板已变化，请重试。')
+    if (session.state.get().isSubmitting || session.state.get().isGestureActive) throw new Error('编辑描述期间画板已变化，请重试。')
+    const commands = [{ type: 'set_image_alt_text', id: draft.id, altText: draft.text }], snapshot = session.store.getStoreSnapshot()
+    assertRecordBasis(snapshot, expected, getRecordDependencies(snapshot, commands))
     if (draft.text === (shape.props.altText || '')) { cancel(); return false }
-    session.beginGesture()
-    try { session.preview([{ type: 'set_image_alt_text', id: draft.id, altText: draft.text }]) }
-    catch (error) { session.cancelGesture(); throw error }
-    pending = session.commitGesture()
+    pending = session.commitCommands(commands, { recordBasis: expected })
     try {
       const result = await pending
       if (!disposed && basis === expected && read().imageAltEditing?.id === draft.id) cancel()

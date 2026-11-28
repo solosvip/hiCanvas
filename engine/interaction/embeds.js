@@ -1,3 +1,5 @@
+import { captureRecordBasis, assertRecordBasis } from '../record-basis.js'
+import { getRecordDependencies } from '../record-dependencies.js'
 import { EMBED_SERVICES, resolveEmbedUrl } from '../../model/index.js'
 import { screenToCanvas } from '../../renderer/geometry.js'
 import { planUrlInsertion, planUrlConversion } from '../embeds.js'
@@ -38,9 +40,11 @@ export function createEmbedEditing({ session, pageId, index, targets, read, chan
     if (pending) return pending
     const value = read().embedEditing, expected = basis
     if (!value || !expected || blocked()) throw new CanvasEditError('请先结束当前操作并打开嵌入对话框。')
-    if (session.state.get().revision !== expected.revision || JSON.stringify(read().selectedIds) !== expected.selection) throw new CanvasEditError('输入网址期间画板或选择已变化，请重新打开。', 'conflict')
+    if (JSON.stringify(read().selectedIds) !== expected.selection) throw new CanvasEditError('输入网址期间画板或选择已变化，请重新打开。', 'conflict')
     planUrlInsertion(value.url, { source: 'dialog', serviceId: value.serviceId })
-    pending = session.commitCommands([{ type: 'insert_url', url: value.url, source: 'dialog', serviceId: value.serviceId, pageId, point: expected.point }], { expectedRevision: expected.revision })
+    const commands = [{ type: 'insert_url', url: value.url, source: 'dialog', serviceId: value.serviceId, pageId, point: expected.point }], snapshot = session.store.getStoreSnapshot()
+    assertRecordBasis(snapshot, expected.recordBasis, getRecordDependencies(snapshot, commands))
+    pending = session.commitCommands(commands, { recordBasis: expected.recordBasis })
     try {
       const reply = await pending
       if (!disposed && basis === expected) { cancel(); change({ selectedIds: [reply.results[0].shapeId], selectionRotation: null, lastError: null }) }
@@ -52,15 +56,18 @@ export function createEmbedEditing({ session, pageId, index, targets, read, chan
     const state = read(), id = state.selectedIds[0]
     if (blocked() || state.embedEditing || state.selectedIds.length !== 1 || !targets.isSelectable(id)) return null
     try { planUrlConversion(session.store.get(id), to) } catch { return null }
-    return Object.freeze({ type: 'convert', id, to, expectedRevision: session.state.get().revision, selection: JSON.stringify(state.selectedIds) })
+    const snapshot = session.store.getStoreSnapshot()
+    return Object.freeze({ type: 'convert', id, to, recordBasis: captureRecordBasis(snapshot, getRecordDependencies(snapshot, [{ type: 'convert_url_shape', id, to }])), selection: JSON.stringify(state.selectedIds) })
   }
   async function convert(value) {
     if (pending || blocked() || read().embedEditing) throw new CanvasEditError('请先结束当前操作再转换。')
-    if (value.expectedRevision !== session.state.get().revision || value.selection !== JSON.stringify(read().selectedIds) || read().selectedIds.length !== 1 || read().selectedIds[0] !== value.id) throw new CanvasEditError('画板或选择已变化，请重新选择转换对象。', 'conflict')
+    if (value.selection !== JSON.stringify(read().selectedIds) || read().selectedIds.length !== 1 || read().selectedIds[0] !== value.id) throw new CanvasEditError('画板或选择已变化，请重新选择转换对象。', 'conflict')
     const intent = conversionIntent(value.to)
     if (!intent) throw new CanvasEditError('当前对象不可转换。')
     prepare()
-    pending = session.commitCommands([{ type: 'convert_url_shape', id: intent.id, to: intent.to }], { expectedRevision: intent.expectedRevision })
+    const commands = [{ type: 'convert_url_shape', id: intent.id, to: intent.to }], snapshot = session.store.getStoreSnapshot()
+    assertRecordBasis(snapshot, value.recordBasis, getRecordDependencies(snapshot, commands))
+    pending = session.commitCommands(commands, { recordBasis: value.recordBasis })
     try {
       const reply = await pending
       if (!disposed) change({ lastError: null })
@@ -98,7 +105,8 @@ export function createEmbedEditing({ session, pageId, index, targets, read, chan
         if (pending || blocked() || read().embedEditing) throw new CanvasEditError('请先结束当前操作再创建嵌入。')
         prepare()
         const state = read()
-        basis = { revision: session.state.get().revision, selection: JSON.stringify(state.selectedIds), point: screenToCanvas({ x: state.viewport.w / 2, y: state.viewport.h / 2 }, state.camera) }
+        const snapshot = session.store.getStoreSnapshot()
+        basis = { recordBasis: captureRecordBasis(snapshot, getRecordDependencies(snapshot, [{ type: 'insert_url', pageId }])), selection: JSON.stringify(state.selectedIds), point: screenToCanvas({ x: state.viewport.w / 2, y: state.viewport.h / 2 }, state.camera) }
         change({ lastError: null }); draft(null, ''); return true
       }
       if (!read().embedEditing || pending) return false

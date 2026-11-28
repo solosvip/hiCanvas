@@ -102,7 +102,7 @@ export async function startInteractionPreview({ port = 0, dataDir = resolve(root
         if (!known) { res.writeHead(404); res.end(); return }
         const result = await serial(id, async () => {
           if (path !== '/__interaction/commit') throw new Error('未知预览操作。')
-          const reply = await workspace.submitCommands(id, body.expectedRevision, actor, () => body.commands)
+          const reply = await workspace.submitCommands(id, body.expectedRevision, actor, () => body.commands, { recordBasis: body.recordBasis })
           events.broadcast(reply); return reply
         })
         return sendJson(res, 200, result)

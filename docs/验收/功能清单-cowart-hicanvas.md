@@ -1,5 +1,7 @@
 # Cowart 继承与 hiCanvas 新增功能清单
 
+新编辑底座确认类编辑（#231）：嵌入新建/互转、图片描述和对象链接按目标、完整祖先、资源及必要成员集合判断冲突，允许其它对象的写入；服务端在保存锁内复核，不靠窗口单次判断。冲突或回执不确定只刷新、不自动重发，保留仍有效的草稿；无条件的旧请求仍严格按整板版本，剪贴板/媒体/拍平接入留 #239。公开规则与真实HTTP回归见 `tools/record-basis.test.mjs`、`server/record-conflicts.test.mjs`；原生三入口正反与本人撤销保护入口为 `tools/renderer-preview/record-conflicts-check.mjs`，逐轮证据在忽略目录 `.scratch/record-conflicts-smoke/run-*/`。正式Cowart界面尚未切换，尚不代表真人体验验收。
+
 新编辑底座文字（#132）：普通文字、几何标签、箭头标签和画框标题接同一编辑会话，正式Cowart界面尚未切换；不是C14/C25的HTML内页文字编辑。Esc保存文字会话，与画笔Esc丢弃未提交笔画分开；现有富文本JSON的节点、标记和属性保留，专用格式工具栏与精确排版归#150。公开动作及原生回归见 `tools/text-editing.test.mjs`、`tools/renderer-preview/text-editing-smoke.mjs`；详细条目、A38/E21旧版观察限制及手写字体差异见[文字覆盖](功能清单-tldraw.md#新编辑底座文字覆盖132)。
 
 新编辑底座连接线（#134）补创建、绑定/解绑、控制柄、沿线标签、端帽和Shift接段；箭头标签继续复用#132会话，A保留AI图片。正式界面尚未切换；回归入口、控制点吸附可选参数及旧版观察限制见[连接线覆盖](功能清单-tldraw.md#新编辑底座连接线覆盖134)。

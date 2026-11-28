@@ -211,6 +211,12 @@ cp -R skills/hicanvas "$HOME/Documents/skills/"
 
 ## 检查
 
+确认类编辑的并发规则（#231，ADR 0017）：新编辑底座的新建嵌入、网址对象互转、图片描述和对象链接携带相关记录基线；AI 在其它位置写入时仍可确认，目标、完整祖先、相关资源或必要成员集合变化时拒绝并保留仍有效的草稿。一次确认只发一次修改，失败或回执不确定时仅刷新，不自动重发。图片描述现在走离散命令；连续拖动的重放规则不变。剪贴板、媒体导入和拍平接入另见 #239。
+
+`captureRecordBasis(snapshot, getRecordDependencies(snapshot, commands))` 取得文档条件；`session.commitCommands(commands, {recordBasis})` 在出队时再核对，并用当前确认版本发送。HTTP operations 可选携带 `{recordBasis:{version:1,records:[[id,原记录或null]],memberships:[{kind,id,ids}]}}`，`expectedRevision` 仍必填；服务端在保存锁内重新推导并核对完整依赖，在当前快照执行。记录与成员条件合计最多20000条，命令与基线合计不超过50 MiB；带条件的未知命令、缺依赖、重复或非文档值明确拒绝。初版支持 `insert_url`（必须显式pageId）、`convert_url_shape`、`set_image_alt_text`、`set_shape_link`。带条件的成功回执含实际保存的 `snapshot` 和命令 `results`；旧回执继续省略 `results`。没有 `recordBasis` 的既有调用仍严格比较整板版本；撤销、重做、旧快照PUT和删除画板不改规则。
+
+登记白板及端口、设置已有 `HICANVAS_TEST_ELECTRON` 后运行 `HICANVAS_RECORD_CONFLICTS_PORT=43390 node tools/renderer-preview/record-conflicts-check.mjs`；专项通过登记表进入隔离持久化图鉴，三处确认各测无关放行、相关拒绝，并测本人撤销/重做保留远端。每轮证据保存在 `.scratch/record-conflicts-smoke/run-*/`，系统剪贴板、导航和原生弹窗全程拒绝。逻辑/真实HTTP回归随 `npm run check` 执行，交付另跑完整 `npm run renderer:smoke`。这条规则适用新底座，正式界面尚未切换。
+
 ```sh
 npm run check
 ```

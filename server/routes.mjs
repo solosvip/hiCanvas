@@ -102,11 +102,11 @@ export function createCanvasMiddleware({ root, workspace = root ? createConversa
       }
       if ((path === '/api/canvas' && req.method === 'PUT') || (path === '/api/canvas/operations' && req.method === 'POST')) {
         const body = await jsonBody(req)
-        const { results: _results, ...result } = path === '/api/canvas'
+        const { results, ...result } = path === '/api/canvas'
           ? await workspace.replaceLegacySnapshot(id, body.expectedRevision, body.snapshot)
-          : await workspace.submitCommands(id, body.expectedRevision, actor, () => body.operations)
+          : await workspace.submitCommands(id, body.expectedRevision, actor, () => body.operations, { recordBasis: body.recordBasis })
         events.broadcast(result)
-        return sendJson(res, 200, result)
+        return sendJson(res, 200, body.recordBasis === undefined ? result : { ...result, results })
       }
       if (path === '/api/html-draft' && req.method === 'PUT') {
         const body = await jsonBody(req)
